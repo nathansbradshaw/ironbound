@@ -242,6 +242,37 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
             fs::write("assets/bosses.json", serde_json::to_vec_pretty(&names)?)?;
         }
+        Some("item-weights") => {
+            let data: serde_json::Value = serde_json::from_str(&fs::read_to_string(
+                args.get(2)
+                    .ok_or("Provide public OSRSReboxed items-complete.json")?,
+            )?)?;
+            let weights: std::collections::BTreeMap<i32, f64> = ironbound::planner::equipment()
+                .iter()
+                .filter_map(|gear| {
+                    let item = data.get(gear.id.to_string())?;
+                    if item.get("id")?.as_i64()? != i64::from(gear.id)
+                        || item.get("noted")?.as_bool()?
+                    {
+                        return None;
+                    }
+                    let weight = item.get("weight")?.as_f64()?;
+                    (weight.is_finite() && weight.abs() <= 1000.0).then_some((gear.id, weight))
+                })
+                .collect();
+            if weights.len() < 100 {
+                return Err("Incomplete public item weight data".into());
+            }
+            fs::write(
+                "assets/item-weights.json",
+                serde_json::to_vec_pretty(&weights)?,
+            )?;
+            println!(
+                "Imported exact weights for {} / {} equipment IDs. Missing weights remain unknown.",
+                weights.len(),
+                ironbound::planner::equipment().len()
+            );
+        }
         Some("pack-icons") => pack_icons()?,
         Some("assets-all" | "assets-inventory") => inventory_assets()?,
         Some("compact-monsters") => {

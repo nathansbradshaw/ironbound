@@ -99,6 +99,7 @@ fn sharing_only_contains_an_explicit_public_allowlist() {
             "equipment",
             "inventory",
             "raid_level",
+            "ranking",
             "switches",
             "targets",
             "version"

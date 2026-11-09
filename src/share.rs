@@ -17,6 +17,8 @@ pub struct Switch {
 #[serde(deny_unknown_fields)]
 pub struct Setup {
     #[serde(default)]
+    pub ranking: crate::ranking::Preferences,
+    #[serde(default)]
     pub combat: crate::defence::Settings,
     #[serde(default)]
     pub constraints: Option<Constraints>,
@@ -40,6 +42,7 @@ pub struct Constraints {
 impl Setup {
     pub fn from_plan(p: &Plan, o: &Options) -> Self {
         Self {
+            ranking: o.ranking.clone(),
             combat: o.combat.clone(),
             constraints: o.max_switches.map(|max_switches| Constraints {
                 max_switches,
@@ -88,7 +91,8 @@ impl Setup {
         }) {
             return Err(fail());
         }
-        if !self.combat.valid()
+        if !self.ranking.weights.valid()
+            || !self.combat.valid()
             || self.version != 1
             || self.raid_level > 150
             || self.targets.len() > crate::rules::MAX_TARGETS
@@ -255,6 +259,7 @@ impl Setup {
     }
     pub fn options(&self) -> Options {
         Options {
+            ranking: self.ranking.clone(),
             combat: self.combat.clone(),
             boss: self.boss,
             raid_level: self.raid_level,

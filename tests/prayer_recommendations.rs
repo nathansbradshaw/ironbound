@@ -44,6 +44,12 @@ fn prayer_weight_does_not_choose_a_strictly_worse_armour_tie() {
     let mut o = options();
     o.combat.protection = "Melee".into();
     o.combat.prayer_weight = 3;
+    o.ranking.weights = ironbound::ranking::Weights {
+        dps: 0.0,
+        defence: 0.0,
+        prayer: 100.0,
+        weight: 0.0,
+    };
     assert_eq!(
         planner::equipment_for_style(&bank, &o, "Slash")[4],
         Some(9674)

@@ -10,6 +10,7 @@ pub mod optimization;
 pub mod planner;
 pub mod prayer;
 pub mod raids;
+pub mod ranking;
 pub mod reference;
 pub mod rules;
 pub mod share;

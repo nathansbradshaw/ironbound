@@ -511,3 +511,32 @@ footer{font-size:11px;padding-top:10px}
 .switch-preferences-fields{display:grid;grid-template-columns:minmax(100px,1fr) minmax(0,2fr);gap:12px;padding-top:7px}
 .switch-preferences-fields label{font:12px Arial,Helvetica,sans-serif;color:#543a21;min-width:0}
 @media(max-width:760px){.flow-controls{grid-template-columns:minmax(0,1fr) minmax(0,1fr)}.flow-controls>details>summary{min-height:44px;font-size:13px}.flow-controls:has(details[open]){grid-template-columns:1fr}.switch-preferences-fields{grid-template-columns:1fr}.switch-preferences-fields label{font-size:13px}}
+
+/* Combined gear ranking: independent importance, with one compact result score. */
+.gear-picker .picker-controls{grid-template-columns:1fr}
+.ranking-controls{margin:10px 12px 4px;padding:8px 10px;border:1px solid #9b8457;flex-shrink:0}
+.ranking-controls legend{padding:0 5px;color:#ffcf60;font-size:14px;font-weight:bold}
+.ranking-weights{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px}
+.ranking-weights label{font-size:12px;min-width:0}
+.ranking-weights input{display:block;width:100%;min-height:40px;margin-top:4px;font-size:16px}
+.ranking-defence{display:flex;align-items:center;gap:12px;margin-top:8px;font-size:12px}
+.ranking-defence select{flex:1;min-width:0;min-height:36px}
+.ranking-controls p,.ranking-notice{font-size:12px;line-height:1.4;margin:7px 0 0;color:#e6d2a8}
+.ranking-notice{padding:7px 10px;border-left:3px solid #d5b265;background:#302a20;margin:6px 0}
+.gear-pick .ranking-score{color:#ffcf60;min-width:44px;text-align:right;font-size:17px}
+.gear-pick .ranking-score small{font-size:10px}
+@media(max-width:480px){.ranking-weights{grid-template-columns:repeat(2,minmax(0,1fr));gap:6px 12px}.ranking-controls{margin:6px 10px 2px}.ranking-defence{gap:6px}.gear-picker .picker-note{padding-top:4px;padding-bottom:4px}}
+.ranking-presets{display:flex;flex-wrap:wrap;gap:6px;margin:8px 0}
+.ranking-presets .phase{font-size:12px;min-height:34px;padding:5px 8px}
+.gear-priorities{margin:6px 0 12px;border:1px solid #a38a59;background:#342e2180}
+.gear-priorities>summary{padding:9px 12px;color:#ffe080;cursor:pointer;font-size:13px}
+.gear-priorities .ranking-controls{border:0;margin:0 4px 8px}
+.ranking-controls>button{min-height:36px}
+.picker-priorities{margin:8px 12px 3px;border:1px solid #9b8457;flex-shrink:0}
+.picker-priorities>summary{padding:9px 10px;color:#ffe080;font-size:13px;cursor:pointer}
+.picker-priorities>summary span{float:right;text-decoration:underline}
+.picker-priorities .ranking-controls{border:0;margin:0 2px 6px}
+.ranking-help{font-size:12px;margin:4px 0 9px;color:#d8c9a5}
+.ranking-help>summary{cursor:pointer}
+.ranking-help p{line-height:1.4;margin:6px 0}
+.picker-priorities[open]{max-height:52dvh;overflow:auto}

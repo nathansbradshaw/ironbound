@@ -76,6 +76,7 @@ fn spell(m: &Member, set: &Set, owned: &BTreeMap<i32, u32>) -> &'static str {
 fn value(
     m: &Member,
     set: &Set,
+    reference: &Set,
     style: &str,
     o: &Options,
     owned: &BTreeMap<i32, u32>,
@@ -103,9 +104,25 @@ fn value(
         if r.dps <= 0.0 {
             return None;
         }
+        let reference_dps = combat::calculate_configured(
+            m,
+            reference,
+            style,
+            target,
+            spell(m, reference, owned),
+            o.raid_level,
+            &o.combat,
+        )
+        .ok()
+        .map(|r| r.dps);
+        let utility = crate::ranking::relative_utility(
+            crate::ranking::equipment_metrics(set, Some(r.dps), o.ranking.defence),
+            crate::ranking::equipment_metrics(reference, reference_dps, o.ranking.defence),
+            &o.ranking.weights,
+        )?;
         total += o.phase_priorities.get(&id).copied().unwrap_or(1).min(10) as f64
             * target.skills.get("hp").copied().unwrap_or(100) as f64
-            / crate::defence::score(m, set, target, r.dps, &o.combat);
+            / (utility * reference_dps.unwrap_or(1.0).max(0.000001));
     }
     Some(total)
 }
@@ -130,7 +147,15 @@ fn candidates(
         .filter(|(_, (a, b))| a != b)
         .map(|(i, _)| i)
         .collect();
-    let supported = value(m, &ideal.equipment, &ideal.style, o, owned).is_some();
+    let supported = value(
+        m,
+        &ideal.equipment,
+        &ideal.equipment,
+        &ideal.style,
+        o,
+        owned,
+    )
+    .is_some();
     let mut buckets = BTreeMap::<usize, Vec<Candidate>>::new();
     for mask in 0usize..1usize << diff.len() {
         let mut set = base.clone();
@@ -156,7 +181,7 @@ fn candidates(
             continue;
         }
         let cost = if supported {
-            let Some(v) = value(m, &set, &ideal.style, o, owned) else {
+            let Some(v) = value(m, &set, &ideal.equipment, &ideal.style, o, owned) else {
                 continue;
             };
             v
@@ -196,7 +221,7 @@ fn evaluate(
         if i == anchor {
             choices.push(vec![Candidate {
                 set: base.clone(),
-                cost: value(m, base, &ideal.style, o, owned).unwrap_or(0.0),
+                cost: value(m, base, &ideal.equipment, &ideal.style, o, owned).unwrap_or(0.0),
             }]);
         } else {
             choices.push(candidates(m, base, ideal, o, owned, limit));
@@ -415,7 +440,7 @@ pub fn solve(
             note: format!(
                 "Best found in a bounded search over owned sets and hybrid anchor pieces. {} {}",
                 if o.focus_style == "Balanced" {
-                    "Balanced mode weighs damage, verified incoming damage, boss healing and your prayer-efficiency preference. It is a utility score, not a kill-time simulation."
+                    "Balanced mode uses your DPS, defence-bonus, prayer and equipment-mass priorities. Full loadouts are compared relative to each style’s ideal set; this is a utility score, not a kill-time simulation."
                 } else {
                     "The focused style’s starting set is held fixed; other styles absorb the trade-off."
                 },

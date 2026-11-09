@@ -72,6 +72,21 @@ fn pack_icons() -> Result<(), Box<dyn std::error::Error>> {
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let args: Vec<_> = std::env::args().collect();
     match args.get(1).map(String::as_str) {
+        Some("catalog-bosses") => {
+            let source = fs::read_to_string(
+                args.get(2)
+                    .ok_or("Provide public RuneLite HiscoreSkill.java")?,
+            )?;
+            let names: Vec<_> = source
+                .lines()
+                .filter(|l| l.contains(", BOSS,"))
+                .filter_map(|l| l.split('"').nth(1))
+                .collect();
+            if names.len() < 50 {
+                return Err("Incomplete public boss catalog".into());
+            }
+            fs::write("assets/bosses.json", serde_json::to_vec_pretty(&names)?)?;
+        }
         Some("pack-icons") => pack_icons()?,
         Some("assets-all") => {
             // Always fetch the public catalog, never an account-derived item list.
@@ -141,10 +156,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             let raw = fs::read_to_string(args.get(2).ok_or("Provide the public monster catalog")?)?;
             let data: Vec<serde_json::Value> = serde_json::from_str(&raw)?;
             let mut result = std::collections::BTreeMap::new();
+            let mut ranks = std::collections::BTreeMap::new();
             for m in data {
                 if let (Some(id), Some(name)) = (m["id"].as_i64(), m["name"].as_str()) {
                     let version = m["version"].as_str().unwrap_or("");
-                    result.entry(id).or_insert(ironbound::planner::Monster {
+                    let entry = ironbound::planner::Monster {
                         id: id as i32,
                         name: if version.is_empty() {
                             name.into()
@@ -155,7 +171,34 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                         defensive: serde_json::from_value(m["defensive"].clone())?,
                         weakness: serde_json::from_value(m["weakness"].clone())?,
                         attributes: serde_json::from_value(m["attributes"].clone())?,
-                    });
+                        offensive: serde_json::from_value(m["offensive"].clone())?,
+                        speed: m["speed"].as_i64().unwrap_or(0) as i32,
+                        attack_styles: serde_json::from_value(m["style"].clone())
+                            .unwrap_or_default(),
+                        max_hit: m["max_hit"].as_str().unwrap_or("").into(),
+                    };
+                    // A shared NPC ID can have different calculator variants. Prefer its
+                    // regular attack window over clone/parry or other special variants.
+                    let rank = if version == "Regular" {
+                        100
+                    } else if version.starts_with("Post-quest") {
+                        90
+                    } else if version.starts_with("Normal") {
+                        80
+                    } else if version.is_empty() {
+                        60
+                    } else if version.contains("Awakened")
+                        || version.contains("Quest")
+                        || version.contains("Clone")
+                    {
+                        0
+                    } else {
+                        20
+                    };
+                    if ranks.get(&id).is_none_or(|r| rank > *r) {
+                        ranks.insert(id, rank);
+                        result.insert(id, entry);
+                    }
                 }
             }
             fs::write(

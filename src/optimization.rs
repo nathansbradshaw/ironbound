@@ -17,6 +17,10 @@ pub struct Comparison {
     pub style: String,
     pub before: Option<f64>,
     pub after: Option<f64>,
+    pub incoming_before: Option<f64>,
+    pub incoming_after: Option<f64>,
+    pub prayer_before: f64,
+    pub prayer_after: f64,
 }
 #[derive(Clone, Debug)]
 pub struct Report {
@@ -67,15 +71,7 @@ fn targets(o: &Options) -> Vec<(i32, &str)> {
     }
 }
 fn spell(m: &Member, set: &Set, owned: &BTreeMap<i32, u32>) -> &'static str {
-    if matches!(set[3], Some(1381 | 1405)) {
-        if m.level("Magic").unwrap_or(0) >= 62 && owned.get(&565).copied().unwrap_or(0) >= 150 {
-            "Wind Wave"
-        } else {
-            "Wind Blast"
-        }
-    } else {
-        ""
-    }
+    crate::rules::spell_name(m, set, owned)
 }
 fn value(
     m: &Member,
@@ -94,13 +90,14 @@ fn value(
     let mut total = 0.0;
     for (id, _) in relevant {
         let target = planner::monster(id)?;
-        let r = combat::calculate_at_invocation(
+        let r = combat::calculate_configured(
             m,
             set,
             style,
             target,
             spell(m, set, owned),
             o.raid_level,
+            &o.combat,
         )
         .ok()?;
         if r.dps <= 0.0 {
@@ -108,7 +105,7 @@ fn value(
         }
         total += o.phase_priorities.get(&id).copied().unwrap_or(1).min(10) as f64
             * target.skills.get("hp").copied().unwrap_or(100) as f64
-            / r.dps;
+            / crate::defence::score(m, set, target, r.dps, &o.combat);
     }
     Some(total)
 }
@@ -212,9 +209,14 @@ fn evaluate(
         limit: usize,
         bag: usize,
         best: Option<(Vec<StyleSet>, f64)>,
+        visited: usize,
     }
     impl Walk<'_> {
         fn step(&mut self, index: usize, sets: &mut Vec<StyleSet>, cost: f64) {
+            self.visited += 1;
+            if self.visited > 50_000 {
+                return;
+            }
             if index == self.choices.len() {
                 let slots = carried(sets, planner::primary_style(self.o));
                 if slots <= self.bag
@@ -251,6 +253,7 @@ fn evaluate(
         limit,
         bag,
         best: None,
+        visited: 0,
     };
     walk.step(0, &mut vec![], 0.0);
     walk.best
@@ -343,26 +346,46 @@ pub fn solve(
             let target = planner::monster(id)?;
             let before = &ideals.iter().find(|s| s.style == style)?.equipment;
             let after = &best.0.iter().find(|s| s.style == style)?.equipment;
+            let incoming = |set: &Set| {
+                crate::defence::attacks(target)
+                    .first()
+                    .and_then(|attack| {
+                        crate::defence::estimate(m, set, target, attack, &o.combat).ok()
+                    })
+                    .map(|r| r.damage_per_second)
+            };
             Some(Comparison {
                 name: target.name.clone(),
                 style: style.into(),
-                before: combat::calculate_at_invocation(
+                incoming_before: incoming(before),
+                incoming_after: incoming(after),
+                prayer_before: crate::prayer::drain_per_minute(
+                    crate::prayer::bonus(before),
+                    &o.combat,
+                ),
+                prayer_after: crate::prayer::drain_per_minute(
+                    crate::prayer::bonus(after),
+                    &o.combat,
+                ),
+                before: combat::calculate_configured(
                     m,
                     before,
                     style,
                     target,
                     spell(m, before, owned),
                     o.raid_level,
+                    &o.combat,
                 )
                 .ok()
                 .map(|r| r.dps),
-                after: combat::calculate_at_invocation(
+                after: combat::calculate_configured(
                     m,
                     after,
                     style,
                     target,
                     spell(m, after, owned),
                     o.raid_level,
+                    &o.combat,
                 )
                 .ok()
                 .map(|r| r.dps),
@@ -392,7 +415,7 @@ pub fn solve(
             note: format!(
                 "Best found in a bounded search over owned sets and hybrid anchor pieces. {} {}",
                 if o.focus_style == "Balanced" {
-                    "Balanced mode minimizes combined HP/DPS across supported attack windows."
+                    "Balanced mode weighs damage, verified incoming damage, boss healing and your prayer-efficiency preference. It is a utility score, not a kill-time simulation."
                 } else {
                     "The focused style’s starting set is held fixed; other styles absorb the trade-off."
                 },

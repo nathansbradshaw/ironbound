@@ -35,6 +35,7 @@ struct State {
     edit_equipment: Option<usize>,
     gear_search: String,
     gear_sort: String,
+    incoming_attack: Option<String>,
 }
 impl State {
     fn initial() -> Self {
@@ -100,6 +101,7 @@ impl State {
             edit_equipment: None,
             gear_search: String::new(),
             gear_sort: "dps".into(),
+            incoming_attack: None,
             saved,
             tab: "bossing".into(),
             phase: None,
@@ -289,6 +291,12 @@ pub fn start() -> Result<(), JsValue> {
             "switch-slots",
             "focus-style",
             "compare-target",
+            "incoming-attack",
+            "protection",
+            "offensive-prayer",
+            "preserve",
+            "safety",
+            "prayer-weight",
             "member",
             "shared",
             "fewer",
@@ -311,10 +319,16 @@ pub fn start() -> Result<(), JsValue> {
         STATE.with(|state|{let mut s=state.borrow_mut();if s.shared_setup.is_some() && !id.starts_with("skill-"){s.notice("Choose Rebuild using my items before editing this shared setup.",true);return;}match id.as_str(){
             _ if id.starts_with("priority-")=>{if let(Ok(target),Ok(weight))=(id[9..].parse::<i32>(),input(&id).parse::<u32>()){if encounter_targets(&s).contains(&target){s.saved.options.phase_priorities.insert(target,weight.min(10));}}},
             "gear-sort"=>{if let Ok(sel)=el.dyn_into::<HtmlSelectElement>(){s.gear_sort=sel.value();}},
+            "incoming-attack"=>{if let Ok(sel)=el.dyn_into::<HtmlSelectElement>(){s.incoming_attack=Some(sel.value());}},
+            "protection"=>{if let Ok(sel)=el.dyn_into::<HtmlSelectElement>(){let value=sel.value();if ["None","Melee","Ranged","Magic"].contains(&value.as_str()){s.saved.options.combat.protection=value;}}},
+            "offensive-prayer"=>{if let Ok(sel)=el.dyn_into::<HtmlSelectElement>(){let value=sel.value();if crate::prayer::prayers().iter().any(|p|p.name==value){s.saved.options.combat.offensive=value;}}},
+            "preserve"=>s.saved.options.combat.preserve=el.dyn_ref::<HtmlInputElement>().is_some_and(|e|e.checked()),
+            "safety"=>{if let Ok(sel)=el.dyn_into::<HtmlSelectElement>(){s.saved.options.combat.safety=sel.value().parse::<u32>().unwrap_or(1).min(3);}},
+            "prayer-weight"=>{if let Ok(sel)=el.dyn_into::<HtmlSelectElement>(){s.saved.options.combat.prayer_weight=sel.value().parse::<u32>().unwrap_or(0).min(3);}},
             "max-switches"=>{if let Ok(sel)=el.dyn_into::<HtmlSelectElement>(){s.saved.options.max_switches=sel.value().parse::<usize>().ok().map(|n|n.min(11));s.saved.options.fewer_switches=false;s.saved.options.inventory_overrides.clear();s.saved.options.inventory_quantities.clear();}},
             "switch-slots"=>{s.saved.options.switch_slots=input("switch-slots").parse::<usize>().unwrap_or(12).min(20);},
-            "focus-style"=>{if let Ok(sel)=el.dyn_into::<HtmlSelectElement>(){let value=sel.value();if ["Balanced","Melee","Ranged","Magic"].contains(&value.as_str()){s.saved.options.focus_style=value;}}},
-            "compare-target"=>{if let Ok(sel)=el.dyn_into::<HtmlSelectElement>(){s.compare_target=sel.value().parse().ok();}},
+            "focus-style"=>{if let Ok(sel)=el.dyn_into::<HtmlSelectElement>(){let value=sel.value();if value=="Balanced"||crate::rules::STYLES.contains(&value.as_str()){s.saved.options.focus_style=value;}}},
+            "compare-target"=>{if let Ok(sel)=el.dyn_into::<HtmlSelectElement>(){s.compare_target=sel.value().parse().ok();s.incoming_attack=None;if s.saved.options.boss==Boss::Custom {if let Some(target)=s.saved.options.targets.iter().find(|t|Some(t.id)==s.compare_target){s.edit_style=Some(target.style.clone());}}}},
             _ if id.starts_with("quest-")=>{if let (Ok(i),Ok(sel))=(id[6..].parse::<usize>(),el.dyn_into::<HtmlSelectElement>()){if let Some(quest)=planner::GEAR_QUESTS.get(i){let selected=s.saved.snapshot.selected.clone();if let Some(m)=s.saved.snapshot.members.iter_mut().find(|m|m.name==selected){match sel.value().as_str(){"yes"=>{m.quest_overrides.insert((*quest).into(),2);},"no"=>{m.quest_overrides.insert((*quest).into(),1);},_=>{m.quest_overrides.remove(*quest);}}}}}},
             "member"=>{if let Ok(select)=el.dyn_into::<HtmlSelectElement>(){s.saved.snapshot.selected=select.value();s.saved.options.access_override=None;s.saved.options.started_barrows=None;s.phase=None;}},
             "shared"=>s.saved.options.shared=el.dyn_ref::<HtmlInputElement>().is_some_and(|e|e.checked()),
@@ -554,6 +568,34 @@ fn act(action: &str) {
             s.phase = None;
             s.edit_style = None;
             s.compare_target = None;
+        } else if action == "load-encounter" {
+            let name = input("encounter-search");
+            if let Some(entry) = crate::encounters::catalog()
+                .iter()
+                .find(|e| e.name.eq_ignore_ascii_case(name.trim()))
+            {
+                if entry.targets.is_empty() {
+                    s.notice(&entry.note, true);
+                } else {
+                    s.saved.options.boss = match entry.name.as_str() {
+                        "Barrows Chests" => Boss::Barrows,
+                        "Tombs of Amascut" => Boss::Toa,
+                        _ => Boss::Custom,
+                    };
+                    s.saved.options.targets = entry.targets.clone();
+                    s.saved.options.gear_overrides.clear();
+                    s.saved.options.inventory_overrides.clear();
+                    s.saved.options.inventory_quantities.clear();
+                    s.shared_setup = None;
+                    s.phase = None;
+                    s.edit_style = None;
+                    s.compare_target = None;
+                    s.edit_equipment = None;
+                    s.notice(&entry.note, false);
+                }
+            } else {
+                s.notice("Choose a listed boss, raid or encounter.", true);
+            }
         } else if let Some(id) = action
             .strip_prefix("goal-item:")
             .and_then(|v| v.parse::<i32>().ok())
@@ -647,7 +689,7 @@ fn act(action: &str) {
         } else if let Some(i) = action.strip_prefix("edit-inventory:") {
             s.edit_inventory = i.parse().ok();
         } else if let Some(style) = action.strip_prefix("edit-style:") {
-            if ["Melee", "Ranged", "Magic"].contains(&style) {
+            if crate::rules::STYLES.contains(&style) {
                 s.edit_style = Some(style.into());
             }
         } else if let Some(i) = action.strip_prefix("phase:") {
@@ -699,13 +741,13 @@ fn act(action: &str) {
                 .unwrap_or_default();
             if let Some(id) = id {
                 let t = planner::Target { id, style };
-                if t.valid() && s.saved.options.targets.len() < 12 {
+                if t.valid() && s.saved.options.targets.len() < crate::rules::MAX_TARGETS {
                     s.saved.options.targets.push(t);
                     s.shared_setup = None;
                     s.phase = None;
                 } else {
                     s.notice(
-                        "Choose a valid monster; at most 12 targets per group.",
+                        "Choose a valid monster; at most 64 attack windows per group.",
                         true,
                     );
                 }
@@ -897,6 +939,7 @@ fn render() {
         html.push_str("<div class=\"section-line\"><h2>Choose your encounter</h2><span>Presets or your own group</span></div><div class=\"encounter-grid\">");
         for (boss,icon,kicker,description) in [(Boss::Barrows,4708,"BOSS ENCOUNTER","Equipment and supplies for the six brothers."),(Boss::Toa,25979,"RAID · STARTER PLAN","Starter equipment for raid levels 0–150.")]{let mut opt=options.clone();opt.boss=boss;if boss!=options.boss{opt.access_override=None;opt.started_barrows=None;}let p=planner::plan(snapshot,&opt);html.push_str(&format!("<button class=\"encounter {}\" data-action=\"boss:{}\"><div class=\"encounter-icon\">{}</div><div><small>{kicker}</small><h3>{}</h3><p>{description}</p>{}</div><span class=\"select-dot\"></span></button>",if boss==options.boss{"selected"}else{""},boss.key(),image(icon),boss.name(),badge(p.status(),if p.status()=="Meets starter guidelines"{"green"}else{"amber"})));}
         html.push_str("</div>");
+        html.push_str(&encounter_catalog());
         html.push_str(&button("boss:custom","Build a custom encounter group","button ghost"));
         if options.boss==Boss::Custom {html.push_str(&custom_group(&s));}
         if s.shared_setup.is_some(){html.push_str(&format!("<p class=\"notice\">Viewing a shared setup. Your saved bank is unchanged. {}</p>",button("use-bank","Rebuild using my items","text-button")));}
@@ -926,7 +969,7 @@ fn encounter_detail(s: &State, p: &Plan) -> String {
     };
     let mut html = format!(
         "<section class=\"encounter-detail\"><div class=\"encounter-detail-top\"><div><div class=\"eyebrow\">YOUR ENCOUNTER PLAN</div><h2>{}</h2><p>{}</p></div><div class=\"brothers\">{helmets}</div></div><div class=\"detail-facts\"><span>✦ {} gear items matched</span><span>◈ {} carried switches</span><a href=\"{}\" target=\"_blank\" rel=\"noreferrer\">Strategy guide ↗</a></div>",
-        boss.name(),
+        encounter_label(&s.saved.options),
         if boss == Boss::Barrows {
             "A magic-first setup, with a ranged switch for Ahrim."
         } else if boss == Boss::Custom {
@@ -1264,6 +1307,36 @@ fn account_page(s: &State) -> String {
     ));
     html
 }
+fn selected_encounter(options: &Options) -> Option<&'static crate::encounters::Entry> {
+    if options.boss != Boss::Custom {
+        return None;
+    }
+    crate::encounters::catalog()
+        .iter()
+        .filter(|e| !e.targets.is_empty() && e.targets == options.targets)
+        .min_by_key(|e| !crate::encounters::groups().iter().any(|g| g.name == e.name))
+}
+fn encounter_label(options: &Options) -> &str {
+    selected_encounter(options)
+        .map(|e| e.name.as_str())
+        .unwrap_or(options.boss.name())
+}
+fn encounter_catalog() -> String {
+    let mut html = String::from(
+        r#"<section class="panel account-form"><h3>Boss, raid or encounter</h3><p>Browse the full boss catalog, or build a group from the monster database. Coverage notes identify packing templates and missing mechanics.</p><label>Encounter<input id="encounter-search" list="encounters" placeholder="Search bosses and raids…"></label><datalist id="encounters">"#,
+    );
+    for e in crate::encounters::catalog() {
+        html.push_str(&format!(
+            r#"<option value="{}">{}</option>"#,
+            esc(&e.name),
+            e.coverage()
+        ));
+    }
+    html.push_str("</datalist>");
+    html.push_str(&button("load-encounter", "Load encounter", "button ghost"));
+    html.push_str("</section>");
+    html
+}
 fn custom_group(s: &State) -> String {
     let mut html = String::from(
         r#"<section class="panel account-form"><h2>Your encounter group</h2><p>Choose attack styles yourself. The planner packs one shared set of switches; special mechanics, movement and supplies are outside its combat model.</p><label>Boss or monster<input id="monster" list="monsters" placeholder="Search monsters…"></label><datalist id="monsters">"#,
@@ -1275,7 +1348,14 @@ fn custom_group(s: &State) -> String {
             m.id
         ));
     }
-    html.push_str(r#"</datalist><label>Attack style<select id="target-style"><option>Melee</option><option>Ranged</option><option>Magic</option></select></label>"#);
+    html.push_str(r#"</datalist><label>Attack style<select id="target-style"><option>Melee</option><option>Stab</option><option>Slash</option><option>Crush</option><option>Ranged</option><option>Magic</option></select></label>"#);
+    if let Some(entry) = selected_encounter(&s.saved.options) {
+        html.push_str(&format!(
+            "<p class=\"notice\"><strong>{}</strong>: {}</p>",
+            esc(&entry.name),
+            esc(&entry.note)
+        ));
+    }
     html.push_str(&button("add-target", "Add to group", "button ghost"));
     for (i, t) in s.saved.options.targets.iter().enumerate() {
         html.push_str(&format!(
@@ -1348,6 +1428,155 @@ fn comparison_monster(s: &State) -> Option<&'static planner::Monster> {
         .or_else(|| targets.first().copied())?;
     planner::monsters().iter().find(|m| m.id == id)
 }
+fn incoming_choice(s: &State, target: &planner::Monster) -> Option<String> {
+    let choices = crate::defence::attacks(target);
+    s.incoming_attack
+        .as_ref()
+        .filter(|a| choices.contains(a))
+        .cloned()
+        .or_else(|| choices.first().cloned())
+}
+fn sustain_panel(
+    s: &State,
+    p: &Plan,
+    set: &[Option<i32>],
+    member: &account::Member,
+    target: &planner::Monster,
+) -> String {
+    let settings = &s.saved.options.combat;
+    let mut html = String::from(
+        "<section class=\"sustain-panel\"><h3>Damage taken & prayer</h3><div class=\"sustain-controls\">",
+    );
+    html.push_str("<label>Protection prayer<select id=\"protection\">");
+    for value in ["None", "Melee", "Ranged", "Magic"] {
+        html.push_str(&format!(
+            "<option {}>{value}</option>",
+            if value == settings.protection {
+                "selected"
+            } else {
+                ""
+            }
+        ));
+    }
+    html.push_str("</select></label><label>Stat prayer<select id=\"offensive-prayer\">");
+    for prayer in crate::prayer::prayers() {
+        html.push_str(&format!(
+            "<option {} {}>{}</option>",
+            if prayer.name == settings.offensive {
+                "selected"
+            } else {
+                ""
+            },
+            if crate::prayer::eligible(member, prayer) {
+                ""
+            } else {
+                "disabled"
+            },
+            esc(&prayer.name)
+        ));
+    }
+    html.push_str(&format!(
+        "</select></label><label><input id=\"preserve\" type=\"checkbox\" {}> Preserve</label>",
+        if settings.preserve { "checked" } else { "" }
+    ));
+    let choices = crate::defence::attacks(target);
+    if !choices.is_empty() {
+        html.push_str("<label>Incoming attack scenario<select id=\"incoming-attack\">");
+        for choice in &choices {
+            html.push_str(&format!(
+                "<option {}>{}</option>",
+                if incoming_choice(s, target).as_deref() == Some(choice) {
+                    "selected"
+                } else {
+                    ""
+                },
+                esc(choice)
+            ));
+        }
+        html.push_str("</select></label>");
+    }
+    html.push_str("</div>");
+    match incoming_choice(s, target)
+        .ok_or("Incoming attack data unavailable.".to_string())
+        .and_then(|attack| crate::defence::estimate(member, set, target, &attack, settings))
+    {
+        Ok(r) => {
+            let healing = if r.healing_modelled {
+                format!("{:.3}", r.healing_per_second)
+            } else {
+                "Unmodelled".into()
+            };
+            html.push_str(&format!("<dl class=\"combat-values\"><div><dt>Incoming DPS · scenario</dt><dd>{:.3}</dd></div><div><dt>Enemy hit chance</dt><dd>{:.1}%</dd></div><div><dt>Boss healing / second</dt><dd>{}</dd></div></dl><p class=\"small-note\">{}</p>",r.damage_per_second,r.hit_chance*100.0,healing,esc(&r.note)));
+            if r.healing_modelled && r.healing_per_second > 0.0 {
+                if let Ok(outgoing) = combat::calculate_configured(
+                    member,
+                    set,
+                    comparison_style(s),
+                    target,
+                    &p.spell,
+                    s.saved.options.raid_level,
+                    settings,
+                ) {
+                    if outgoing.dps <= r.healing_per_second {
+                        html.push_str("<p class=\"combat-unavailable\">Boss healing meets or exceeds outgoing DPS in this normal-attack scenario. Try more defence, more damage, or improve the mechanics.</p>");
+                    }
+                }
+            }
+        }
+        Err(reason) => html.push_str(&format!(
+            "<p class=\"small-note\">Incoming DPS unavailable: {}</p>",
+            esc(&reason)
+        )),
+    }
+    let bonus = crate::prayer::bonus(set);
+    let drain = crate::prayer::drain_per_minute(bonus, settings);
+    let duration = crate::prayer::minutes(member, set, &p.inventory, settings)
+        .map(|v| format!("{v:.1} minutes"))
+        .unwrap_or_else(|| {
+            if drain == 0.0 {
+                "No active prayer drain".into()
+            } else {
+                "Level unavailable".into()
+            }
+        });
+    html.push_str(&format!("<table class=\"bonus-table\"><tbody><tr><th>Prayer bonus</th><td>{bonus:+}</td></tr><tr><th>Continuous drain</th><td>{drain:.2} points / minute</td></tr><tr><th>Carried prayer supply</th><td>{}</td></tr></tbody></table><p class=\"small-note\">Supply estimate assumes full starting prayer and this equipment throughout. No flicking, regeneration, wrench bonuses or encounter-specific prayer drains. Incoming DPS covers the selected attack scenario; unmodelled chip damage and specials are not zero.</p>",esc(&duration)));
+    html.push_str("<details><summary>Weigh damage, defence & longer trips</summary><label>Defence weighting<select id=\"safety\">");
+    for (value, label) in [
+        (0, "Damage first"),
+        (1, "Balanced"),
+        (2, "Safer"),
+        (3, "Prioritize safety"),
+    ] {
+        html.push_str(&format!(
+            "<option value=\"{value}\" {}>{label}</option>",
+            if settings.safety == value {
+                "selected"
+            } else {
+                ""
+            }
+        ));
+    }
+    html.push_str(
+        "</select></label><label>Prayer efficiency weighting<select id=\"prayer-weight\">",
+    );
+    for (value, label) in [
+        (0, "No preference"),
+        (1, "Some preference"),
+        (2, "Stronger preference"),
+        (3, "Long trips"),
+    ] {
+        html.push_str(&format!(
+            "<option value=\"{value}\" {}>{label}</option>",
+            if settings.prayer_weight == value {
+                "selected"
+            } else {
+                ""
+            }
+        ));
+    }
+    html.push_str("</select></label><p class=\"small-note\">Weights guide a bounded search, not a guaranteed trip length. Defence affects automatic ranking only for verified encounter profiles. Blood Moon healing reduces net progress even at zero defence weight. Compare gear using Encounter balance, DPS, defence or prayer bonus in the slot picker.</p></details></section>");
+    html
+}
 fn combat_panel(s: &State, p: &Plan) -> String {
     if s.shared_setup.is_some() {
         return String::new();
@@ -1358,11 +1587,15 @@ fn combat_panel(s: &State, p: &Plan) -> String {
     let mut html = String::from(
         r#"<section class="panel combat-panel"><div class="panel-heading"><h2>Combat stats</h2></div><div class="combat-body">"#,
     );
-    for style in ["Melee", "Ranged", "Magic"] {
+    for style in crate::rules::STYLES {
         html.push_str(&button(&format!("edit-style:{style}"), style, "phase"));
     }
     html.push_str(r#"<label>Against<select id="compare-target">"#);
-    for id in encounter_targets(s) {
+    let mut priority_ids = std::collections::BTreeSet::new();
+    for id in encounter_targets(s)
+        .into_iter()
+        .filter(|id| priority_ids.insert(*id))
+    {
         if let Some(m) = planner::monsters().iter().find(|m| m.id == id) {
             html.push_str(&format!(
                 r#"<option value="{id}" {}>{}</option>"#,
@@ -1377,7 +1610,8 @@ fn combat_panel(s: &State, p: &Plan) -> String {
     }
     html.push_str("</select></label>");
     if let (Some(m), Some(target)) = (s.saved.snapshot.selected(), comparison_monster(s)) {
-        match combat::calculate_at_invocation(m,&set,style,target,&p.spell,s.saved.options.raid_level){Ok(r)=>html.push_str(&format!(r#"<dl class="combat-values"><div><dt>DPS</dt><dd>{:.3}</dd></div><div><dt>Hit chance</dt><dd>{:.1}%</dd></div><div><dt>Max hit</dt><dd>{}</dd></div><div><dt>Attack speed</dt><dd>{} ticks</dd></div></dl><p>{} attacks · {:.1} seconds per attack</p>"#,r.dps,r.accuracy*100.0,r.max_hit,r.attack_ticks,esc(&r.attack_type),r.attack_ticks as f64*0.6)),Err(e)=>html.push_str(&format!("<p class=\"combat-unavailable\">DPS unavailable: {}</p>",esc(&e)))}
+        match combat::calculate_configured(m,&set,style,target,&p.spell,s.saved.options.raid_level,&s.saved.options.combat){Ok(r)=>html.push_str(&format!(r#"<dl class="combat-values"><div><dt>Outgoing DPS</dt><dd>{:.3}</dd></div><div><dt>Hit chance</dt><dd>{:.1}%</dd></div><div><dt>Max hit</dt><dd>{}</dd></div><div><dt>Attack speed</dt><dd>{} ticks</dd></div></dl><p>{} attacks · {:.1} seconds per attack</p>"#,r.dps,r.accuracy*100.0,r.max_hit,r.attack_ticks,esc(&r.attack_type),r.attack_ticks as f64*0.6)),Err(e)=>html.push_str(&format!("<p class=\"combat-unavailable\">DPS unavailable: {}</p>",esc(&e)))}
+        html.push_str(&sustain_panel(s, p, &set, m, target));
     }
     html.push_str(
         "<details><summary>Base equipment bonuses</summary><table class=\"bonus-table\"><tbody>",
@@ -1406,7 +1640,7 @@ fn combat_panel(s: &State, p: &Plan) -> String {
         "<tr><th>Magic damage</th><td>{:.1}%</td></tr>",
         bonus.other.get("magic_str").copied().unwrap_or(0) as f64 / 10.0
     ));
-    html.push_str("</tbody></table></details><details><summary>DPS assumptions</summary><p class=\"small-note\">Unboosted, no offensive prayers, no specials or recoil. ToA assumes solo, path level 0, and the selected raid level. Bolt effects use full target HP without the Kandarin diary bonus. DPS is for uninterrupted attacks while the target is vulnerable. Melee uses accurate; ranged uses rapid; powered staves use accurate and standard spells use autocast. Standard attacks only: no movement, eating, kill-time prediction or incoming damage. Unsupported effects show no DPS.</p></details></div></section>");
+    html.push_str("</tbody></table></details><details><summary>DPS assumptions</summary><p class=\"small-note\">Unboosted levels with the selected stat prayer; no specials or recoil. ToA assumes solo, path level 0, raid levels 0–150. Bolt effects use full target HP without Kandarin diary bonuses. Outgoing DPS covers uninterrupted attacks while vulnerable. Incoming scenarios are separate and their coverage notes apply. Movement, special-phase uptime, curses and eating are not a full encounter simulation. Unsupported mechanics show no DPS.</p></details></div></section>");
     html
 }
 fn tier_table(s: &State) -> String {
@@ -1437,13 +1671,14 @@ fn tier_table(s: &State) -> String {
                 let dps = if g.usable && !g.excluded {
                     target
                         .and_then(|m| {
-                            combat::calculate_at_invocation(
+                            combat::calculate_configured(
                                 member,
                                 &trial,
                                 style,
                                 m,
                                 &spell,
                                 s.saved.options.raid_level,
+                                &s.saved.options.combat,
                             )
                             .ok()
                         })
@@ -1518,6 +1753,9 @@ fn switch_panel(s: &State, p: &Plan) -> String {
         ("Magic", "Keep my full magic set"),
         ("Ranged", "Keep my full ranged set"),
         ("Melee", "Keep my full melee set"),
+        ("Stab", "Keep my full stab set"),
+        ("Slash", "Keep my full slash set"),
+        ("Crush", "Keep my full crush set"),
     ] {
         html.push_str(&format!(
             r#"<option value="{value}" {}>{label}</option>"#,
@@ -1529,25 +1767,37 @@ fn switch_panel(s: &State, p: &Plan) -> String {
         ));
     }
     html.push_str("</select></label><p>Checks every pair of style sets, including shield displacement. Supplies, tools and optional spec weapons still need their own inventory space.</p><details><summary>Prioritize individual phases</summary><p>1 is normal; higher values favour that target. 0 gives it the lowest damage priority while retaining its required attack style.</p>");
-    for id in encounter_targets(s) {
+    let mut priority_ids = std::collections::BTreeSet::new();
+    for id in encounter_targets(s)
+        .into_iter()
+        .filter(|id| priority_ids.insert(*id))
+    {
         if let Some(target) = planner::monster(id) {
             html.push_str(&format!(r#"<label>{}<input id="priority-{id}" type="number" min="0" max="10" value="{}"></label>"#,esc(&target.name),s.saved.options.phase_priorities.get(&id).copied().unwrap_or(1)));
         }
     }
     html.push_str("</details>");
     if let Some(report) = &p.optimization {
-        html.push_str(&format!("<p><strong>At most {} changed slots · {} carried style-switch items</strong></p><table class=\"bonus-table\"><thead><tr><th>Attack window</th><th>Unrestricted DPS</th><th>Budget DPS</th></tr></thead><tbody>",report.max_changes,report.gear_slots));
+        html.push_str(&format!("<p><strong>At most {} changed slots · {} carried style-switch items</strong></p><div class=\"comparison-scroll\"><table class=\"bonus-table\"><thead><tr><th>Attack window</th><th>Outgoing DPS<br>before → after</th><th>Incoming scenario DPS<br>before → after</th><th>Prayer / min<br>before → after</th></tr></thead><tbody>",report.max_changes,report.gear_slots));
         for row in &report.comparisons {
             html.push_str(&format!(
-                "<tr><th>{} ({})</th><td>{}</td><td>{}</td></tr>",
+                "<tr><th>{} ({})</th><td>{} → {}</td><td>{} → {}</td><td>{:.1} → {:.1}</td></tr>",
                 esc(&row.name),
                 esc(&row.style),
                 row.before.map(|d| format!("{d:.3}")).unwrap_or("—".into()),
-                row.after.map(|d| format!("{d:.3}")).unwrap_or("—".into())
+                row.after.map(|d| format!("{d:.3}")).unwrap_or("—".into()),
+                row.incoming_before
+                    .map(|d| format!("{d:.3}"))
+                    .unwrap_or("—".into()),
+                row.incoming_after
+                    .map(|d| format!("{d:.3}"))
+                    .unwrap_or("—".into()),
+                row.prayer_before,
+                row.prayer_after,
             ));
         }
         html.push_str(&format!(
-            "</tbody></table><details><summary>Search coverage</summary><p>{}</p></details>",
+            "</tbody></table></div><p class=\"small-note\">Incoming values use the first recorded attack scenario, not a weighted mix of all attacks. — means unverified or unavailable, not zero.</p><details><summary>Search coverage</summary><p>{}</p></details>",
             esc(&report.note)
         ));
     } else if s.saved.options.max_switches.is_some() {
@@ -1562,27 +1812,27 @@ fn gear_picker(s: &State) -> String {
         return String::new();
     };
     let style = comparison_style(s);
+    let sort_options = [
+        ("dps", "DPS"),
+        ("overall", "Encounter balance"),
+        ("defence", "Defence: total bonuses"),
+        ("magic-def", "Defence: magic"),
+        ("ranged-def", "Defence: ranged"),
+        ("prayer", "Prayer bonus"),
+    ]
+    .into_iter()
+    .map(|(key, label)| {
+        format!(
+            "<option value=\"{key}\" {}>{label}</option>",
+            if s.gear_sort == key { "selected" } else { "" }
+        )
+    })
+    .collect::<String>();
     format!(
-        r#"<div class="picker-backdrop"><section class="gear-picker" role="dialog" aria-modal="true" aria-labelledby="gear-picker-title"><div class="panel-heading"><h2 id="gear-picker-title">{} · owned equipment</h2>{}</div><div class="picker-controls"><label>Search your items<input id="gear-search" type="search" value="{}" placeholder="Search owned items…" autocomplete="off"></label><label>Order by<select id="gear-sort"><option value="dps" {}>DPS</option><option value="defence" {}>Defence: total bonuses</option><option value="magic-def" {}>Defence: magic</option><option value="ranged-def" {}>Defence: ranged</option></select></label></div><p class="picker-note">{style} against {}. DPS holds your other equipment fixed; defence is equipment bonuses, not damage taken.</p><div class="picker-actions">{} {}</div><div class="picker-scroll"><div class="bis-scale">{}</div><h3 class="owned-heading">Your owned items</h3><div id="gear-pick-results" class="gear-pick-results">{}</div></div></section></div>"#,
+        r#"<div class="picker-backdrop"><section class="gear-picker" role="dialog" aria-modal="true" aria-labelledby="gear-picker-title"><div class="panel-heading"><h2 id="gear-picker-title">{} · owned equipment</h2>{}</div><div class="picker-controls"><label>Search your items<input id="gear-search" type="search" value="{}" placeholder="Search owned items…" autocomplete="off"></label><label>Order by<select id="gear-sort">{sort_options}</select></label></div><p class="picker-note">{style} against {}. Comparisons hold your other equipment fixed. Encounter balance uses your defence and prayer weights; incoming values cover the selected attack scenario.</p><div class="picker-actions">{} {}</div><div class="picker-scroll"><div class="bis-scale">{}</div><h3 class="owned-heading">Your owned items</h3><div id="gear-pick-results" class="gear-pick-results">{}</div></div></section></div>"#,
         planner::SLOTS[slot],
         button("close-picker", "Close ×", "phase"),
         esc(&s.gear_search),
-        if s.gear_sort == "dps" { "selected" } else { "" },
-        if s.gear_sort == "defence" {
-            "selected"
-        } else {
-            ""
-        },
-        if s.gear_sort == "magic-def" {
-            "selected"
-        } else {
-            ""
-        },
-        if s.gear_sort == "ranged-def" {
-            "selected"
-        } else {
-            ""
-        },
         esc(&comparison_monster(s)
             .map(|m| m.name.as_str())
             .unwrap_or("selected encounter")),
@@ -1626,13 +1876,14 @@ fn gear_choices(s: &State) -> String {
             let dps = if usable {
                 comparison_monster(s)
                     .and_then(|m| {
-                        combat::calculate_at_invocation(
+                        combat::calculate_configured(
                             member,
                             &trial,
                             style,
                             m,
                             &p.spell,
                             s.saved.options.raid_level,
+                            &s.saved.options.combat,
                         )
                         .ok()
                     })
@@ -1640,7 +1891,6 @@ fn gear_choices(s: &State) -> String {
             } else {
                 None
             };
-            let defence = combat::bonuses(&trial).defensive;
             let own_defence = combat::stats(g.id).map(|g| &g.defensive);
             let score = own_defence
                 .map(|map| match s.gear_sort.as_str() {
@@ -1649,8 +1899,37 @@ fn gear_choices(s: &State) -> String {
                     _ => map.values().sum(),
                 })
                 .unwrap_or(0);
-            let _ = defence;
-            (g, usable, dps, score)
+            let overall = dps.and_then(|damage| {
+                comparison_monster(s).map(|target| {
+                    crate::defence::score(member, &trial, target, damage, &s.saved.options.combat)
+                })
+            });
+            let incoming = comparison_monster(s)
+                .and_then(|target| {
+                    incoming_choice(s, target).and_then(|attack| {
+                        crate::defence::estimate(
+                            member,
+                            &trial,
+                            target,
+                            &attack,
+                            &s.saved.options.combat,
+                        )
+                        .ok()
+                    })
+                })
+                .map(|r| r.damage_per_second);
+            let prayer_bonus = crate::prayer::bonus(&trial);
+            let drain = crate::prayer::drain_per_minute(prayer_bonus, &s.saved.options.combat);
+            (
+                g,
+                usable,
+                dps,
+                score,
+                overall,
+                incoming,
+                drain,
+                prayer_bonus,
+            )
         })
         .collect::<Vec<_>>();
     items.sort_by(|a, b| {
@@ -1658,6 +1937,13 @@ fn gear_choices(s: &State) -> String {
             b.2.partial_cmp(&a.2)
                 .unwrap_or(std::cmp::Ordering::Equal)
                 .then_with(|| a.0.name.cmp(&b.0.name))
+        } else if s.gear_sort == "overall" {
+            b.4.partial_cmp(&a.4)
+                .unwrap_or(std::cmp::Ordering::Equal)
+                .then_with(|| a.0.name.cmp(&b.0.name))
+        } else if s.gear_sort == "prayer" {
+            b.7.cmp(&a.7)
+                .then_with(|| b.2.partial_cmp(&a.2).unwrap_or(std::cmp::Ordering::Equal))
         } else {
             b.3.cmp(&a.3).then_with(|| a.0.name.cmp(&b.0.name))
         }
@@ -1666,8 +1952,8 @@ fn gear_choices(s: &State) -> String {
     if items.is_empty() {
         html.push_str("<p>No owned items match this search.</p>");
     }
-    for (g, usable, dps, defence) in items {
-        html.push_str(&format!(r#"<button class="gear-pick {}" data-action="pick-gear:{style}:{slot}:{}" {}>{}<span><strong>{}</strong><small>{} · {defence:+} defence</small><small>{}</small></span><b>× {}</b></button>"#,if set[slot]==Some(g.id){"selected"}else{""},g.id,if usable{""}else{"disabled"},image(g.id),esc(&planner::item_name(g.id)),dps.map(|v|format!("{v:.3} DPS")).unwrap_or_else(||"DPS unavailable".into()),if usable{"Click to equip"}else{"Skill requirements unconfirmed or unmet"},owned[&g.id]));
+    for (g, usable, dps, defence, _overall, incoming, drain, prayer_bonus) in items {
+        html.push_str(&format!(r#"<button class="gear-pick {}" data-action="pick-gear:{style}:{slot}:{}" {}>{}<span><strong>{}</strong><small>{} · {defence:+} defence</small><small>Incoming {} · {prayer_bonus:+} prayer · {drain:.1} points/min</small><small>{}</small></span><b>× {}</b></button>"#,if set[slot]==Some(g.id){"selected"}else{""},g.id,if usable{""}else{"disabled"},image(g.id),esc(&planner::item_name(g.id)),dps.map(|v|format!("{v:.3} DPS")).unwrap_or_else(||"DPS unavailable".into()),incoming.map(|v|format!("{v:.3} DPS")).unwrap_or_else(||"unverified".into()),if usable{"Click to equip"}else{"Skill requirements unconfirmed or unmet"},owned[&g.id]));
     }
     html
 }
@@ -1683,7 +1969,7 @@ fn bis_scale(s: &State) -> String {
     let Some(member) = s.saved.snapshot.selected() else {
         return String::new();
     };
-    let choices = reference::tiers(style, slot);
+    let choices = reference::tiers(crate::rules::base_style(style), slot);
     if choices.is_empty() {
         return String::new();
     }
@@ -1699,13 +1985,14 @@ fn bis_scale(s: &State) -> String {
         }
         let dps = comparison_monster(s)
             .and_then(|m| {
-                combat::calculate_at_invocation(
+                combat::calculate_configured(
                     member,
                     &trial,
                     style,
                     m,
                     &p.spell,
                     s.saved.options.raid_level,
+                    &s.saved.options.combat,
                 )
                 .ok()
             })
@@ -1715,7 +2002,7 @@ fn bis_scale(s: &State) -> String {
         html.push_str(&format!(r#"<article class="bis-item {}"><small>Tier {}</small>{}<strong>{}</strong><span>{}</span><small>{}</small>{}</article>"#,if have{"owned"}else{""},rank+1,image(g.id),esc(&planner::item_name(g.id)),esc(&dps),if have{"Owned"}else{"Not owned"},if have&&eligible{button(&format!("pick-gear:{style}:{slot}:{}",g.id),"Equip","phase")}else if !have{button(&format!("goal-item:{}",g.id),"Track upgrade","phase")}else{"<span>Check skill requirements</span>".into()}));
     }
     html.push_str("</div>");
-    if slot == 3 && style == "Melee" {
+    if slot == 3 && crate::rules::base_style(style) == "Melee" {
         html.push_str(&keris_family(s, &set));
     }
     html
@@ -1736,13 +2023,14 @@ fn keris_family(s: &State, set: &Vec<Option<i32>>) -> String {
         let have = owned.contains_key(&id);
         let mut trial = set.clone();
         trial[3] = Some(id);
-        let dps = combat::calculate_at_invocation(
+        let dps = combat::calculate_configured(
             member,
             &trial,
             "Melee",
             target,
             "",
             s.saved.options.raid_level,
+            &s.saved.options.combat,
         )
         .ok()
         .map(|r| format!("{:.3}", r.dps))

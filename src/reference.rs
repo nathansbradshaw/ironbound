@@ -1,6 +1,6 @@
 //! Reviewed main-game upgrade examples. This is a reference progression, not a universal BIS proof.
 use crate::planner::{self, Gear};
-pub const KERIS_VARIANTS: [(i32, &str); 4] = [
+pub const KERIS_VARIANTS: [(i32, &str); 5] = [
     (25979, "Base: kalphite damage bonus and a rare triple hit."),
     (
         25981,
@@ -13,6 +13,10 @@ pub const KERIS_VARIANTS: [(i32, &str); 4] = [
     (
         27287,
         "Corruption: a group-support special. Its special-attack benefit is not included in sustained DPS.",
+    ),
+    (
+        30891,
+        "Amascut: stronger stab and strength stats in ToA, with 15% kalphite damage instead of 33%. Requires the actual upgraded weapon and 80 Attack.",
     ),
 ];
 pub fn tiers(style: &str, slot: usize) -> Vec<&'static Gear> {

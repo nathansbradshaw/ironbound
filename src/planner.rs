@@ -151,6 +151,14 @@ pub struct Monster {
     pub weakness: Option<Weakness>,
     #[serde(default)]
     pub attributes: Vec<String>,
+    #[serde(default)]
+    pub offensive: BTreeMap<String, i32>,
+    #[serde(default)]
+    pub speed: i32,
+    #[serde(default, rename = "style")]
+    pub attack_styles: Vec<String>,
+    #[serde(default)]
+    pub max_hit: String,
 }
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Weakness {
@@ -178,7 +186,7 @@ pub fn monster(id: i32) -> Option<&'static Monster> {
 }
 impl Target {
     pub fn valid(&self) -> bool {
-        ["Melee", "Ranged", "Magic"].contains(&self.style.as_str())
+        crate::rules::STYLES.contains(&self.style.as_str())
             && monsters().iter().any(|m| m.id == self.id)
     }
     pub fn name(&self) -> String {
@@ -192,6 +200,7 @@ impl Target {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(default)]
 pub struct Options {
+    pub combat: crate::defence::Settings,
     pub boss: Boss,
     pub shared: bool,
     pub fewer_switches: bool,
@@ -214,6 +223,7 @@ pub struct Options {
 impl Default for Options {
     fn default() -> Self {
         Self {
+            combat: Default::default(),
             boss: Boss::Barrows,
             shared: false,
             fewer_switches: false,
@@ -288,6 +298,13 @@ impl Plan {
 }
 
 pub fn can_use(id: i32, m: &Member) -> bool {
+    if let Some(rule) = crate::rules::weapon(id) {
+        return rule
+            .weapon
+            .requirements
+            .iter()
+            .all(|(skill, level)| m.level(skill).is_some_and(|n| n >= *level));
+    }
     if let Some(g) = gear(id) {
         if let Some(req) = &g.requirements {
             if req
@@ -301,7 +318,6 @@ pub fn can_use(id: i32, m: &Member) -> bool {
         }
     }
     let req: Vec<(&str, u32)> = match id {
-        1405 => vec![("Magic", 40), ("Attack", 40)],
         12002 => vec![("Magic", 70)],
         2412 | 2413 | 2414 => vec![("Magic", 60)],
         10499 => vec![("Ranged", 50)],
@@ -311,24 +327,7 @@ pub fn can_use(id: i32, m: &Member) -> bool {
         1273 => vec![("Mining", 21)],
         1269 => vec![("Mining", 6)],
         1169 => vec![("Ranged", 20)],
-        26219 | 27246 => vec![("Attack", 82)],
-        11889 => vec![("Attack", 70)],
         21791 | 21793 | 21795 => vec![("Magic", 75)],
-        27275 => vec![("Magic", 85)],
-        22323 | 25731 => vec![("Magic", 82)],
-        4151 => vec![("Attack", 70)],
-        12006 => vec![("Attack", 75)],
-        21009 | 4587 | 1215 => vec![("Attack", 60)],
-        25979 | 25981 | 27291 | 27287 => vec![("Attack", 65)],
-        11905 | 11907 | 22288 => vec![("Magic", 75)],
-        12899 | 22292 => vec![("Magic", 78)],
-        28585 => vec![("Magic", 62)],
-        12658 | 1409 => vec![("Magic", 50), ("Attack", 50)],
-        9185 | 26486 => vec![("Ranged", 61)],
-        21902 => vec![("Ranged", 65)],
-        11785 => vec![("Ranged", 70)],
-        26374 => vec![("Ranged", 80)],
-        861 | 12788 => vec![("Ranged", 50)],
         10828 => vec![("Defence", 55)],
         24271 => vec![("Defence", 70)],
         11665 | 11664 | 11663 | 8839 | 8840 | 8842 => vec![("Defence", 42)],
@@ -364,20 +363,12 @@ pub fn can_use(id: i32, m: &Member) -> bool {
 }
 
 // Reviewed, finite item priorities. This is a starter planner, not an exact-DPS optimiser.
-fn candidates(style: &str, slot: usize, boss: Boss) -> &'static [i32] {
-    match (style, slot) {
-        ("Magic", 3) if boss == Boss::Barrows => &[
-            27275, 22323, 25731, 1381, 1405, 11905, 11907, 12899, 22288, 28585, 12658, 1409,
-        ],
-        ("Magic", 3) => &[
-            27275, 22323, 25731, 12899, 22292, 11905, 11907, 22288, 28585,
-        ],
-        ("Ranged", 3) => &[26374, 11785, 21902, 9185, 26486, 12788, 861],
+fn candidates(style: &str, slot: usize, boss: Boss) -> Vec<i32> {
+    if slot == 3 {
+        return crate::rules::weapon_ids(style, boss == Boss::Barrows);
+    }
+    let choices: &[i32] = match (crate::rules::base_style(style), slot) {
         ("Ranged", 13) => &[9144, 9143, 9142, 9243, 9242, 892, 890],
-        ("Melee", 3) if boss == Boss::Custom => &[
-            26219, 27246, 4151, 12006, 11889, 4587, 21009, 25981, 25979, 27291, 1215,
-        ],
-        ("Melee", 3) => &[26219, 27246, 11889, 21009, 25981, 25979, 27291, 27287],
         ("Magic", 0) => &[4708, 4856, 4857, 4858, 4859, 10828, 1169],
         ("Ranged", 0) => &[10828, 1169],
         (_, 0) => &[24271, 10828, 1169],
@@ -405,15 +396,16 @@ fn candidates(style: &str, slot: usize, boss: Boss) -> &'static [i32] {
         ("Ranged", 12) => &[11771, 6733, 2550, 2570],
         (_, 12) => &[11773, 25264, 26770, 6737, 2550, 2570],
         _ => &[],
-    }
+    };
+    choices.to_vec()
 }
 pub fn catalog_ids() -> BTreeSet<i32> {
     [Boss::Barrows, Boss::Toa, Boss::Custom]
         .into_iter()
         .flat_map(|b| {
-            ["Magic", "Ranged", "Melee"].into_iter().flat_map(move |s| {
-                (0..14).flat_map(move |slot| candidates(s, slot, b).iter().copied())
-            })
+            ["Magic", "Ranged", "Melee"]
+                .into_iter()
+                .flat_map(move |s| (0..14).flat_map(move |slot| candidates(s, slot, b).into_iter()))
         })
         .collect()
 }
@@ -450,12 +442,7 @@ pub fn owned_tiers(
                 && (slot != 13
                     || (owned.get(id).copied().unwrap_or(0) >= 100 && {
                         let set = equipment_for_style(snapshot, options, style);
-                        let bow = matches!(set[3], Some(861 | 12788));
-                        if bow {
-                            [892, 890].contains(id)
-                        } else {
-                            [9144, 9143, 9142, 9242, 9243].contains(id)
-                        }
+                        crate::rules::ammo_ids(set[3].unwrap_or(0)).contains(id)
                     })),
             excluded: options.excluded.contains(id),
         })
@@ -557,23 +544,12 @@ fn style_set(
         }
     }
     if style == "Ranged" {
-        let bow = matches!(set[3], Some(861 | 12788));
-        set[13] = if bow {
-            &[892, 890][..]
-        } else if boss == Boss::Toa {
-            &[9242, 9243, 9144, 9143, 9142][..]
-        } else {
-            &[9144, 9143, 9142, 9243, 9242][..]
-        }
-        .iter()
-        .copied()
-        .find(|id| owned.get(id).copied().unwrap_or(0) >= 100);
+        set[13] = crate::rules::ammo_ids(set[3].unwrap_or(0))
+            .iter()
+            .copied()
+            .find(|id| owned.get(id).copied().unwrap_or(0) >= 100);
         if let Some(id) = options.gear_overrides.get("Ranged:13") {
-            let allowed = if bow {
-                [892, 890].contains(id)
-            } else {
-                [9144, 9143, 9142, 9242, 9243].contains(id)
-            };
+            let allowed = crate::rules::ammo_ids(set[3].unwrap_or(0)).contains(id);
             if allowed && owned.get(id).copied().unwrap_or(0) >= 100 {
                 set[13] = Some(*id);
             }
@@ -612,28 +588,19 @@ fn refine_dps(
     let Some(target) = monster(id) else {
         return;
     };
-    let spell = |set: &Vec<Option<i32>>| {
-        if matches!(set[3], Some(1381 | 1405)) {
-            if m.level("Magic").unwrap_or(0) >= 62 && owned.get(&565).copied().unwrap_or(0) >= 150 {
-                "Wind Wave"
-            } else {
-                "Wind Blast"
-            }
-        } else {
-            ""
-        }
-    };
+    let spell = |set: &Vec<Option<i32>>| crate::rules::spell_name(m, set, owned);
     let metric = |set: &Vec<Option<i32>>| {
-        crate::combat::calculate_at_invocation(
+        crate::combat::calculate_configured(
             m,
             set,
             style,
             target,
             spell(set),
             options.raid_level,
+            &options.combat,
         )
         .ok()
-        .map(|r| r.dps)
+        .map(|r| crate::defence::score(m, set, target, r.dps, &options.combat))
     };
     for _ in 0..2 {
         let mut changed = false;
@@ -695,11 +662,7 @@ fn refine_dps(
                     if options.gear_overrides.contains_key("Ranged:13") {
                         vec![set[13]]
                     } else {
-                        let allowed: &[i32] = if [861, 12788].contains(&id) {
-                            &[892, 890]
-                        } else {
-                            &[9144, 9143, 9142, 9242, 9243]
-                        };
+                        let allowed = crate::rules::ammo_ids(id);
                         allowed
                             .iter()
                             .filter(|id| owned.get(id).copied().unwrap_or(0) >= 100)
@@ -711,21 +674,12 @@ fn refine_dps(
                 };
                 for a in ammo {
                     trial[13] = a;
-                    if matches!(trial[3], Some(1381 | 1405))
-                        && !owned
-                            .get(&if spell(&trial) == "Wind Wave" {
-                                565
-                            } else {
-                                560
-                            })
-                            .is_some_and(|q| *q >= 150)
-                    {
-                        continue;
-                    }
-                    if matches!(trial[3], Some(12658 | 1409))
-                        && (!owned.get(&560).is_some_and(|q| *q >= 150)
-                            || !owned.get(&554).is_some_and(|q| *q >= 750))
-                    {
+                    if !crate::rules::casting_supported(
+                        m,
+                        &trial,
+                        owned,
+                        crate::rules::DEFAULT_CASTS,
+                    ) {
                         continue;
                     }
                     if let Some(dps) = metric(&trial) {
@@ -857,13 +811,15 @@ fn plan_uncached(snapshot: &Snapshot, options: &Options) -> Plan {
         .targets
         .iter()
         .filter(|t| t.valid())
-        .take(12)
+        .take(crate::rules::MAX_TARGETS)
         .collect();
     if options.boss == Boss::Custom
         && (targets.is_empty() || targets.len() != options.targets.len())
     {
-        out.missing
-            .push("Select 1–12 valid monsters and their attack styles.".into());
+        out.missing.push(format!(
+            "Select 1–{} valid monsters and their attack styles.",
+            crate::rules::MAX_TARGETS
+        ));
     }
     let primary = if options.boss == Boss::Custom {
         targets.first().map(|t| t.style.as_str()).unwrap_or("Melee")
@@ -895,7 +851,7 @@ fn plan_uncached(snapshot: &Snapshot, options: &Options) -> Plan {
             .push("A charged powered staff usable at your Magic level".into());
     }
     let mut sets = if options.boss == Boss::Custom {
-        ["Melee", "Ranged", "Magic"]
+        crate::rules::STYLES
             .into_iter()
             .filter(|style| targets.iter().any(|t| t.style == *style))
             .map(|style| {
@@ -959,6 +915,7 @@ fn plan_uncached(snapshot: &Snapshot, options: &Options) -> Plan {
         .map(|(_, s)| s.clone())
         .unwrap_or(magic);
     let mut allocated: BTreeMap<i32, u32> = BTreeMap::new();
+    let mut essentials = BTreeMap::<i32, u32>::new();
     for id in out.equipment.iter().flatten() {
         *allocated.entry(*id).or_default() += 1;
     }
@@ -992,7 +949,7 @@ fn plan_uncached(snapshot: &Snapshot, options: &Options) -> Plan {
                 out.phases.push(Phase{name:target.name(),style:target.style.clone(),equipment:set.clone(),note:"User-selected attack style. Check immunities, protection, special items and encounter mechanics.".into()});
             }
         }
-        out.warnings.push("Custom groups share one carried equipment pool. Attack styles are selected manually; monster defence, special gear, damage and supply use are not simulated.".into());
+        out.warnings.push("Custom groups share one carried equipment pool. Standard attack estimates and verified defence profiles guide choices; special mechanics and supply consumption remain partial.".into());
     } else {
         for (name, style, set, note) in [
             (
@@ -1033,8 +990,33 @@ fn plan_uncached(snapshot: &Snapshot, options: &Options) -> Plan {
                 note: note.into(),
             });
         }
+        let mut keris = crate::rules::family_ids("partisan");
+        let value = |id: i32| {
+            let mut trial = out.equipment.clone();
+            trial[3] = Some(id);
+            monster(11719)
+                .and_then(|target| {
+                    crate::combat::calculate_configured(
+                        m,
+                        &trial,
+                        "Melee",
+                        target,
+                        "",
+                        options.raid_level,
+                        &options.combat,
+                    )
+                    .ok()
+                })
+                .map(|r| r.dps)
+                .unwrap_or(0.0)
+        };
+        keris.sort_by(|a, b| {
+            value(*b)
+                .partial_cmp(&value(*a))
+                .unwrap_or(std::cmp::Ordering::Equal)
+        });
         for (ids, purpose) in [
-            (&[25981, 25979, 27291, 27287][..], "Kephri weapon"),
+            (&keris[..], "Kephri weapon"),
             (&[1215][..], "Core special attack"),
             (&[1275, 1271, 1273, 1269][..], "Het puzzle pickaxe"),
         ] {
@@ -1042,6 +1024,9 @@ fn plan_uncached(snapshot: &Snapshot, options: &Options) -> Plan {
                 .iter()
                 .find(|id| owned.contains_key(id) && can_use(**id, m))
             {
+                if purpose == "Het puzzle pickaxe" {
+                    essentials.insert(*id, 1);
+                }
                 if !allocated.contains_key(id) {
                     if options.max_switches.is_some()
                         && purpose != "Het puzzle pickaxe"
@@ -1075,16 +1060,50 @@ fn plan_uncached(snapshot: &Snapshot, options: &Options) -> Plan {
     if let Some(id) = out.equipment[13] {
         allocated.insert(id, 100);
     }
-    if options.boss == Boss::Barrows
-        && matches!(out.equipment[3], Some(1381 | 1405))
-        && !m.level("Magic").is_some_and(|level| level >= 41)
-    {
-        out.missing.push(
-            "41 Magic is required for this Wind Blast spell template. Load or enter your levels."
-                .into(),
-        );
+    let mut spell_runes = BTreeMap::<i32, u32>::new();
+    for set in std::iter::once(&out.equipment).chain(out.phases.iter().map(|p| &p.equipment)) {
+        if !set[3]
+            .and_then(crate::rules::weapon)
+            .is_some_and(|r| r.family.style == "Magic")
+        {
+            continue;
+        }
+        let spell = crate::rules::spell_name(m, set, &owned);
+        if out.spell.is_empty() {
+            out.spell = if spell.is_empty() {
+                "Built-in spell"
+            } else {
+                spell
+            }
+            .into();
+        }
+        if !crate::rules::casting_supported(m, set, &owned, crate::rules::DEFAULT_CASTS) {
+            let level = crate::rules::spells()
+                .iter()
+                .find(|s| s.name == spell)
+                .map(|s| s.level);
+            out.missing.push(format!(
+                "{} is required for this spell template, with sufficient runes for {} casts.",
+                level
+                    .map(|l| format!("{l} Magic"))
+                    .unwrap_or("A usable charged staff".into()),
+                crate::rules::DEFAULT_CASTS
+            ));
+        }
+        for (id, quantity) in crate::rules::rune_supplies(spell, crate::rules::DEFAULT_CASTS) {
+            spell_runes
+                .entry(id)
+                .and_modify(|q| *q = (*q).max(quantity))
+                .or_insert(quantity);
+        }
     }
     let mut reserve = |id: i32, q: u32, purpose: &str, required: bool| {
+        if required {
+            essentials
+                .entry(id)
+                .and_modify(|need| *need = (*need).max(q))
+                .or_insert(q);
+        }
         let used = allocated.get(&id).copied().unwrap_or(0);
         let available = owned.get(&id).copied().unwrap_or(0).saturating_sub(used);
         if available >= q {
@@ -1101,23 +1120,9 @@ fn plan_uncached(snapshot: &Snapshot, options: &Options) -> Plan {
     };
     if options.boss == Boss::Barrows {
         reserve(952, 1, "Dig into the crypts", true);
-        if matches!(out.equipment[3], Some(1381 | 1405)) {
-            let wave =
-                m.level("Magic").unwrap_or(1) >= 62 && owned.get(&565).copied().unwrap_or(0) >= 150;
-            out.spell = if wave { "Wind Wave" } else { "Wind Blast" }.into();
-            reserve(
-                if wave { 565 } else { 560 },
-                150,
-                "150 spell casts · editable trip assumption",
-                true,
-            );
-        } else if matches!(out.equipment[3], Some(12658 | 1409)) {
-            out.spell = "Iban Blast".into();
-            reserve(560, 150, "150 spell casts", true);
-            reserve(554, 750, "150 spell casts", true);
-        } else {
-            out.spell = "Built-in spell".into();
-        }
+    }
+    for (id, quantity) in spell_runes {
+        reserve(id, quantity, "Spell casts · editable trip assumption", true);
     }
     if let Some(id) = [
         8007, 2552, 2554, 2556, 2558, 2560, 2562, 2564, 2566, 3853, 3855, 3857, 3859, 3861, 3863,
@@ -1167,16 +1172,6 @@ fn plan_uncached(snapshot: &Snapshot, options: &Options) -> Plan {
             break;
         }
     }
-    let essentials: Vec<_> = out
-        .inventory
-        .iter()
-        .filter(|p| {
-            p.purpose.contains("spell casts")
-                || p.purpose.starts_with("Exit teleport")
-                || p.id == 952
-        })
-        .map(|p| (p.id, p.quantity))
-        .collect();
     for (index, id) in &options.inventory_overrides {
         if *index >= 28 || *id < 0 {
             continue;

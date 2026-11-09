@@ -94,6 +94,7 @@ fn sharing_only_contains_an_explicit_public_allowlist() {
         keys,
         vec![
             "boss",
+            "combat",
             "constraints",
             "equipment",
             "inventory",
@@ -185,7 +186,10 @@ fn custom_group_requires_targets_but_no_quest_checks() {
 }
 #[test]
 fn manual_equipment_rebuilds_switch_pool() {
-    let (o, p) = demo(Boss::Barrows);
+    let mut o = Options::default();
+    o.gear_overrides.insert("Magic:1".into(), 2413);
+    o.gear_overrides.insert("Ranged:1".into(), 10499);
+    let p = planner::plan(&account::demo(), &o);
     let mut changed = o;
     changed.gear_overrides.insert("Ranged:1".into(), 0);
     let p2 = planner::plan(&account::demo(), &changed);

@@ -17,6 +17,8 @@ pub struct Switch {
 #[serde(deny_unknown_fields)]
 pub struct Setup {
     #[serde(default)]
+    pub combat: crate::defence::Settings,
+    #[serde(default)]
     pub constraints: Option<Constraints>,
     pub version: u8,
     pub boss: Boss,
@@ -38,6 +40,7 @@ pub struct Constraints {
 impl Setup {
     pub fn from_plan(p: &Plan, o: &Options) -> Self {
         Self {
+            combat: o.combat.clone(),
             constraints: o.max_switches.map(|max_switches| Constraints {
                 max_switches,
                 switch_slots: o.switch_slots,
@@ -76,21 +79,23 @@ impl Setup {
         if self.constraints.as_ref().is_some_and(|c| {
             c.max_switches > 11
                 || c.switch_slots > 20
-                || !["Balanced", "Melee", "Ranged", "Magic"].contains(&c.focus_style.as_str())
-                || c.phase_priorities.len() > 12
+                || !(c.focus_style == "Balanced"
+                    || crate::rules::STYLES.contains(&c.focus_style.as_str()))
+                || c.phase_priorities.len() > crate::rules::MAX_TARGETS
                 || c.phase_priorities
                     .iter()
                     .any(|(id, w)| *w > 10 || crate::planner::monster(*id).is_none())
         }) {
             return Err(fail());
         }
-        if self.version != 1
+        if !self.combat.valid()
+            || self.version != 1
             || self.raid_level > 150
-            || self.targets.len() > 12
+            || self.targets.len() > crate::rules::MAX_TARGETS
             || self.targets.iter().any(|t| !t.valid())
             || (self.boss == Boss::Custom && self.targets.is_empty())
             || self.inventory.len() > 28
-            || self.switches.len() > 12
+            || self.switches.len() > crate::rules::MAX_TARGETS
         {
             return Err(fail());
         }
@@ -145,6 +150,9 @@ impl Setup {
                 "Magic",
                 "Melee",
                 "Ranged",
+                "Stab",
+                "Slash",
+                "Crush",
                 "All three styles",
                 "Magic / Ranged",
             ]
@@ -244,6 +252,7 @@ impl Setup {
     }
     pub fn options(&self) -> Options {
         Options {
+            combat: self.combat.clone(),
             boss: self.boss,
             raid_level: self.raid_level,
             targets: self.targets.clone(),

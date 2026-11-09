@@ -1,5 +1,9 @@
 //! Locally computed standard sustained attacks. Unsupported effects return an explanation.
-use crate::{account::Member, planner::Monster};
+use crate::{
+    account::Member,
+    planner::Monster,
+    rules::{self, AmmoEffect, Effect, Formula},
+};
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -37,6 +41,9 @@ pub struct Bonuses {
     pub other: BTreeMap<String, i32>,
 }
 pub fn bonuses(set: &[Option<i32>]) -> Bonuses {
+    bonuses_in_context(set, false)
+}
+fn bonuses_in_context(set: &[Option<i32>], toa: bool) -> Bonuses {
     let mut result = Bonuses::default();
     for id in set.iter().flatten() {
         if let Some(g) = stats(*id) {
@@ -47,6 +54,20 @@ pub fn bonuses(set: &[Option<i32>]) -> Bonuses {
             ] {
                 for (k, v) in map {
                     *dest.entry(k.clone()).or_default() += v;
+                }
+            }
+            if let Some(rule) = rules::weapon(*id) {
+                for adjustment in &rule.weapon.adjustments {
+                    if (adjustment.context == "outside_toa" && !toa)
+                        || (adjustment.context == "toa" && toa)
+                    {
+                        for (key, amount) in &adjustment.offensive {
+                            *result.offensive.entry(key.clone()).or_default() += amount;
+                        }
+                        for (key, amount) in &adjustment.bonuses {
+                            *result.other.entry(key.clone()).or_default() += amount;
+                        }
+                    }
                 }
             }
         }
@@ -103,58 +124,91 @@ pub fn calculate_at_invocation(
     spell: &str,
     invocation: u32,
 ) -> Result<ResultStats, String> {
+    calculate_configured(
+        member,
+        set,
+        style,
+        monster,
+        spell,
+        invocation,
+        &Default::default(),
+    )
+}
+pub fn calculate_configured(
+    member: &Member,
+    set: &[Option<i32>],
+    style: &str,
+    monster: &Monster,
+    spell: &str,
+    invocation: u32,
+    settings: &crate::defence::Settings,
+) -> Result<ResultStats, String> {
+    if !settings.valid() {
+        return Err("Invalid combat settings.".into());
+    }
+    let prayer = crate::prayer::selected(settings);
+    crate::prayer::eligible_settings(member, settings)?;
     if set.len() != 14 {
         return Err("Equipment needs 14 slots.".into());
     }
     let weapon = set[3].ok_or("Choose a weapon.")?;
     let stats = stats(weapon).ok_or("Weapon stats unavailable.")?;
-    if set
+    let rule =
+        rules::weapon(weapon).ok_or("This weapon's combat mechanics are not modelled yet.")?;
+    if !rule.permits(style) {
+        return Err("This weapon does not support the selected attack style.".into());
+    }
+    let requested_style = style;
+    let style = rules::base_style(style);
+    let prayer_attack = if prayer.style == style {
+        prayer.attack
+    } else {
+        0
+    };
+    let prayer_strength = if prayer.style == style {
+        prayer.strength
+    } else {
+        0
+    };
+    if let Some(reason) = set
         .iter()
         .flatten()
-        .any(|id| matches!(*id, 25264 | 26770 | 11665 | 11664 | 11663))
+        .find_map(|id| rules::unsupported_equipment(*id))
     {
-        return Err("Special rings and Void effects are not implemented yet.".into());
+        return Err(reason.into());
     }
     if monster.skills.is_empty() {
         return Err("Monster combat stats unavailable.".into());
     }
-    if monster.defensive.get("flat_armour").copied().unwrap_or(0) != 0 {
-        return Err("Flat armour is not implemented yet.".into());
+    let flat_armour = monster
+        .defensive
+        .get(if style == "Magic" {
+            "magic_resistance"
+        } else {
+            "flat_armour"
+        })
+        .copied()
+        .unwrap_or(0);
+    if flat_armour != 0 && style == "Ranged" {
+        return Err("This combination of flat armour and weapon effects needs a separate hit-distribution model.".into());
     }
-    if monster.name.contains("Warden") {
-        return Err("Warden phases need separate accuracy and damage models.".into());
+    if let Some(reason) = crate::encounters::limitation(monster) {
+        return Err(reason.into());
     }
-    let toa = [
-        11778, 11779, 11780, 11719, 11721, 11730, 11732, 11733, 11789, 11790, 11791, 11792, 11793,
-        11794, 11795, 11796,
-    ]
-    .contains(&monster.id);
-    if monster
-        .attributes
-        .iter()
-        .any(|a| a.starts_with("vampyre") || a == "leafy" || a == "flying")
-        || [
-            "Zulrah",
-            "Kraken",
-            "Cave kraken",
-            "Fragment of Seren",
-            "Tormented Demon",
-            "Slagilith",
-            "Ice demon",
-            "Tekton",
-            "Corporeal Beast",
-        ]
-        .iter()
-        .any(|n| monster.name.starts_with(n))
-    {
-        return Err("This monster needs a special damage or immunity model.".into());
-    }
-    let mut b = bonuses(set);
-    if style == "Magic" && weapon == 27275 {
+    let toa = crate::encounters::mechanics().toa_ids.contains(&monster.id);
+    let mut b = bonuses_in_context(set, toa);
+    if style == "Magic" && rule.has(Effect::Shadow) {
         let factor = if toa { 4 } else { 3 };
         *b.offensive.entry("magic".into()).or_default() *= factor;
         let magic = b.other.entry("magic_str".into()).or_default();
         *magic = (*magic * factor).min(1000);
+    }
+    if style == "Magic" {
+        *b.other.entry("magic_str".into()).or_default() += if prayer.style == style {
+            prayer.magic_damage as i32 * 10
+        } else {
+            0
+        };
     }
     let get = |m: &BTreeMap<String, i32>, k: &str| m.get(k).copied().unwrap_or(0);
     let level = |s: &str| {
@@ -165,20 +219,25 @@ pub fn calculate_at_invocation(
     };
     let (attack_type, attack, max_hit, ticks, def_level, def_bonus) = match style {
         "Melee" => {
-            if ![
-                4151, 12006, 26219, 27246, 11889, 21009, 25979, 25981, 27291, 27287, 1215, 4587,
-            ]
-            .contains(&weapon)
-            {
-                return Err("This melee weapon is not implemented.".into());
-            }
-            let kind = if [4151, 12006, 4587].contains(&weapon) {
-                "slash"
+            let kind = if requested_style == "Melee" {
+                rule.family.attack_types[0].as_str()
             } else {
-                "stab"
+                rule.family
+                    .attack_types
+                    .iter()
+                    .find(|t| t.eq_ignore_ascii_case(requested_style))
+                    .unwrap()
+                    .as_str()
             };
-            let a = (level("Attack")? + 11) * (get(&b.offensive, kind) as i64 + 64);
-            let max = ((level("Strength")? + 8) * (get(&b.other, "str") as i64 + 64) + 320) / 640;
+            let stance = rule.stance(kind);
+            let a = (level("Attack")? * (100 + prayer_attack) / 100 + 8 + stance.attack_bonus())
+                * (get(&b.offensive, kind) as i64 + 64);
+            let max = ((level("Strength")? * (100 + prayer_strength) / 100
+                + 8
+                + stance.strength_bonus())
+                * (get(&b.other, "str") as i64 + 64)
+                + 320)
+                / 640;
             (
                 kind,
                 a,
@@ -190,31 +249,26 @@ pub fn calculate_at_invocation(
         }
         "Ranged" => {
             let ammo = set[13].ok_or("Choose compatible ammunition.")?;
-            let bow = [861, 12788].contains(&weapon);
-            if !(if bow {
-                [890, 892].contains(&ammo)
-            } else {
-                [9185, 26486, 21902, 11785, 26374].contains(&weapon)
-                    && [9142, 9143, 9144, 9242, 9243].contains(&ammo)
-            }) {
+            if !rule.family.ammo.contains(&ammo) {
                 return Err("Weapon/ammunition combination not supported.".into());
             }
-            let effective = level("Ranged")? + 8;
+            let effective = level("Ranged")? * (100 + prayer_attack) / 100 + 8;
             let a = effective * (get(&b.offensive, "ranged") as i64 + 64);
-            let max = (effective * (get(&b.other, "ranged_str") as i64 + 64) + 320) / 640;
+            let strength = level("Ranged")? * (100 + prayer_strength) / 100 + 8;
+            let max = (strength * (get(&b.other, "ranged_str") as i64 + 64) + 320) / 640;
             (
                 "ranged",
                 a,
                 max.max(0) as i32,
-                (stats.speed - 1).max(1),
+                (stats.speed - i32::from(rule.family.rapid)).max(1),
                 get(&monster.skills, "def"),
-                get(&monster.defensive, if bow { "standard" } else { "heavy" }),
+                get(&monster.defensive, &rule.family.attack_types[0]),
             )
         }
         "Magic" => {
             let mage = level("Magic")?;
-            let base = match weapon {
-                1381 | 1405 => match spell {
+            let base = match rule.family.formula {
+                Formula::Wind => match spell {
                     "Wind Wave" => {
                         if mage >= 75 {
                             20
@@ -243,23 +297,19 @@ pub fn calculate_at_invocation(
                     }
                     _ => return Err("Choose Wind Blast or Wind Wave.".into()),
                 },
-                27275 => mage / 3 + 1,
-                22323 | 25731 => (mage / 3).max(1),
-                11905 | 11907 | 22288 => (mage / 3 - 5).max(1),
-                12899 | 22292 => (mage / 3 - 2).max(1),
-                28585 => (8 * mage + 96) / 37,
-                12658 | 1409 => 25,
+                Formula::Powered => if rule.family.offset_before_division {
+                    (rule.family.numerator * mage + rule.family.offset) / rule.family.denominator
+                } else {
+                    rule.family.numerator * mage / rule.family.denominator + rule.family.offset
+                }
+                .max(1),
+                Formula::Fixed => rule.family.offset,
                 _ => return Err("Spell or powered staff not supported.".into()),
             };
             let mut max = base + base * get(&b.other, "magic_str") as i64 / 1000;
-            let mut a = (mage
-                + if matches!(weapon, 1381 | 1405 | 12658 | 1409) {
-                    9
-                } else {
-                    11
-                })
+            let mut a = (mage * (100 + prayer_attack) / 100 + rule.family.accuracy_bonus)
                 * (get(&b.offensive, "magic") as i64 + 64);
-            if matches!(weapon, 1381 | 1405) {
+            if rule.family.formula == Formula::Wind {
                 if let Some(w) = &monster.weakness {
                     if w.element == "air" {
                         a += a * w.severity as i64 / 100;
@@ -271,11 +321,7 @@ pub fn calculate_at_invocation(
                 "magic",
                 a,
                 max.max(0) as i32,
-                if matches!(weapon, 1381 | 1405 | 12658 | 1409 | 27275) {
-                    5
-                } else {
-                    4
-                },
+                rule.family.ticks.unwrap_or(stats.speed).max(1),
                 get(&monster.skills, "magic"),
                 get(&monster.defensive, "magic"),
             )
@@ -288,21 +334,35 @@ pub fn calculate_at_invocation(
     }
     let mut attack = attack;
     let mut max_hit = max_hit;
-    let keris = style == "Melee"
-        && [25979, 25981, 27291, 27287].contains(&weapon)
-        && monster.attributes.iter().any(|a| a == "kalphite");
+    let keris =
+        rule.has(Effect::KalphiteDamage) && monster.attributes.iter().any(|a| a == "kalphite");
     if keris {
-        max_hit = max_hit * 133 / 100;
-        if weapon == 25981 {
+        max_hit = max_hit * rule.weapon.kalphite_damage_percent.unwrap_or(133) / 100;
+        if rule.has(Effect::KalphiteAccuracy) {
             attack = attack * 133 / 100;
         }
     }
+    for multiplier in &rule.weapon.multipliers {
+        if monster.attributes.contains(&multiplier.attribute) {
+            if multiplier.accuracy {
+                attack = attack * multiplier.numerator / multiplier.denominator;
+            }
+            if multiplier.damage {
+                max_hit = (max_hit as i64 * multiplier.numerator / multiplier.denominator) as i32;
+            }
+        }
+    }
     let mut hit = accuracy(attack, defence);
-    if style == "Magic" && set[12] == Some(22975) {
+    if style == "Magic"
+        && set
+            .iter()
+            .flatten()
+            .any(|id| rules::equipment_effect(*id, "brimstone_accuracy"))
+    {
         hit = 0.75 * hit + 0.25 * accuracy(attack, defence * 9 / 10);
     }
-    let fang = style == "Melee" && [26219, 27246].contains(&weapon);
-    if fang {
+    let fang = rule.has(Effect::Fang);
+    if fang && attack_type == "stab" {
         hit = if toa {
             1.0 - (1.0 - hit).powi(2)
         } else {
@@ -313,25 +373,14 @@ pub fn calculate_at_invocation(
     if fang {
         max_hit -= min_hit;
     }
-    let mean = if max_hit > 0 {
-        (min_hit + max_hit) as f64 / 2.0
-            + if min_hit == 0 {
-                1.0 / (max_hit as f64 + 1.0)
-            } else {
-                0.0
-            }
-    } else {
-        0.0
-    };
+    let (mean, ceiling) =
+        conditional_hit(min_hit, max_hit, flat_armour, &rule.family.procs, monster);
     let mut expected = hit * mean;
-    if keris {
-        expected = hit * (max_hit as f64 / 2.0 * 53.0 / 51.0 + 1.0 / (max_hit as f64 + 1.0));
-        max_hit *= 3;
-    }
+    max_hit = ceiling;
     if style == "Ranged" {
-        let zcb = weapon == 26374;
-        match set[13] {
-            Some(9242) => {
+        let zcb = rule.has(Effect::Zaryte);
+        match rules::ammunition(set[13].unwrap_or(0)) {
+            AmmoEffect::Ruby => {
                 let mut hp = monster.skills.get("hp").copied().unwrap_or(1);
                 if toa {
                     hp += hp * (4 * invocation.min(150) as i32 / 10) / 100;
@@ -344,7 +393,7 @@ pub fn calculate_at_invocation(
                 expected = expected * 0.94 + ruby as f64 * 0.06;
                 max_hit = max_hit.max(ruby);
             }
-            Some(9243) => {
+            AmmoEffect::Diamond => {
                 let diamond = max_hit * if zcb { 126 } else { 115 } / 100;
                 expected = expected * 0.9 + diamond as f64 / 2.0 * 0.1;
                 max_hit = max_hit.max(diamond);
@@ -361,6 +410,59 @@ pub fn calculate_at_invocation(
         defence_roll: defence,
         attack_type: attack_type.into(),
     })
+}
+/// Shared single-hit distribution: composable procs, accurate-zero handling, then NPC armour.
+fn conditional_hit(
+    min: i32,
+    max: i32,
+    armour: i32,
+    procs: &[rules::HitProc],
+    monster: &Monster,
+) -> (f64, i32) {
+    if max <= 0 {
+        return (0.0, 0);
+    }
+    let mut hits: Vec<_> = (min..=max)
+        .map(|damage| (damage, 1.0 / (max - min + 1) as f64))
+        .collect();
+    for before in [true, false] {
+        if !before {
+            for (damage, _) in &mut hits {
+                *damage = (*damage).max(1);
+            }
+        }
+        for proc in procs.iter().filter(|p| {
+            p.before_accurate_zero == before
+                && p.attribute
+                    .as_ref()
+                    .is_none_or(|a| monster.attributes.contains(a))
+        }) {
+            let chance = proc.numerator as f64 / proc.denominator as f64;
+            hits = hits
+                .into_iter()
+                .flat_map(|(damage, probability)| {
+                    let changed = match proc.operation {
+                        rules::ProcOperation::Add => damage + proc.amount,
+                        rules::ProcOperation::Multiply => damage * proc.amount,
+                    };
+                    [
+                        (damage, probability * (1.0 - chance)),
+                        (changed, probability * chance),
+                    ]
+                })
+                .collect();
+        }
+    }
+    let mut mean = 0.0;
+    let mut ceiling = 0;
+    for (damage, probability) in hits {
+        let damage = (damage - armour).max(0);
+        mean += damage as f64 * probability;
+        if probability > 0.0 {
+            ceiling = ceiling.max(damage);
+        }
+    }
+    (mean, ceiling)
 }
 pub fn fang_accuracy(a: i64, d: i64) -> f64 {
     if a < 0 || d < 0 {

@@ -40,6 +40,7 @@ struct State {
     encounter_query: String,
     encounter_filter: String,
     building_group: bool,
+    raid_rooms_open: bool,
 }
 impl State {
     fn initial() -> Self {
@@ -109,6 +110,7 @@ impl State {
             encounter_query: String::new(),
             encounter_filter: "Popular".into(),
             building_group: false,
+            raid_rooms_open: false,
             saved,
             tab: "bossing".into(),
             view: "loadout".into(),
@@ -263,6 +265,19 @@ pub fn start() -> Result<(), JsValue> {
     });
     document().add_event_listener_with_callback("input", search.as_ref().unchecked_ref())?;
     search.forget();
+    let disclosure = Closure::<dyn FnMut(web_sys::Event)>::new(|e: web_sys::Event| {
+        if let Some(el) = e.target().and_then(|t| t.dyn_into::<Element>().ok()) {
+            if el.id() == "raid-room-picker" {
+                STATE.with(|state| state.borrow_mut().raid_rooms_open = el.has_attribute("open"));
+            }
+        }
+    });
+    document().add_event_listener_with_callback_and_bool(
+        "toggle",
+        disclosure.as_ref().unchecked_ref(),
+        true,
+    )?;
+    disclosure.forget();
     let escape = Closure::<dyn FnMut(web_sys::Event)>::new(|e: web_sys::Event| {
         if js_sys::Reflect::get(e.as_ref(), &JsValue::from_str("key"))
             .ok()
@@ -295,6 +310,17 @@ pub fn start() -> Result<(), JsValue> {
                         }
                     });
                 }
+            }
+            return;
+        }
+        if id == "phase-select" {
+            if let Ok(select) = el.dyn_into::<HtmlSelectElement>() {
+                let value = select.value();
+                act(&if value == "start" {
+                    "starting".into()
+                } else {
+                    format!("phase:{value}")
+                });
             }
             return;
         }
@@ -580,6 +606,29 @@ fn act(action: &str) {
                 s.view = view.into();
                 s.edit_equipment = None;
             }
+        } else if let Some(selection) = action.strip_prefix("raid-room:") {
+            if s.shared_setup.is_some() {
+                s.notice("Rebuild using your items to change raid bosses.", true);
+            } else if let Some((raid_id, room_id)) = selection.split_once(':') {
+                if let Some(raid) = crate::raids::raid(raid_id).filter(|raid| {
+                    crate::raids::for_targets(&s.saved.options.targets)
+                        .is_some_and(|current| current.id == raid.id)
+                }) {
+                    match raid.toggle(&s.saved.options.targets, room_id) {
+                        Ok(targets) => {
+                            s.saved.options.targets = targets;
+                            s.saved.options.inventory_overrides.clear();
+                            s.saved.options.inventory_quantities.clear();
+                            s.phase = None;
+                            s.edit_style = None;
+                            s.compare_target = None;
+                            s.edit_equipment = None;
+                            s.raid_rooms_open = true;
+                        }
+                        Err(reason) => s.notice(&reason, true),
+                    }
+                }
+            }
         } else if action == "custom-done" {
             s.building_group = false;
         } else if let Some(boss) = action.strip_prefix("boss:") {
@@ -629,6 +678,7 @@ fn act(action: &str) {
                     s.edit_equipment = None;
                     s.view = "loadout".into();
                     s.building_group = false;
+                    s.raid_rooms_open = false;
                 }
             } else {
                 s.notice("Choose a listed boss, raid or encounter.", true);
@@ -982,6 +1032,7 @@ fn render() {
         html.push_str("</details>");
         if s.shared_setup.is_some(){html.push_str(&format!("<p class=\"notice\">Viewing a shared setup. Your saved bank is unchanged. {}</p>",button("use-bank","Rebuild using my items","text-button")));}
         html.push_str(&encounter_detail(&s,&plan));
+        html.push_str(&raid_rooms(&s));
         html.push_str("<nav class=\"planner-tabs\" aria-label=\"Planner sections\">");
         for (view,label) in [("loadout","Gear & inventory"),("combat","Combat & switches"),("prepare","Preparation")] {let disabled=if view=="combat"&&s.shared_setup.is_some(){"disabled title=\"Rebuild using your items to calculate combat stats\""}else{""};html.push_str(&format!("<button class=\"workspace-tab {}\" data-action=\"view:{view}\" aria-pressed=\"{}\" {disabled}>{label}{}</button>",if s.view==view{"active"}else{""},s.view==view,if view=="prepare"&&!plan.missing.is_empty(){format!(" <span class=\"issue-count\">{}</span>",plan.missing.len())}else{String::new()}));}
         html.push_str("</nav><section class=\"workspace-view\">");
@@ -1001,16 +1052,68 @@ fn render() {
 
 fn encounter_detail(s: &State, p: &Plan) -> String {
     let boss = s.saved.options.boss;
+    let guide = selected_encounter(&s.saved.options)
+        .map(|entry| {
+            format!(
+                "https://oldschool.runescape.wiki/w/{}/Strategies",
+                entry.name.replace(' ', "_")
+            )
+        })
+        .unwrap_or_else(|| boss.source().into());
     let mut html = format!(
         "<section class=\"encounter-detail\"><h1>{}</h1><div class=\"detail-facts\"><span>{} switch items</span><a href=\"{}\" target=\"_blank\" rel=\"noreferrer\">Wiki guide ↗</a></div>",
         encounter_label(&s.saved.options),
         p.switches,
-        boss.source()
+        esc(&guide)
     );
     if boss == Boss::Toa {
         html.push_str(&format!("<label class=\"raid-control\">Raid level <input id=\"raid-level\" type=\"number\" min=\"0\" max=\"150\" value=\"{}\"><span>Mechanic-specific invocation planning is outside this starter model.</span></label>",s.saved.options.raid_level));
     }
     html.push_str("</section>");
+    html
+}
+fn raid_rooms(s: &State) -> String {
+    if s.saved.options.boss != Boss::Custom {
+        return String::new();
+    }
+    let Some(raid) = crate::raids::for_targets(&s.saved.options.targets) else {
+        return String::new();
+    };
+    let count = raid
+        .rooms
+        .iter()
+        .filter(|room| room.selected(&s.saved.options.targets))
+        .count();
+    let mut html = format!(
+        "<details id=\"raid-room-picker\" class=\"raid-route\" {}><summary>Raid bosses <span>{count} selected</span></summary><div class=\"raid-route-groups\">",
+        if s.raid_rooms_open { "open" } else { "" }
+    );
+    let mut stages = Vec::<&str>::new();
+    for room in &raid.rooms {
+        if !stages.contains(&room.stage.as_str()) {
+            stages.push(&room.stage);
+        }
+    }
+    for stage in stages {
+        html.push_str(&format!(
+            "<section class=\"raid-stage\"><h3>{}</h3>",
+            esc(stage)
+        ));
+        let rooms = raid
+            .rooms
+            .iter()
+            .filter(|room| room.stage == stage)
+            .collect::<Vec<_>>();
+        if rooms.iter().any(|room| room.choice_group.is_some()) {
+            html.push_str("<small>Choose one</small>");
+        }
+        for room in rooms {
+            let selected = room.selected(&s.saved.options.targets);
+            html.push_str(&format!("<button class=\"raid-room {}\" data-action=\"raid-room:{}:{}\" aria-pressed=\"{selected}\" {}><strong>{}</strong>{}</button>",if selected{"active"}else{""},esc(&raid.id),esc(&room.id),if room.required||s.shared_setup.is_some(){"disabled"}else{""},esc(&room.name),if room.required{"<small>Required</small>"}else{""}));
+        }
+        html.push_str("</section>");
+    }
+    html.push_str("</div></details>");
     html
 }
 fn slot(id: Option<i32>, label: &str, class: &str, quantity: Option<u32>) -> String {
@@ -1119,30 +1222,42 @@ fn loadout_panel(s: &State, p: &Plan) -> String {
     }
     html.push_str("</div></details>");
     html.push_str("</details></div><div class=\"phase-tabs\">");
-    html.push_str(&button(
-        "starting",
-        "Start",
-        if s.phase.is_none() {
-            "phase active"
-        } else {
-            "phase"
-        },
-    ));
-    for (i, phase) in p.phases.iter().enumerate() {
-        let label = if s.saved.options.boss == Boss::Barrows {
-            if i == 0 { "Five brothers" } else { "Ahrim" }
-        } else {
-            &phase.name
-        };
+    if p.phases.len() > 6 {
+        html.push_str("<label class=\"phase-select-label\">Equipment phase<select id=\"phase-select\"><option value=\"start\">Start</option>");
+        for (i, phase) in p.phases.iter().enumerate() {
+            html.push_str(&format!(
+                "<option value=\"{i}\" {}>{}</option>",
+                if s.phase == Some(i) { "selected" } else { "" },
+                esc(&phase.name)
+            ));
+        }
+        html.push_str("</select></label>");
+    } else {
         html.push_str(&button(
-            &format!("phase:{i}"),
-            &esc(label),
-            if s.phase == Some(i) {
+            "starting",
+            "Start",
+            if s.phase.is_none() {
                 "phase active"
             } else {
                 "phase"
             },
         ));
+        for (i, phase) in p.phases.iter().enumerate() {
+            let label = if s.saved.options.boss == Boss::Barrows {
+                if i == 0 { "Five brothers" } else { "Ahrim" }
+            } else {
+                &phase.name
+            };
+            html.push_str(&button(
+                &format!("phase:{i}"),
+                &esc(label),
+                if s.phase == Some(i) {
+                    "phase active"
+                } else {
+                    "phase"
+                },
+            ));
+        }
     }
     html.push_str("</div>");
     if let Some(phase) = current {
@@ -1330,6 +1445,11 @@ fn account_page(s: &State) -> String {
 fn selected_encounter(options: &Options) -> Option<&'static crate::encounters::Entry> {
     if options.boss != Boss::Custom {
         return None;
+    }
+    if let Some(raid) = crate::raids::for_targets(&options.targets) {
+        return crate::encounters::catalog()
+            .iter()
+            .find(|entry| entry.name == raid.name);
     }
     crate::encounters::catalog()
         .iter()

@@ -18,14 +18,25 @@ pub fn browser_catalog() -> &'static BrowserCatalog {
 pub struct Group {
     pub name: String,
     pub aliases: Vec<String>,
+    #[serde(default)]
     pub targets: Vec<Target>,
     pub note: String,
 }
 pub fn groups() -> &'static [Group] {
     static DATA: std::sync::OnceLock<Vec<Group>> = std::sync::OnceLock::new();
     DATA.get_or_init(|| {
-        serde_json::from_str(include_str!("../assets/encounter-groups.json"))
-            .expect("encounter groups")
+        let mut groups: Vec<Group> =
+            serde_json::from_str(include_str!("../assets/encounter-groups.json"))
+                .expect("encounter groups");
+        for group in &mut groups {
+            if let Some(raid) = crate::raids::raids()
+                .iter()
+                .find(|raid| raid.name == group.name)
+            {
+                group.targets = raid.default_targets();
+            }
+        }
+        groups
     })
 }
 #[derive(Debug, Deserialize)]

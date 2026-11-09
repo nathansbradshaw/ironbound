@@ -15,7 +15,7 @@ Your account stays on that browser. Import it again when using a different devic
 
 ## What you can do
 
-- **Plan a trip:** boss and raid templates, or your own group of monsters.
+- **Plan a trip:** boss and raid templates, or your own group of monsters. Select your CoX rooms or choose each Fractured Archive fork.
 - **Switch less:** limit changed items and carried gear; favour one style or phase.
 - **Compare gear:** outgoing DPS, supported incoming damage, defence and prayer drain.
 - **Plan longer trips:** weigh prayer efficiency against damage and see a prayer-supply estimate.
@@ -26,7 +26,7 @@ Your account stays on that browser. Import it again when using a different devic
 
 **The catalog covers all 72 current hiscores bosses/modes. Their combat mechanics are not all fully supported.**
 
-Coverage notes distinguish packing templates from supported calculations. CoX, ToB and ToA have raid templates; The Fractured Archive currently has an Ocellus phase template. Challenge/Hard/Expert scaling, full wave simulations and many special phases remain unfinished.
+Coverage notes distinguish packing templates from supported calculations. CoX supports selecting rooms while keeping all Olm phases together. The Fractured Archive supports five-boss routes: Archive Guardian, one room at each of three forks, and Ocellus. Its editable starting styles and partial phase coverage are packing templates; outgoing DPS remains withheld for every Archive boss. ToB and ToA also have raid templates. Challenge/Hard/Expert scaling, full wave simulations and many special phases remain unfinished.
 
 Moons includes defence-aware normal attacks, chained hits, flat armour and Blood Moon healing. Its curses, special phases, camp boosts and movement are not fully simulated. Unknown damage mechanics show **unavailable**, rather than zero.
 

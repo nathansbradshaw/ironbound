@@ -1,0 +1,25 @@
+[
+  {"id":"cox","name":"Chambers of Xeric","rooms":[
+    {"id":"tekton","name":"Tekton","stage":"Combat rooms","required":false,"choice_group":null,"default":true,"targets":[{"id":7540,"style":"Crush"}]},
+    {"id":"mystics","name":"Skeletal Mystics","stage":"Combat rooms","required":false,"choice_group":null,"default":true,"targets":[{"id":7604,"style":"Ranged"}]},
+    {"id":"vanguards","name":"Vanguards","stage":"Combat rooms","required":false,"choice_group":null,"default":true,"targets":[{"id":7527,"style":"Magic"},{"id":7528,"style":"Melee"},{"id":7529,"style":"Ranged"}]},
+    {"id":"vasa","name":"Vasa Nistirio","stage":"Combat rooms","required":false,"choice_group":null,"default":true,"targets":[{"id":7566,"style":"Ranged"}]},
+    {"id":"vespula","name":"Vespula","stage":"Combat rooms","required":false,"choice_group":null,"default":true,"targets":[{"id":7530,"style":"Magic"}]},
+    {"id":"muttadiles","name":"Muttadiles","stage":"Combat rooms","required":false,"choice_group":null,"default":true,"targets":[{"id":7561,"style":"Ranged"},{"id":7562,"style":"Ranged"}]},
+    {"id":"guardians","name":"Guardians","stage":"Puzzle rooms","required":false,"choice_group":null,"default":true,"targets":[{"id":7569,"style":"Crush"}]},
+    {"id":"shamans","name":"Lizardman shamans","stage":"Combat rooms","required":false,"choice_group":null,"default":true,"targets":[{"id":7573,"style":"Ranged"}]},
+    {"id":"tightrope","name":"Tightrope (deathly ranger and mage)","stage":"Puzzle rooms","required":false,"choice_group":null,"default":true,"targets":[{"id":7559,"style":"Ranged"},{"id":7560,"style":"Ranged"}]},
+    {"id":"ice-demon","name":"Ice demon","stage":"Puzzle rooms","required":false,"choice_group":null,"default":true,"targets":[{"id":7584,"style":"Magic"}]},
+    {"id":"olm","name":"Great Olm (both hands and head)","stage":"Final room","required":true,"choice_group":null,"default":true,"targets":[{"id":7550,"style":"Magic"},{"id":7552,"style":"Melee"},{"id":7551,"style":"Ranged"}]}
+  ]},
+  {"id":"tfa","name":"The Fractured Archive","rooms":[
+    {"id":"archive-guardian","name":"Archive Guardian","stage":"Entrance","required":true,"choice_group":null,"default":true,"targets":[{"id":16659,"style":"Magic"}]},
+    {"id":"ezekiel","name":"Ezekiel","stage":"First fork","required":false,"choice_group":"first","default":true,"targets":[{"id":16652,"style":"Crush"}]},
+    {"id":"bork-smorks","name":"Bork and the Smorks","stage":"First fork","required":false,"choice_group":"first","default":false,"targets":[{"id":16640,"style":"Crush"},{"id":16641,"style":"Magic"}]},
+    {"id":"moia","name":"Moia","stage":"Second fork","required":false,"choice_group":"second","default":true,"targets":[{"id":16667,"style":"Magic"}]},
+    {"id":"dreadnoth","name":"Dreadnoth the Jellied","stage":"Second fork","required":false,"choice_group":"second","default":false,"targets":[{"id":16665,"style":"Magic"}]},
+    {"id":"xarth","name":"Xarth","stage":"Third fork","required":false,"choice_group":"third","default":true,"targets":[{"id":16684,"style":"Magic"}]},
+    {"id":"dagonhai","name":"Dagon'hai Trio","stage":"Third fork","required":false,"choice_group":"third","default":false,"targets":[{"id":16643,"style":"Melee"},{"id":16645,"style":"Melee"},{"id":16647,"style":"Melee"}]},
+    {"id":"ocellus","name":"Ocellus (three phases)","stage":"Final room","required":true,"choice_group":null,"default":true,"targets":[{"id":16673,"style":"Melee"},{"id":16675,"style":"Magic"},{"id":16677,"style":"Ranged"}]}
+  ]}
+]

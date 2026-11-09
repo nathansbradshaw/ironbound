@@ -649,3 +649,18 @@ footer{font-size:10px;padding:9px 4px 0}footer>span:last-child{display:none}
 .workspace-tab{flex:1;white-space:nowrap;padding:5px 9px}
 .phase-tabs{gap:3px}.phase{font-size:15px;padding:3px 5px}
 @media(max-width:580px){.loadout-layout{grid-template-columns:minmax(0,280px)}.workspace-tab{font-size:17px;padding:6px 8px}}
+/* Keep the example, next action, and active controls clear without extra prose. */
+.main:has(.demo-banner)>.topbar{display:none}
+.main:has(.account-grid)>.demo-banner>.button{display:none}
+.demo-banner{max-width:494px;margin:0 auto 10px;padding:0 0 8px;border-bottom:1px solid #94774a;align-items:center;gap:12px}
+.demo-banner p{font-size:11px}.demo-banner .button{font-size:17px;padding:4px 9px}
+.flow-controls{margin-bottom:12px}
+.flow-controls:has(details[open]){grid-template-columns:1fr}
+.flow-controls .ranking-controls{margin:10px 0 4px}
+.phase-select-label{font-size:11px;gap:8px}.phase-select-label select{min-height:28px;font-size:12px}
+.plan-actions .export-card{grid-template-columns:auto minmax(0,1fr)}
+.export-heading p:empty{display:none}.export-actions{justify-content:flex-end}
+.plan-actions+.secondary-section{margin-top:12px}
+@media(max-width:580px){.demo-banner{max-width:100%}.phase-select-label select{font-size:16px;min-height:38px}.plan-actions .export-card{grid-template-columns:1fr}.export-actions{justify-content:flex-start}}
+
+.flow-controls .ranking-controls{background:#4d4534;color:#e9dbb9;border:3px ridge #8c7952;padding:10px}.flow-controls .ranking-controls legend{background:#4d4534;color:#ffcf00;padding:2px 6px;border:1px solid #8c7952}.flow-controls .ranking-controls label{color:#e9dbb9}.ranking-controls p:empty{display:none}.loadout-panel>.packing-label{order:4;border-top:1px solid #786746}.packing-label .text-button{color:#ffcf00}

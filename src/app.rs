@@ -1,7 +1,8 @@
 use crate::{
     account::{self, SKILLS, Snapshot},
-    export,
+    combat, export,
     planner::{self, Boss, Options, Plan},
+    reference, share,
 };
 use serde::{Deserialize, Serialize};
 use std::{cell::RefCell, collections::BTreeMap};
@@ -16,6 +17,8 @@ struct Saved {
     snapshot: Snapshot,
     options: Options,
     pins: BTreeMap<String, Vec<String>>,
+    #[serde(default)]
+    last_setup_fragment: Option<String>,
 }
 struct State {
     saved: Saved,
@@ -25,6 +28,13 @@ struct State {
     error: bool,
     busy: bool,
     export_text: Option<String>,
+    shared_setup: Option<share::Setup>,
+    edit_inventory: Option<usize>,
+    edit_style: Option<String>,
+    compare_target: Option<i32>,
+    edit_equipment: Option<usize>,
+    gear_search: String,
+    gear_sort: String,
 }
 impl State {
     fn initial() -> Self {
@@ -34,6 +44,7 @@ impl State {
             .and_then(|s| serde_json::from_str::<Saved>(&s).ok())
             .filter(|s| {
                 s.version == 1
+                    && s.snapshot.selected().is_some()
                     && Snapshot::parse(
                         &serde_json::to_string(&s.snapshot).unwrap_or_default(),
                         s.snapshot.fetched_at.clone(),
@@ -45,11 +56,50 @@ impl State {
             snapshot: account::demo(),
             options: Options::default(),
             pins: BTreeMap::new(),
+            last_setup_fragment: None,
         });
+        if saved.snapshot.source == "Demo" {
+            saved.snapshot = account::demo();
+        }
         saved.options.food = saved.options.food.min(20);
         saved.options.prayer_potions = saved.options.prayer_potions.min(12);
         saved.options.raid_level = saved.options.raid_level.min(150);
+        saved.options.max_switches = saved.options.max_switches.map(|n| n.min(11));
+        saved.options.switch_slots = saved.options.switch_slots.min(20);
+        if saved.options.fewer_switches {
+            saved.options.max_switches = Some(4);
+            saved.options.fewer_switches = false;
+        }
+        let hash = window().location().hash().unwrap_or_default();
+        let mut shared_setup = if hash.starts_with("#setup=") {
+            share::Setup::parse(&hash).ok()
+        } else {
+            None
+        };
+        if shared_setup.is_some()
+            && (saved.last_setup_fragment.as_deref() == Some(hash.as_str())
+                || share::Setup::from_plan(
+                    &planner::plan(&saved.snapshot, &saved.options),
+                    &saved.options,
+                )
+                .fragment()
+                .ok()
+                .as_deref()
+                    == Some(hash.as_str()))
+        {
+            shared_setup = None;
+        }
+        if let Some(setup) = &shared_setup {
+            saved.options = setup.options();
+        }
         Self {
+            shared_setup,
+            edit_inventory: None,
+            edit_style: None,
+            compare_target: None,
+            edit_equipment: None,
+            gear_search: String::new(),
+            gear_sort: "dps".into(),
             saved,
             tab: "bossing".into(),
             phase: None,
@@ -59,13 +109,31 @@ impl State {
             export_text: None,
         }
     }
+    fn plan(&self) -> Plan {
+        self.shared_setup
+            .as_ref()
+            .map(share::Setup::plan)
+            .unwrap_or_else(|| planner::plan(&self.saved.snapshot, &self.saved.options))
+    }
     fn persist(&self) {
+        let mut stored = self.saved.clone();
+        if self.shared_setup.is_none() {
+            let base = format!(
+                "{}{}",
+                window().location().origin().unwrap_or_default(),
+                window().location().pathname().unwrap_or_default()
+            );
+            let hash = share::Setup::from_plan(&self.plan(), &self.saved.options)
+                .fragment()
+                .unwrap_or_default();
+            stored.last_setup_fragment = Some(hash.clone());
+            let _ = window().history().and_then(|h| {
+                h.replace_state_with_url(&JsValue::NULL, "", Some(&format!("{base}{hash}")))
+            });
+        }
         if let Some(storage) = window().local_storage().ok().flatten() {
             if storage
-                .set_item(
-                    STORAGE,
-                    &serde_json::to_string(&self.saved).unwrap_or_default(),
-                )
+                .set_item(STORAGE, &serde_json::to_string(&stored).unwrap_or_default())
                 .is_err()
             {
                 web_sys::console::warn_1(
@@ -81,7 +149,11 @@ impl State {
     fn pins(&self) -> Vec<String> {
         self.saved
             .pins
-            .get(&self.saved.snapshot.selected)
+            .get(&format!(
+                "{}:{}",
+                self.saved.snapshot.selected,
+                self.saved.options.boss.key()
+            ))
             .cloned()
             .unwrap_or_default()
     }
@@ -115,10 +187,20 @@ fn text_input(id: &str) -> String {
         .unwrap_or_default()
 }
 fn image(id: i32) -> String {
-    format!(
-        "<img src=\"./assets/items/{id}.png\" alt=\"\" width=\"32\" height=\"32\" loading=\"lazy\">"
-    )
+    // Every client downloads the same public icon pack inside Wasm; no owned-item URLs leave the page.
+    static ICONS: std::sync::OnceLock<BTreeMap<i32, String>> = std::sync::OnceLock::new();
+    let icons = ICONS.get_or_init(|| {
+        serde_json::from_str(include_str!("../assets/item-icons-pack.json"))
+            .expect("public icon pack")
+    });
+    match icons.get(&id) {
+        Some(data) => format!(
+            r#"<img src="data:image/png;base64,{data}" alt="" width="32" height="32" loading="lazy">"#
+        ),
+        None => "<span class=\"unknown-item\" aria-hidden=\"true\">?</span>".into(),
+    }
 }
+
 fn button(action: &str, label: &str, class: &str) -> String {
     format!(
         "<button type=\"button\" data-action=\"{}\" class=\"{}\">{}</button>",
@@ -147,6 +229,37 @@ pub fn start() -> Result<(), JsValue> {
     });
     document().add_event_listener_with_callback("click", click.as_ref().unchecked_ref())?;
     click.forget();
+    let search = Closure::<dyn FnMut(web_sys::Event)>::new(|e: web_sys::Event| {
+        if let Some(el) = e
+            .target()
+            .and_then(|t| t.dyn_into::<HtmlInputElement>().ok())
+        {
+            if el.id() == "gear-search" {
+                STATE.with(|state| {
+                    let mut s = state.borrow_mut();
+                    s.gear_search = el.value();
+                    if let Some(results) = document().get_element_by_id("gear-pick-results") {
+                        results.set_inner_html(&gear_choices(&s));
+                    }
+                });
+            }
+        }
+    });
+    document().add_event_listener_with_callback("input", search.as_ref().unchecked_ref())?;
+    search.forget();
+    let escape = Closure::<dyn FnMut(web_sys::Event)>::new(|e: web_sys::Event| {
+        if js_sys::Reflect::get(e.as_ref(), &JsValue::from_str("key"))
+            .ok()
+            .and_then(|v| v.as_string())
+            .as_deref()
+            == Some("Escape")
+        {
+            STATE.with(|s| s.borrow_mut().edit_equipment = None);
+            render();
+        }
+    });
+    document().add_event_listener_with_callback("keydown", escape.as_ref().unchecked_ref())?;
+    escape.forget();
     let change = Closure::<dyn FnMut(web_sys::Event)>::new(|e: web_sys::Event| {
         let Some(el) = e.target().and_then(|t| t.dyn_into::<Element>().ok()) else {
             return;
@@ -169,22 +282,80 @@ pub fn start() -> Result<(), JsValue> {
             }
             return;
         }
-        STATE.with(|state|{let mut s=state.borrow_mut();match id.as_str(){
+        // Draft form fields must survive blur: they are committed by their action button.
+        if ![
+            "gear-sort",
+            "max-switches",
+            "switch-slots",
+            "focus-style",
+            "compare-target",
+            "member",
+            "shared",
+            "fewer",
+            "food",
+            "potions",
+            "raid-level",
+            "access",
+            "started",
+            "inventory-item",
+            "inventory-quantity",
+        ]
+        .contains(&id.as_str())
+            && !id.starts_with("skill-")
+            && !id.starts_with("gear-")
+            && !id.starts_with("quest-")
+            && !id.starts_with("priority-")
+        {
+            return;
+        }
+        STATE.with(|state|{let mut s=state.borrow_mut();if s.shared_setup.is_some() && !id.starts_with("skill-"){s.notice("Choose Rebuild using my items before editing this shared setup.",true);return;}match id.as_str(){
+            _ if id.starts_with("priority-")=>{if let(Ok(target),Ok(weight))=(id[9..].parse::<i32>(),input(&id).parse::<u32>()){if encounter_targets(&s).contains(&target){s.saved.options.phase_priorities.insert(target,weight.min(10));}}},
+            "gear-sort"=>{if let Ok(sel)=el.dyn_into::<HtmlSelectElement>(){s.gear_sort=sel.value();}},
+            "max-switches"=>{if let Ok(sel)=el.dyn_into::<HtmlSelectElement>(){s.saved.options.max_switches=sel.value().parse::<usize>().ok().map(|n|n.min(11));s.saved.options.fewer_switches=false;s.saved.options.inventory_overrides.clear();s.saved.options.inventory_quantities.clear();}},
+            "switch-slots"=>{s.saved.options.switch_slots=input("switch-slots").parse::<usize>().unwrap_or(12).min(20);},
+            "focus-style"=>{if let Ok(sel)=el.dyn_into::<HtmlSelectElement>(){let value=sel.value();if ["Balanced","Melee","Ranged","Magic"].contains(&value.as_str()){s.saved.options.focus_style=value;}}},
+            "compare-target"=>{if let Ok(sel)=el.dyn_into::<HtmlSelectElement>(){s.compare_target=sel.value().parse().ok();}},
+            _ if id.starts_with("quest-")=>{if let (Ok(i),Ok(sel))=(id[6..].parse::<usize>(),el.dyn_into::<HtmlSelectElement>()){if let Some(quest)=planner::GEAR_QUESTS.get(i){let selected=s.saved.snapshot.selected.clone();if let Some(m)=s.saved.snapshot.members.iter_mut().find(|m|m.name==selected){match sel.value().as_str(){"yes"=>{m.quest_overrides.insert((*quest).into(),2);},"no"=>{m.quest_overrides.insert((*quest).into(),1);},_=>{m.quest_overrides.remove(*quest);}}}}}},
             "member"=>{if let Ok(select)=el.dyn_into::<HtmlSelectElement>(){s.saved.snapshot.selected=select.value();s.saved.options.access_override=None;s.saved.options.started_barrows=None;s.phase=None;}},
             "shared"=>s.saved.options.shared=el.dyn_ref::<HtmlInputElement>().is_some_and(|e|e.checked()),
             "fewer"=>s.saved.options.fewer_switches=el.dyn_ref::<HtmlInputElement>().is_some_and(|e|e.checked()),
-            "food"=>s.saved.options.food=input("food").parse::<usize>().unwrap_or(8).min(20),
-            "potions"=>s.saved.options.prayer_potions=input("potions").parse::<usize>().unwrap_or(3).min(12),
+            "food"=>{s.saved.options.food=input("food").parse::<usize>().unwrap_or(8).min(20);s.saved.options.inventory_overrides.clear();s.saved.options.inventory_quantities.clear();},
+            "potions"=>{s.saved.options.prayer_potions=input("potions").parse::<usize>().unwrap_or(3).min(12);s.saved.options.inventory_overrides.clear();s.saved.options.inventory_quantities.clear();},
             "raid-level"=>s.saved.options.raid_level=input("raid-level").parse::<u32>().unwrap_or(0).min(150),
             "access"=>{if let Ok(select)=el.dyn_into::<HtmlSelectElement>(){s.saved.options.access_override=match select.value().as_str(){"yes"=>Some(true),"no"=>Some(false),_=>None};}},
             "started"=>{if let Ok(select)=el.dyn_into::<HtmlSelectElement>(){s.saved.options.started_barrows=match select.value().as_str(){"yes"=>Some(true),"no"=>Some(false),_=>None};}},
-            _ if id.starts_with("skill-")=>{if let (Ok(index),Ok(level))=(id[6..].parse::<usize>(),input(&id).parse::<u32>()){if index<24&&(1..=99).contains(&level){let selected=s.saved.snapshot.selected.clone();if let Some(m)=s.saved.snapshot.members.iter_mut().find(|m|m.name==selected){let skills=m.skills.get_or_insert(vec![0;24]);skills.resize(24,0);skills[index]=account::xp_for_level(level);s.notice("Skill correction saved locally. Refreshing GroupIron replaces imported skills.",false);}}}},
+            _ if id.starts_with("gear-")=>{if let Ok(sel)=el.dyn_into::<HtmlSelectElement>(){if let Ok(value)=sel.value().parse::<i32>(){s.saved.options.gear_overrides.insert(id[5..].into(),value);s.saved.options.inventory_overrides.clear();}}},
+            "inventory-quantity"=>{if let Some(index)=s.edit_inventory{if let Ok(q)=input("inventory-quantity").parse::<u32>(){s.saved.options.inventory_quantities.insert(index,q);}}},
+            "inventory-item"=>{if let (Some(index),Ok(sel))=(s.edit_inventory,el.dyn_into::<HtmlSelectElement>()){if let Ok(value)=sel.value().parse::<i32>(){if value>0{s.saved.options.inventory_overrides.insert(index,value);s.edit_inventory=None;}}}},
+            _ if id.starts_with("skill-")=>{if let (Ok(index),Ok(level))=(id[6..].parse::<usize>(),input(&id).parse::<u32>()){if index<24&&(1..=99).contains(&level){let selected=s.saved.snapshot.selected.clone();if let Some(m)=s.saved.snapshot.members.iter_mut().find(|m|m.name==selected){m.level_overrides.insert(SKILLS[index].into(),level);s.notice("Skill correction saved locally. Public skill lookup replaces local corrections.",false);}}}},
             _=>return,
         }s.export_text=None;s.persist();});
         render();
     });
     document().add_event_listener_with_callback("change", change.as_ref().unchecked_ref())?;
     change.forget();
+    let hash_change = Closure::<dyn FnMut(web_sys::Event)>::new(|_| {
+        let hash = window().location().hash().unwrap_or_default();
+        STATE.with(|state| {
+            let mut s = state.borrow_mut();
+            if hash.starts_with("#setup=") {
+                match share::Setup::parse(&hash) {
+                    Ok(setup) => {
+                        s.saved.options = setup.options();
+                        s.shared_setup = Some(setup);
+                        s.phase = None;
+                    }
+                    Err(e) => s.notice(e, true),
+                }
+            } else {
+                s.shared_setup = None;
+            }
+        });
+        render();
+    });
+    window()
+        .add_event_listener_with_callback("hashchange", hash_change.as_ref().unchecked_ref())?;
+    hash_change.forget();
     Ok(())
 }
 
@@ -194,20 +365,80 @@ fn notice(message: &str, error: bool) {
 }
 fn act(action: &str) {
     match action {
-        "connect" => {
-            let group = input("group-name");
-            let token = input("group-token");
-            if group.trim().is_empty() || token.trim().is_empty() {
-                notice("Enter your GroupIron group name and group token.", true);
+        "load-levels" => {
+            let name = input("player-name").trim().to_string();
+            if name.is_empty()
+                || name.len() > 12
+                || !name
+                    .chars()
+                    .all(|c| c.is_ascii_alphanumeric() || " _-".contains(c))
+            {
+                notice(
+                    "Enter a RuneScape name of up to 12 letters, numbers or spaces.",
+                    true,
+                );
                 return;
             }
             STATE.with(|s| {
                 let mut s = s.borrow_mut();
                 s.busy = true;
-                s.notice("Reading your GroupIron snapshot…", false);
+                s.notice("Looking up public combat levels…", false);
             });
             render();
-            spawn_local(connect(group, token));
+            spawn_local(lookup_skills(name));
+            return;
+        }
+        "share" => {
+            let result = STATE.with(|s| {
+                let s = s.borrow();
+                share::Setup::from_plan(&s.plan(), &s.saved.options).fragment()
+            });
+            match result {
+                Ok(hash) => {
+                    let base = window()
+                        .location()
+                        .href()
+                        .unwrap_or_default()
+                        .split('#')
+                        .next()
+                        .unwrap_or_default()
+                        .to_string();
+                    let url = format!("{base}{hash}");
+                    let _ = window()
+                        .history()
+                        .and_then(|h| h.replace_state_with_url(&JsValue::NULL, "", Some(&url)));
+                    STATE.with(|s| s.borrow_mut().export_text = Some(url.clone()));
+                    spawn_local(async move {
+                        let copied =
+                            JsFuture::from(window().navigator().clipboard().write_text(&url))
+                                .await
+                                .is_ok();
+                        notice(
+                            if copied {
+                                "Setup link copied. Only encounter, equipped items and inventory are shared."
+                            } else {
+                                "Copy the setup link shown below. Your bank remains private."
+                            },
+                            false,
+                        );
+                    });
+                }
+                Err(e) => notice(&e, true),
+            }
+            render();
+            return;
+        }
+        "use-bank" => {
+            STATE.with(|s| {
+                let mut s = s.borrow_mut();
+                s.shared_setup = None;
+                s.persist();
+            });
+            let base = window().location().pathname().unwrap_or_default();
+            let _ = window()
+                .history()
+                .and_then(|h| h.replace_state_with_url(&JsValue::NULL, "", Some(&base)));
+            render();
             return;
         }
         "import" => {
@@ -217,7 +448,7 @@ fn act(action: &str) {
         "copy" => {
             let content = STATE.with(|s| {
                 let s = s.borrow();
-                let p = planner::plan(&s.saved.snapshot, &s.saved.options);
+                let p = s.plan();
                 export::inventory_setup(&p, &s.saved.options, &s.saved.snapshot.selected)
             });
             match content {
@@ -245,14 +476,32 @@ fn act(action: &str) {
             render();
             return;
         }
+        "bank-tags" => {
+            let result = STATE.with(|s| {
+                let s = s.borrow();
+                export::bank_tags(&s.plan(), &s.saved.options)
+            });
+            match result {
+                Ok(text) => {
+                    STATE.with(|s| s.borrow_mut().export_text = Some(text.clone()));
+                    spawn_local(async move {
+                        let _ = JsFuture::from(window().navigator().clipboard().write_text(&text))
+                            .await;
+                        notice(
+                            "Bank Tags text ready. Right-click the bank’s + tab and choose Import tag tab. Tags do not store quantities.",
+                            false,
+                        );
+                    });
+                }
+                Err(e) => notice(&e, true),
+            }
+            render();
+            return;
+        }
         "download-setup" => {
             let result = STATE.with(|s| {
                 let s = s.borrow();
-                export::inventory_setup(
-                    &planner::plan(&s.saved.snapshot, &s.saved.options),
-                    &s.saved.options,
-                    &s.saved.snapshot.selected,
-                )
+                export::inventory_setup(&s.plan(), &s.saved.options, &s.saved.snapshot.selected)
             });
             match result {
                 Ok(text) => download("ironbound-inventory-setup.json", &text),
@@ -267,10 +516,14 @@ fn act(action: &str) {
             return;
         }
         "forget" => {
-            if !window().confirm_with_message("Remove the saved account and goals from this browser? Your GroupIron account will not be changed.").unwrap_or(false){return;}
+            if !window().confirm_with_message("Remove the saved account and goals from this browser? Your bank export file will not be changed.").unwrap_or(false){return;}
             if let Some(storage) = window().local_storage().ok().flatten() {
                 let _ = storage.remove_item(STORAGE);
             }
+            let path = window().location().pathname().unwrap_or_default();
+            let _ = window()
+                .history()
+                .and_then(|h| h.replace_state_with_url(&JsValue::NULL, "", Some(&path)));
             STATE.with(|s| *s.borrow_mut() = State::initial());
             render();
             return;
@@ -283,38 +536,205 @@ fn act(action: &str) {
         s.export_text = None;
         if let Some(tab) = action.strip_prefix("tab:") {
             s.tab = tab.into();
+            s.edit_equipment = None;
         } else if let Some(boss) = action.strip_prefix("boss:") {
             s.saved.options.boss = if boss == "toa" {
                 Boss::Toa
+            } else if boss == "custom" {
+                Boss::Custom
             } else {
                 Boss::Barrows
             };
             s.saved.options.access_override = None;
             s.saved.options.started_barrows = None;
+            s.saved.options.gear_overrides.clear();
+            s.saved.options.inventory_overrides.clear();
+            s.saved.options.inventory_quantities.clear();
+            s.shared_setup = None;
             s.phase = None;
+            s.edit_style = None;
+            s.compare_target = None;
+        } else if let Some(id) = action
+            .strip_prefix("goal-item:")
+            .and_then(|v| v.parse::<i32>().ok())
+        {
+            if planner::gear(id).is_some() {
+                let key = format!(
+                    "{}:{}",
+                    s.saved.snapshot.selected,
+                    s.saved.options.boss.key()
+                );
+                s.saved.pins.insert(key, vec![format!("item:{id}")]);
+                s.edit_equipment = None;
+                s.notice("Upgrade goal saved for this encounter.", false);
+            }
+        } else if action == "close-picker" {
+            s.edit_equipment = None;
+        } else if let Some(slot) = action
+            .strip_prefix("edit-equipment:")
+            .and_then(|v| v.parse::<usize>().ok())
+        {
+            if slot < 14 && s.shared_setup.is_none() {
+                let plan = s.plan();
+                let style = s
+                    .phase
+                    .and_then(|i| plan.phases.get(i))
+                    .map(|phase| {
+                        if phase.name == "Akkha" {
+                            "Magic"
+                        } else if phase.name == "Wardens" {
+                            "Ranged"
+                        } else {
+                            phase.style.as_str()
+                        }
+                    })
+                    .unwrap_or(planner::primary_style(&s.saved.options))
+                    .to_string();
+                s.edit_style = Some(style);
+                s.edit_equipment = Some(slot);
+                s.gear_search.clear();
+            }
+        } else if let Some(slot) = action
+            .strip_prefix("auto-gear:")
+            .and_then(|v| v.parse::<usize>().ok())
+        {
+            let style = comparison_style(&s).to_string();
+            s.saved
+                .options
+                .gear_overrides
+                .remove(&format!("{style}:{slot}"));
+            s.edit_equipment = None;
+        } else if action == "casual" {
+            s.saved.options.max_switches = Some(4);
+            s.saved.options.switch_slots = 8;
+            s.saved.options.focus_style = "Balanced".into();
+            s.saved.options.fewer_switches = false;
+        } else if let Some(choice) = action.strip_prefix("pick-gear:") {
+            let parts: Vec<_> = choice.split(':').collect();
+            if parts.len() == 3 {
+                if let (Ok(slot), Ok(id)) = (parts[1].parse::<usize>(), parts[2].parse::<i32>()) {
+                    if slot < 14
+                        && (id == 0
+                            || (planner::gear(id)
+                                .is_some_and(|g| g.slot == planner::SLOT_KEYS[slot])
+                                && s.saved.snapshot.available(false).contains_key(&id)
+                                && s.saved
+                                    .snapshot
+                                    .selected()
+                                    .is_some_and(|m| planner::can_use(id, m))))
+                    {
+                        let key = format!(
+                            "{}:{slot}",
+                            if s.saved.options.fewer_switches
+                                && [0, 1, 2, 9, 10, 12].contains(&slot)
+                            {
+                                planner::primary_style(&s.saved.options)
+                            } else {
+                                parts[0]
+                            }
+                        );
+                        s.saved.options.gear_overrides.insert(key, id);
+                        s.edit_equipment = None;
+                        s.saved.options.inventory_overrides.clear();
+                        s.saved.options.inventory_quantities.clear();
+                        s.notice(
+                            "Owned equipment selected; switches and supplies rechecked.",
+                            false,
+                        );
+                    }
+                }
+            }
+        } else if let Some(i) = action.strip_prefix("edit-inventory:") {
+            s.edit_inventory = i.parse().ok();
+        } else if let Some(style) = action.strip_prefix("edit-style:") {
+            if ["Melee", "Ranged", "Magic"].contains(&style) {
+                s.edit_style = Some(style.into());
+            }
         } else if let Some(i) = action.strip_prefix("phase:") {
             s.phase = i.parse().ok();
+            let p = s.plan();
+            if let Some(phase) = s.phase.and_then(|i| p.phases.get(i)) {
+                s.edit_style = Some(
+                    if phase.name == "Akkha" {
+                        "Magic"
+                    } else if phase.name == "Wardens" {
+                        "Ranged"
+                    } else {
+                        phase.style.as_str()
+                    }
+                    .into(),
+                );
+                s.compare_target = match s.saved.options.boss {
+                    Boss::Barrows => Some(if s.phase == Some(1) { 1672 } else { 1673 }),
+                    Boss::Toa => match phase.name.as_str() {
+                        "Ba-ba" => Some(11778),
+                        "Kephri" => Some(11719),
+                        "Zebak" => Some(11730),
+                        "Akkha" => Some(11789),
+                        _ => None,
+                    },
+                    Boss::Custom => s
+                        .phase
+                        .and_then(|i| s.saved.options.targets.get(i))
+                        .map(|t| t.id),
+                };
+            }
         } else if action == "starting" {
             s.phase = None;
+            s.edit_style = None;
+            s.compare_target = None;
         } else if action == "demo" {
             s.saved.snapshot = account::demo();
             s.saved.options = Options::default();
             s.tab = "bossing".into();
             s.phase = None;
-            s.notice(
-                "Example account loaded. Your GroupIron account has not been changed.",
-                false,
-            );
+            s.notice("Example account loaded locally.", false);
+        } else if action == "add-target" {
+            let raw = input("monster");
+            let id = raw.rsplit(" · ").next().and_then(|v| v.parse().ok());
+            let style = document()
+                .get_element_by_id("target-style")
+                .and_then(|e| e.dyn_into::<HtmlSelectElement>().ok())
+                .map(|e| e.value())
+                .unwrap_or_default();
+            if let Some(id) = id {
+                let t = planner::Target { id, style };
+                if t.valid() && s.saved.options.targets.len() < 12 {
+                    s.saved.options.targets.push(t);
+                    s.shared_setup = None;
+                    s.phase = None;
+                } else {
+                    s.notice(
+                        "Choose a valid monster; at most 12 targets per group.",
+                        true,
+                    );
+                }
+            } else {
+                s.notice("Choose a monster from the search list.", true);
+            }
+        } else if let Some(i) = action
+            .strip_prefix("remove-target:")
+            .and_then(|v| v.parse::<usize>().ok())
+        {
+            if i < s.saved.options.targets.len() {
+                s.saved.options.targets.remove(i);
+                s.shared_setup = None;
+                s.phase = None;
+            }
         } else if let Some(id) = action.strip_prefix("pin:") {
-            let selected = s.saved.snapshot.selected.clone();
+            let selected = format!(
+                "{}:{}",
+                s.saved.snapshot.selected,
+                s.saved.options.boss.key()
+            );
             let pins = s.saved.pins.entry(selected).or_default();
             if pins.iter().any(|v| v == id) {
                 pins.retain(|v| v != id);
-            } else if pins.len() < 3 {
+            } else if pins.len() < 1 {
                 pins.push(id.into());
             } else {
                 s.notice(
-                    "Keep up to three active goals. Unpin one before adding another.",
+                    "One upgrade is tracked per boss. Unpin it before choosing another.",
                     true,
                 );
             }
@@ -335,23 +755,36 @@ fn act(action: &str) {
     render();
 }
 
-async fn connect(group: String, token: String) {
-    let result=async {
-        let path=group.trim().bytes().map(|b|if b.is_ascii_alphanumeric()||b==b'-'||b==b'_' {char::from(b).to_string()}else{format!("%{b:02X}")}).collect::<String>();
-        let init=web_sys::RequestInit::new();init.set_method("GET");init.set_mode(web_sys::RequestMode::Cors);init.set_redirect(web_sys::RequestRedirect::Error);
-        let request=web_sys::Request::new_with_str_and_init(&format!("https://groupiron.men/api/group/{path}/get-group-data?from_time=1970-01-01T00%3A00%3A00.000Z"),&init).map_err(|_|"Could not prepare the GroupIron request.")?;
-        request.headers().set("Authorization",token.trim()).map_err(|_|"The token contains unsupported characters.")?;
-        let response=JsFuture::from(window().fetch_with_request(&request)).await.map_err(|_|"GroupIron could not be reached. Check connectivity and browser access; your saved account is unchanged.")?.dyn_into::<web_sys::Response>().map_err(|_|"Unexpected GroupIron response.")?;
-        if !response.ok(){return Err(if response.status()==401||response.status()==400{"GroupIron rejected the group name or token. Check both and try again."}else{"GroupIron returned an error. Your saved account is unchanged."});}
-        let raw=JsFuture::from(response.text().map_err(|_|"Could not read the response.")?).await.map_err(|_|"Could not read the response.")?.as_string().ok_or("Unexpected response body.")?;
-        Ok(raw)
-    }.await;
-    // Credentials exist only in this request's memory. They are never stored or exported.
-    STATE.with(|s| s.borrow_mut().busy = false);
-    match result {
-        Ok(raw) => import_raw(&raw),
-        Err(e) => notice(e, true),
+async fn lookup_skills(name: String) {
+    let previous = STATE.with(|s| s.borrow().saved.snapshot.fetched_at.clone());
+    let path = js_sys::encode_uri_component(&name)
+        .as_string()
+        .unwrap_or_default();
+    let result = async {
+        let response = JsFuture::from(
+            window().fetch_with_str(&format!("https://api.wiseoldman.net/v2/players/{path}")),
+        )
+        .await
+        .map_err(|_| "Skill lookup unavailable. Enter your levels manually.")?
+        .dyn_into::<web_sys::Response>()
+        .map_err(|_| "Unexpected response.")?;
+        if !response.ok() {
+            return Err("No public snapshot found. Enter levels manually.");
+        }
+        JsFuture::from(response.text().map_err(|_| "Could not read skills.")?)
+            .await
+            .map_err(|_| "Could not read skills.")?
+            .as_string()
+            .ok_or("Invalid skills response.")
     }
+    .await;
+    STATE.with(|state|{let mut s=state.borrow_mut();s.busy=false;if s.saved.snapshot.fetched_at!=previous{s.notice("Account changed during lookup; result discarded.",true);return;}
+        match result {Ok(raw)=>{
+            let mut m=if s.saved.snapshot.source=="Demo"{account::Member::default()}else{s.saved.snapshot.selected().cloned().unwrap_or_default()};
+            match m.apply_hiscores(&raw){Ok(())=>{m.name=name.clone();s.saved.snapshot.members=vec![m];s.saved.snapshot.selected=name;s.saved.snapshot.source="RuneLite bank / public levels".into();s.saved.options.access_override=None;s.saved.options.started_barrows=None;s.persist();s.notice("Public levels saved locally. Check the snapshot date before relying on cached levels.",false);},Err(e)=>s.notice(e,true)}
+        },Err(e)=>s.notice(e,true)}
+    });
+    render();
 }
 
 fn import_raw(raw: &str) {
@@ -359,8 +792,22 @@ fn import_raw(raw: &str) {
         .to_iso_string()
         .as_string()
         .unwrap_or_default();
+    if raw.trim_start_matches('\u{feff}').starts_with("Item id\t") {
+        let name = input("player-name");
+        match Snapshot::from_bank_tsv(raw, &name, now) {
+            Ok(mut snapshot) => {
+                STATE.with(|state|{let mut s=state.borrow_mut();
+                if s.saved.snapshot.source!="Demo" {if let Some(old)=s.saved.snapshot.selected(){snapshot.members[0].skills=old.skills.clone();snapshot.members[0].level_overrides=old.level_overrides.clone();snapshot.members[0].last_updated=old.last_updated.clone();snapshot.members[0].name=old.name.clone();snapshot.selected=old.name.clone();}}
+                s.saved.snapshot=snapshot;s.shared_setup=None;s.saved.options.access_override=None;s.saved.options.started_barrows=None;s.saved.options.gear_overrides.clear();s.tab="bossing".into();s.phase=None;s.persist();s.notice("Bank imported on this device. Enter or look up your levels to build a setup.",false);
+            });
+                render();
+            }
+            Err(e) => notice(&e, true),
+        }
+        return;
+    }
     if let Ok(mut saved) = serde_json::from_str::<Saved>(raw) {
-        if saved.version != 1 {
+        if saved.version != 1 || saved.snapshot.selected().is_none() {
             notice("This backup version is not supported.", true);
             return;
         }
@@ -399,7 +846,7 @@ fn import_raw(raw: &str) {
             s.tab = "bossing".into();
             s.persist();
             s.notice(
-                "Account imported. Review access, skills and your packing list.",
+                "Account imported. Review your levels and packing list.",
                 false,
             );
         }),
@@ -436,26 +883,31 @@ fn download(name: &str, text: &str) {
 }
 
 fn render() {
-    STATE.with(|state|{let s=state.borrow();let snapshot=&s.saved.snapshot;let options=&s.saved.options;let plan=planner::plan(snapshot,options);let m=snapshot.selected();
+    STATE.with(|state|{let s=state.borrow();let snapshot=&s.saved.snapshot;let options=&s.saved.options;let plan=s.plan();let m=snapshot.selected();
     let demo=snapshot.source=="Demo";
     let nav=|(key,label,icon):(&str,&str,i32)|format!("<button class=\"nav-item {}\" data-action=\"tab:{key}\">{}<span>{label}</span>{}</button>",if s.tab==key{"active"}else{""},image(icon),if key=="goals"{format!("<span class=\"nav-count\">{}</span>",s.pins().len())}else{String::new()});
-    let mut html=format!("<div class=\"app-shell\"><aside class=\"sidebar\"><a class=\"brand\" href=\"#\" aria-label=\"Ironbound home\"><span class=\"brand-mark\">{}</span><span>IRONBOUND<small>THE IRONMAN'S JOURNAL</small></span></a><div class=\"sidebar-rule\"></div><div class=\"nav-label\">YOUR ADVENTURE</div><nav aria-label=\"Main navigation\">{}{}{}</nav><div class=\"sidebar-note\"><span class=\"tiny-rune\">✦</span><p>Every item earned.<br>Every adventure your own.</p></div><div class=\"sidebar-bottom\"><div class=\"local-indicator\"><span></span>Saved on this device</div><small>Independent OSRS fan project.<br>Game assets © Jagex.</small></div></aside><main class=\"main\"><header class=\"topbar\"><span class=\"breadcrumb\">Your journal <span>/</span> {}</span><div class=\"account-pill\">{}<span>{}<small>{}</small></span></div></header>",image(2347),nav(("bossing","Bossing",4151)),nav(("goals","Progression goals",6570)),nav(("account","Your account",1712)),match s.tab.as_str(){"goals"=>"Progression goals","account"=>"Your account",_=>"Bossing"},image(10828),esc(&snapshot.selected),if demo{"Example Ironman"}else{"Imported account"});
-    if demo{html.push_str(&format!("<div class=\"demo-banner\"><span>✦</span><p>You're exploring a sample account. <strong>Bring your own bank to the adventure.</strong></p>{}</div>",button("tab:account","Connect GroupIron <span aria-hidden=\"true\">→</span>","text-button")));}
+    let mut html=format!("<div class=\"app-shell\"><aside class=\"sidebar\"><a class=\"brand\" href=\"#\" aria-label=\"Ironbound home\"><span class=\"brand-mark\">{}</span><span>IRONBOUND<small>IRONMAN BOSSING & GEAR</small></span></a><div class=\"sidebar-rule\"></div><div class=\"nav-label\">YOUR ADVENTURE</div><nav aria-label=\"Main navigation\">{}{}</nav><div class=\"sidebar-note\"><span class=\"tiny-rune\">✦</span><p>Ironman bossing planner</p></div><div class=\"sidebar-bottom\"><div class=\"local-indicator\"><span></span>Saved on this device</div><small>Independent OSRS fan project.<br>Game assets © Jagex.</small></div></aside><main class=\"main\"><header class=\"topbar\"><span class=\"breadcrumb\">Your journal <span>/</span> {}</span><div class=\"account-pill\">{}<span>{}<small>{}</small></span></div></header>",image(2347),nav(("bossing","Bossing",4151)),nav(("account","Your account",1712)),match s.tab.as_str(){"goals"=>"Progression goals","account"=>"Your account",_=>"Bossing"},image(10828),esc(&snapshot.selected),if demo{"Example Ironman"}else{"Imported account"});
+    if demo{html.push_str(&format!("<div class=\"demo-banner\"><span>✦</span><p>You're exploring a sample account. <strong>Bring your own bank to the adventure.</strong></p>{}</div>",button("tab:account","Import your bank <span aria-hidden=\"true\">→</span>","text-button")));}
     if !s.message.is_empty(){html.push_str(&format!("<div role=\"status\" class=\"notice {}\">{}</div>",if s.error{"error"}else{""},esc(&s.message)));}
     html.push_str("<div class=\"page-content\">");
     if s.tab=="account"{html.push_str(&account_page(&s));}
-    else if s.tab=="goals"{html.push_str(&goals_page(&s));}
     else{
-        html.push_str("<div class=\"page-heading\"><div><div class=\"eyebrow\">PREPARE FOR YOUR NEXT CHALLENGE</div><h1>Your bank. Your next adventure.</h1><p>Find your footing, pack your gear, and make every grind count.</p></div><span class=\"journal-stamp\">IRONMAN<br><b>FIELD NOTES</b></span></div>");
-        if let Some(m)=m{html.push_str("<div class=\"skill-strip\">");for (skill,icon) in [("Attack",1215),("Strength",4587),("Defence",12954),("Ranged",9185),("Magic",1381),("Prayer",2434)]{html.push_str(&format!("<div class=\"skill-stat\">{}<span><small>{skill}</small><b>{}</b></span></div>",image(icon),m.level(skill).map(|l|l.to_string()).unwrap_or("?".into())));}html.push_str(&format!("<div class=\"skill-total\"><small>TOTAL LEVEL</small><b>{}</b></div></div>",m.total_level().map(|v|v.to_string()).unwrap_or("?".into())));}
-        html.push_str("<div class=\"section-line\"><h2>Choose your encounter</h2><span>2 supported adventures</span></div><div class=\"encounter-grid\">");
-        for (boss,icon,kicker,description) in [(Boss::Barrows,4708,"BOSS ENCOUNTER","Six brothers. One chest. Your first steps into PvM."),(Boss::Toa,25979,"RAID · STARTER PLAN","One shared inventory, from the paths to the Wardens.")]{let mut opt=options.clone();opt.boss=boss;if boss!=options.boss{opt.access_override=None;opt.started_barrows=None;}let p=planner::plan(snapshot,&opt);html.push_str(&format!("<button class=\"encounter {}\" data-action=\"boss:{}\"><div class=\"encounter-icon\">{}</div><div><small>{kicker}</small><h3>{}</h3><p>{description}</p>{}</div><span class=\"select-dot\"></span></button>",if boss==options.boss{"selected"}else{""},boss.key(),image(icon),boss.name(),badge(p.status(),if p.status()=="Meets starter guidelines"{"green"}else{"amber"})));}
-        html.push_str("</div><div class=\"workspace-grid\"><div class=\"primary-column\">");
-        html.push_str(&encounter_detail(&s,&plan));html.push_str(&loadout_panel(&s,&plan));html.push_str(&inventory_panel(&s,&plan));
-        html.push_str("</div><aside class=\"right-column\">");html.push_str(&checks_panel(&plan));html.push_str(&export_panel(&s,&plan));html.push_str(&next_goal(&s));html.push_str("</aside></div>");
+        html.push_str("<div class=\"page-heading\"><div><div class=\"eyebrow\">PREPARE FOR YOUR NEXT CHALLENGE</div><h1>Ironman Bossing</h1><p>Choose a boss to find a setup from your own bank.</p></div><span class=\"journal-stamp\">IRONMAN<br><b>FIELD NOTES</b></span></div>");
+        if let Some(m)=m{html.push_str("<div class=\"skill-strip\">");for (skill,icon) in [("Attack",1215),("Strength",4587),("Defence",12954),("Ranged",9185),("Magic",1381),("Prayer",2434)]{html.push_str(&format!("<div class=\"skill-stat\">{}<span><small>{skill}</small><b>{}</b></span></div>",image(icon),m.level(skill).map(|l|l.to_string()).unwrap_or("?".into())));}html.push_str("</div>");}
+        html.push_str("<div class=\"section-line\"><h2>Choose your encounter</h2><span>Presets or your own group</span></div><div class=\"encounter-grid\">");
+        for (boss,icon,kicker,description) in [(Boss::Barrows,4708,"BOSS ENCOUNTER","Equipment and supplies for the six brothers."),(Boss::Toa,25979,"RAID · STARTER PLAN","Starter equipment for raid levels 0–150.")]{let mut opt=options.clone();opt.boss=boss;if boss!=options.boss{opt.access_override=None;opt.started_barrows=None;}let p=planner::plan(snapshot,&opt);html.push_str(&format!("<button class=\"encounter {}\" data-action=\"boss:{}\"><div class=\"encounter-icon\">{}</div><div><small>{kicker}</small><h3>{}</h3><p>{description}</p>{}</div><span class=\"select-dot\"></span></button>",if boss==options.boss{"selected"}else{""},boss.key(),image(icon),boss.name(),badge(p.status(),if p.status()=="Meets starter guidelines"{"green"}else{"amber"})));}
+        html.push_str("</div>");
+        html.push_str(&button("boss:custom","Build a custom encounter group","button ghost"));
+        if options.boss==Boss::Custom {html.push_str(&custom_group(&s));}
+        if s.shared_setup.is_some(){html.push_str(&format!("<p class=\"notice\">Viewing a shared setup. Your saved bank is unchanged. {}</p>",button("use-bank","Rebuild using my items","text-button")));}
+        html.push_str("<div class=\"workspace-grid\"><div class=\"primary-column\">");
+        html.push_str(&encounter_detail(&s,&plan));html.push_str(&combat_panel(&s,&plan));html.push_str(&switch_panel(&s,&plan));html.push_str(&loadout_panel(&s,&plan));html.push_str(&inventory_panel(&s,&plan));
+        html.push_str("</div><aside class=\"right-column\">");html.push_str(&checks_panel(&plan));html.push_str(&export_panel(&s,&plan));if s.shared_setup.is_none(){html.push_str(&next_goal(&s));}html.push_str("</aside></div>");if s.shared_setup.is_none(){html.push_str(&tier_table(&s));}
     }
-    html.push_str("</div><footer><span>Made for the self-sufficient.</span><a href=\"https://oldschool.runescape.wiki/\" target=\"_blank\" rel=\"noreferrer\">OSRS Wiki ↗</a><a href=\"https://groupiron.men/\" target=\"_blank\" rel=\"noreferrer\">GroupIron ↗</a><span>Starter catalog · 9 Nov 2026</span></footer></main></div>");
+    html.push_str("</div><footer><span>Ironbound — an unofficial OSRS fan site.</span><a href=\"https://oldschool.runescape.wiki/\" target=\"_blank\" rel=\"noreferrer\">OSRS Wiki ↗</a><span>Starter catalog · 9 Nov 2026</span></footer></main></div>");
+    if s.edit_equipment.is_some(){html.push_str(&gear_picker(&s));}
     if let Some(el)=document().get_element_by_id("app"){el.set_inner_html(&html);}
+    if s.edit_equipment.is_some(){if let Some(search)=document().get_element_by_id("gear-search").and_then(|e|e.dyn_into::<web_sys::HtmlElement>().ok()){let _=search.focus();}}
 });
 }
 
@@ -477,6 +929,8 @@ fn encounter_detail(s: &State, p: &Plan) -> String {
         boss.name(),
         if boss == Boss::Barrows {
             "A magic-first setup, with a ranged switch for Ahrim."
+        } else if boss == Boss::Custom {
+            "One shared inventory for your selected monsters and styles."
         } else {
             "A starter packing plan for raid levels 0–150."
         },
@@ -521,7 +975,14 @@ fn loadout_panel(s: &State, p: &Plan) -> String {
     let mut html = format!(
         "<section class=\"panel loadout-panel\"><div class=\"panel-heading\"><h2>{} Your equipment</h2>{}</div><div class=\"loadout-content\"><div class=\"equipment-paper\"><div class=\"paper-header\">{}</div><div class=\"equipment-grid\">",
         image(12954),
-        badge("FROM YOUR BANK", "neutral"),
+        badge(
+            if s.shared_setup.is_some() {
+                "SHARED SETUP"
+            } else {
+                "FROM YOUR BANK"
+            },
+            "neutral"
+        ),
         current
             .map(|p| esc(&p.name))
             .unwrap_or("Starting equipment".into())
@@ -539,14 +1000,27 @@ fn loadout_panel(s: &State, p: &Plan) -> String {
         (10, "eq-feet"),
         (12, "eq-ring"),
     ] {
-        html.push_str(&slot(
-            set[slot_index],
+        let tooltip = format!(
+            "{}: {}",
             planner::SLOTS[slot_index],
-            class,
-            None,
+            set[slot_index]
+                .map(planner::item_name)
+                .unwrap_or_else(|| "Empty".into())
+        );
+        html.push_str(&format!(r#"<button class="equipment-edit {class}" data-action="edit-equipment:{slot_index}" data-tooltip="{}" aria-label="Change {}">{}</button>"#,esc(&tooltip),esc(&tooltip),slot(set[slot_index],planner::SLOTS[slot_index],"",None)));
+    }
+    html.push_str("</div><small>Hover over an item for its name</small></div><div class=\"loadout-notes\"><h3>Suggested equipment</h3><p>Reviewed starter gear priorities, matched against your bank and levels. Compare owned alternatives in the equipment tiers below.</p>");
+    if let Some((_, effect)) = set[3].and_then(|id| {
+        reference::KERIS_VARIANTS
+            .iter()
+            .find(|(variant, _)| *variant == id)
+    }) {
+        html.push_str(&format!(
+            "<p class=\"weapon-effect\"><strong>{}</strong><br>{}</p>",
+            esc(&set[3].map(planner::item_name).unwrap_or_default()),
+            esc(effect)
         ));
     }
-    html.push_str("</div><small>Hover or focus gear names for details</small></div><div class=\"loadout-notes\"><h3>Made from what you have.</h3><p>Reviewed starter gear priorities, matched against your bank and levels.</p>");
     if !p.spell.is_empty() {
         html.push_str(&format!(
             "<div class=\"spell-line\">{}<span>Selected spell<strong>{}</strong></span></div>",
@@ -554,7 +1028,11 @@ fn loadout_panel(s: &State, p: &Plan) -> String {
             esc(&p.spell)
         ));
     }
-    html.push_str(&format!("<label class=\"toggle-row\"><input id=\"fewer\" type=\"checkbox\" {}><span>Fewer switches<small>Share accessories between styles</small></span></label><label class=\"toggle-row\"><input id=\"shared\" type=\"checkbox\" {}><span>Include group storage<small>One shared-bank observation, counted once</small></span></label>",if s.saved.options.fewer_switches{"checked"}else{""},if s.saved.options.shared{"checked"}else{""}));
+    html.push_str(&button(
+        "casual",
+        "Casual preset: 4-item switches",
+        "button ghost full",
+    ));
     html.push_str(
         "<details><summary>Matched equipment & exclusions</summary><div class=\"gear-list\">",
     );
@@ -572,7 +1050,8 @@ fn loadout_panel(s: &State, p: &Plan) -> String {
             button(&format!("exclude:{id}"), "Restore", "text-button")
         ));
     }
-    html.push_str("</div></details></div></div><div class=\"phase-tabs\">");
+    html.push_str("</div></details>");
+    html.push_str("</div></div><div class=\"phase-tabs\">");
     html.push_str(&button(
         "starting",
         "Starting gear",
@@ -618,14 +1097,27 @@ fn inventory_panel(s: &State, p: &Plan) -> String {
     );
     for i in 0..28 {
         let item = p.inventory.get(i);
+        html.push_str(&format!("<button class=\"inventory-edit\" data-action=\"edit-inventory:{i}\" aria-label=\"Change inventory slot {}\">",i+1));
         html.push_str(&slot(
             item.map(|p| p.id),
-            &format!("Slot {}", i + 1),
+            &format!(
+                "Slot {}{}",
+                i + 1,
+                item.and_then(|p| s.saved.snapshot.selected()?.item_names.get(&p.id))
+                    .map(|n| format!(" · {n}"))
+                    .unwrap_or_default()
+            ),
             "inventory-item",
             item.map(|p| p.quantity),
         ));
+        html.push_str("</button>");
     }
-    html.push_str(&format!("</div><div class=\"supply-settings\"><h3>Leave room for the journey.</h3><p>Adjust your starting supplies. Quantities are a trip template, not a prediction of what you'll consume.</p><label>Food slots<input id=\"food\" type=\"number\" min=\"0\" max=\"20\" value=\"{}\"></label><label>Prayer / restore bottles<input id=\"potions\" type=\"number\" min=\"0\" max=\"12\" value=\"{}\"></label><div class=\"small-note\">◈ {} slots free at the start</div></div></div>",s.saved.options.food,s.saved.options.prayer_potions,28usize.saturating_sub(p.inventory.len())));
+    html.push_str(&format!("</div><div class=\"supply-settings\"><h3>Supplies</h3><p>Adjust your starting supplies. Quantities are a trip template, not a prediction of what you'll consume.</p><label>Food slots<input id=\"food\" type=\"number\" min=\"0\" max=\"20\" value=\"{}\"></label><label>Prayer / restore bottles<input id=\"potions\" type=\"number\" min=\"0\" max=\"12\" value=\"{}\"></label><div class=\"small-note\">◈ {} slots free at the start</div></div></div>",s.saved.options.food,s.saved.options.prayer_potions,28usize.saturating_sub(p.inventory.len())));
+    if let Some(i) = s.edit_inventory {
+        if s.shared_setup.is_none() {
+            html.push_str(&inventory_editor(s, i));
+        }
+    }
     if !p.missing.is_empty() {
         html.push_str("<div class=\"missing-list\"><strong>Before you set out</strong><ul>");
         for missing in &p.missing {
@@ -657,19 +1149,21 @@ fn checks_panel(p: &Plan) -> String {
     for c in &p.checks {
         html.push_str(&format!("<div class=\"check\"><span class=\"check-mark {}\">{}</span><div><strong>{}</strong><small>{}</small></div></div>",match c.state{Some(true)=>"yes",Some(false)=>"no",None=>"unknown"},match c.state{Some(true)=>"✓",Some(false)=>"!",None=>"?"},esc(&c.name),esc(&c.detail)));
     }
-    html.push_str(&format!("</div><p class=\"panel-footnote\">Preparation guidelines don't predict a successful kill. {} to confirm access.</p></section>",button("tab:account","Open your account","text-button")));
+    html.push_str(&format!("</div><p class=\"panel-footnote\">Preparation guidelines don't predict a successful kill. {} to review levels.</p></section>",button("tab:account","Open your account","text-button")));
     html
 }
 fn export_panel(s: &State, p: &Plan) -> String {
     let disabled = if p.exportable() { "" } else { "disabled" };
     let mut html = format!(
-        "<section class=\"export-card\"><div class=\"eyebrow\">READY WHEN YOU ARE</div><h2>Take your plan to RuneLite.</h2><p>Import your equipment and packing list into Inventory Setups.</p><button data-action=\"copy\" class=\"button gold full\" {disabled}>Copy Inventory Setup <span>↗</span></button><button data-action=\"download-setup\" class=\"button ghost full\" {disabled}>Download setup JSON</button><small>{}</small><details><summary>How to import</summary><ol><li>Enable Inventory Setups and Bank Tags in RuneLite.</li><li>Choose the green import button → Import setup.</li><li>Paste the copied text and confirm.</li></ol><p>You withdraw and equip items yourself.</p></details>",
+        "<section class=\"export-card\"><div class=\"eyebrow\">READY WHEN YOU ARE</div><h2>RuneLite export</h2><p>Import your equipment and packing list into Inventory Setups.</p><button data-action=\"copy\" class=\"button gold full\" {disabled}>Copy Inventory Setup <span>↗</span></button><button data-action=\"download-setup\" class=\"button ghost full\" {disabled}>Download setup JSON</button><small>{}</small><details><summary>How to import</summary><ol><li>Enable Inventory Setups and Bank Tags in RuneLite.</li><li>Choose the green import button → Import setup.</li><li>Paste the copied text and confirm.</li></ol><p>You withdraw and equip items yourself.</p></details>",
         if p.exportable() {
-            "Check staff charges and teleport access before your trip."
+            "Check staff charges and supplies before your trip."
         } else {
             "Resolve missing items or preparation blockers to export."
         }
     );
+    html.push_str(&button("bank-tags", "Copy Bank Tags", "button ghost full"));
+    html.push_str(&button("share", "Copy setup link", "button ghost full"));
     if let Some(text) = &s.export_text {
         html.push_str(&format!("<label class=\"export-label\">Setup text<textarea readonly rows=\"5\">{}</textarea></label>",esc(text)));
     }
@@ -677,11 +1171,37 @@ fn export_panel(s: &State, p: &Plan) -> String {
     html
 }
 fn next_goal(s: &State) -> String {
-    let Some(m) = s.saved.snapshot.selected() else {
+    if s.saved.options.boss == Boss::Custom {
+        return String::new();
+    }
+    let Some(_) = s.saved.snapshot.selected() else {
         return String::new();
     };
-    let goals = planner::goals(m, s.saved.options.boss);
+    let goals = planner::goals(&s.saved.snapshot, s.saved.options.boss);
     let pins = s.pins();
+    if let Some(id) = pins.iter().find_map(|p| {
+        p.strip_prefix("item:")
+            .and_then(|id| id.parse::<i32>().ok())
+    }) {
+        if let Some(gear) = planner::gear(id) {
+            let owned = s.saved.snapshot.available(false).contains_key(&id);
+            let wiki = js_sys::encode_uri_component(&gear.name.replace(' ', "_"))
+                .as_string()
+                .unwrap_or_default();
+            return format!(
+                r#"<section class="panel goal-teaser"><h3>Your bossing upgrade</h3><p>{}<strong>{}</strong></p><p>{}</p>{} · <a href="https://oldschool.runescape.wiki/w/{wiki}" target="_blank" rel="noreferrer">How to obtain</a></section>"#,
+                image(id),
+                esc(&gear.name),
+                if owned {
+                    "This item is now in your bank. Compare it in your equipment slots."
+                } else {
+                    "Not owned yet. This goal stays private and does not change your current setup."
+                },
+                button(&format!("pin:item:{id}"), "Untrack upgrade", "text-button")
+            );
+        }
+    }
+
     let goal = goals
         .iter()
         .find(|g| pins.iter().any(|p| p == g.id) && !g.complete)
@@ -690,57 +1210,163 @@ fn next_goal(s: &State) -> String {
         return "<section class=\"panel goal-teaser\"><h3>Starter milestones reached</h3><p>Review your encounter supplies and unlocks.</p></section>".into();
     };
     format!(
-        "<section class=\"panel goal-teaser\"><div class=\"eyebrow\">A LITTLE CLOSER</div><h3>{}</h3><p>{}</p><div class=\"progress-track\"><span style=\"width:{}%\"></span></div><small>{}</small>{}</section>",
+        "<section class=\"panel goal-teaser\"><h3>Next bossing upgrade</h3><p><strong>{}</strong></p><p>{}</p><div class=\"progress-track\"><span style=\"width:{}%\"></span></div><small>{}</small>{} · <a href=\"{}\" target=\"_blank\" rel=\"noreferrer\">Wiki guide</a></section>",
         g.title,
         esc(g.reason),
         g.progress,
         esc(&g.next),
-        button("tab:goals", "Explore progression goals →", "text-button")
-    )
-}
-fn goals_page(s: &State) -> String {
-    let mut html="<div class=\"page-heading\"><div><div class=\"eyebrow\">ONE STEP AT A TIME</div><h1>Give the grind a purpose.</h1><p>Small, useful milestones on the road to your next adventure.</p></div></div><div class=\"goals-intro panel\"><span>✦</span><p>Pin up to three goals. Your first pinned goal is your primary focus. Progress follows the selected account's skills and imported quests.</p></div><div class=\"goal-grid\">".to_string();
-    if let Some(m) = s.saved.snapshot.selected() {
-        for g in planner::goals(m, s.saved.options.boss) {
-            let pinned = s.pins().iter().position(|p| p == g.id);
-            html.push_str(&format!("<article class=\"panel goal-card\"><div class=\"goal-card-top\">{}<span class=\"goal-symbol\">{}</span></div><h2>{}</h2><p>{}</p><div class=\"progress-track\"><span style=\"width:{}%\"></span></div><div class=\"goal-next\"><small>NEXT STEP</small><strong>{}</strong></div><div class=\"goal-actions\">{}<a href=\"{}\" target=\"_blank\" rel=\"noreferrer\">Wiki guide ↗</a></div></article>",badge(if g.complete{"Milestone reached"}else if pinned==Some(0){"Primary goal"}else if pinned.is_some(){"Pinned goal"}else{"Suggested milestone"},if g.complete{"green"}else{"neutral"}),if g.complete{"✓"}else{"✦"},g.title,esc(g.reason),g.progress,esc(&g.next),button(&format!("pin:{}",g.id),if pinned.is_some(){"Unpin goal"}else{"Pin goal"},if pinned.is_some(){"button ghost"}else{"button gold"}),g.link));
-        }
-    }
-    html.push_str("</div><p class=\"muted\">These are reviewed starter milestones, not a universal Ironman route. Item drops and unobserved unlocks require separate confirmation.</p>");
-    html
-}
-fn access_select(id: &str, value: Option<bool>) -> String {
-    format!(
-        "<select id=\"{id}\"><option value=\"auto\" {}>Use imported state</option><option value=\"yes\" {}>Yes, confirmed</option><option value=\"no\" {}>Not yet</option></select>",
-        if value.is_none() { "selected" } else { "" },
-        if value == Some(true) { "selected" } else { "" },
-        if value == Some(false) { "selected" } else { "" }
+        button(
+            &format!("pin:{}", g.id),
+            if pins.iter().any(|p| p == g.id) {
+                "Untrack upgrade"
+            } else {
+                "Track this upgrade"
+            },
+            "text-button"
+        ),
+        g.link
     )
 }
 fn account_page(s: &State) -> String {
+    let m = s.saved.snapshot.selected();
     let mut html = format!(
-        "<div class=\"page-heading\"><div><div class=\"eyebrow\">THE ADVENTURER BEHIND THE GEAR</div><h1>Your account, your browser.</h1><p>Connect GroupIron or import a snapshot. Your bank stays on this device.</p></div>{}</div><div class=\"account-grid\"><section class=\"panel account-form\"><div class=\"panel-heading\"><h2>Connect GroupIron</h2>{}</div><div class=\"connection-warning\"><strong>Direct browser sync is currently blocked.</strong><p>GroupIron is not allowing this site's browser origin. Use the Rust snapshot importer below, then choose the downloaded JSON file.</p></div><details class=\"import-helper\"><summary>Get a snapshot with the Rust importer</summary><p>From the Ironbound source directory, run:</p><code>cargo run --locked --bin site -- import-group 'Your Group'</code><p>Enter your token at the hidden prompt. Import <code>.local/groupiron.json</code> here. Your token is never saved.</p></details><p>Retry direct sync after GroupIron enables browser access:</p><label>Group name<input id=\"group-name\" autocomplete=\"off\" maxlength=\"80\" placeholder=\"Your group name\"></label><label>Group token<input id=\"group-token\" type=\"password\" autocomplete=\"off\" maxlength=\"300\" placeholder=\"Paste your group token\"></label><button class=\"button gold full\" data-action=\"connect\" {}>{}</button><small>The token is used for this request only. It is never saved in your account or backups. Reconnect to refresh.</small><a href=\"https://groupiron.men/\" target=\"_blank\" rel=\"noreferrer\">Open GroupIron ↗</a></section><section class=\"panel account-form\"><div class=\"panel-heading\"><h2>Import a snapshot</h2></div><p>Paste a raw GroupIron member-array response or restore an Ironbound backup.</p><label>GroupIron JSON or account backup<textarea id=\"import-data\" rows=\"6\" placeholder=\"Paste your GroupIron JSON here\"></textarea></label>{}<label class=\"file-label\">Or choose a JSON file<input id=\"import-file\" type=\"file\" accept=\"application/json,.json\"></label></section></div>",
-        button("backup", "↓ Download account backup", "button ghost"),
-        badge("READ ONLY", "green"),
-        if s.busy { "disabled" } else { "" },
-        if s.busy {
-            "Connecting…"
+        r#"<div class="page-heading"><div><h1>Your Ironman</h1><p>Import your RuneLite bank. Everything in the bank stays on this device.</p></div></div><div class="account-grid"><section class="panel account-form"><h2>1. Import bank</h2><p>In RuneLite Bank Memory, export your bank as a tab-separated table. Paste it or choose the file below.</p><label>Bank table or private backup<textarea id="import-data" rows="6" placeholder="Item id    Item name    Item quantity"></textarea></label>{}<label>Choose bank file<input id="import-file" type="file" accept=".txt,.tsv,.json,text/plain,application/json"></label><p>Bank data is never put in a share link. Backups contain private account data.</p></section><section class="panel account-form"><h2>2. Combat levels</h2><label>RuneScape name (optional)<input id="player-name" maxlength="12" value="{}" autocomplete="off"></label><button class="button ghost" data-action="load-levels" {}>Look up public levels</button><p>Lookup sends only the name to Wise Old Man. Its public snapshot may be stale. Or enter your levels below.</p><small>Skill snapshot: {}</small><div class="skills-grid">"#,
+        button("import", "Import bank", "button gold full"),
+        esc(if s.saved.snapshot.source == "Demo" {
+            ""
         } else {
-            "Read my GroupIron account →"
-        },
-        button("import", "Import account", "button ghost full")
+            &s.saved.snapshot.selected
+        }),
+        if s.busy { "disabled" } else { "" },
+        esc(m
+            .and_then(|m| m.last_updated.as_deref())
+            .unwrap_or("Unknown / manual"))
     );
-    html.push_str("<section class=\"panel account-summary\"><div class=\"panel-heading\"><h2>Account snapshot</h2>");
-    html.push_str(&badge(&s.saved.snapshot.source, "neutral"));
-    html.push_str(
-        "</div><div class=\"snapshot-fields\"><label>Selected member<select id=\"member\">",
+    for skill in [
+        "Attack",
+        "Strength",
+        "Defence",
+        "Ranged",
+        "Magic",
+        "Prayer",
+        "Hitpoints",
+        "Mining",
+    ] {
+        let i = SKILLS.iter().position(|s| *s == skill).unwrap();
+        html.push_str(&format!(r#"<label>{skill}<input id="skill-{i}" type="number" min="1" max="99" value="{}" placeholder="?"></label>"#,m.and_then(|m|m.level(skill)).map(|l|l.to_string()).unwrap_or_default()));
+    }
+    html.push_str("</div></section></div>");
+    html.push_str(&format!(
+        "<div class=\"account-tools\">{} {} {}</div>",
+        button("backup", "Download private backup", "text-button"),
+        button("demo", "Explore example", "text-button"),
+        button("forget", "Forget saved account", "text-button danger")
+    ));
+    html
+}
+fn custom_group(s: &State) -> String {
+    let mut html = String::from(
+        r#"<section class="panel account-form"><h2>Your encounter group</h2><p>Choose attack styles yourself. The planner packs one shared set of switches; special mechanics, movement and supplies are outside its combat model.</p><label>Boss or monster<input id="monster" list="monsters" placeholder="Search monsters…"></label><datalist id="monsters">"#,
     );
-    for m in &s.saved.snapshot.members {
-        if m.name != "@SHARED" {
+    for m in planner::monsters() {
+        html.push_str(&format!(
+            r#"<option value="{} · {}"></option>"#,
+            esc(&m.name),
+            m.id
+        ));
+    }
+    html.push_str(r#"</datalist><label>Attack style<select id="target-style"><option>Melee</option><option>Ranged</option><option>Magic</option></select></label>"#);
+    html.push_str(&button("add-target", "Add to group", "button ghost"));
+    for (i, t) in s.saved.options.targets.iter().enumerate() {
+        html.push_str(&format!(
+            "<p>{}. {} · {} {}</p>",
+            i + 1,
+            esc(&t.name()),
+            esc(&t.style),
+            button(&format!("remove-target:{i}"), "Remove", "text-button")
+        ));
+    }
+    html.push_str("</section>");
+    html
+}
+
+fn inventory_editor(s: &State, index: usize) -> String {
+    let mut html = format!(
+        "<label class=\"account-form\">Change inventory slot {}<select id=\"inventory-item\"><option value=\"-1\">Choose an owned item…</option>",
+        index + 1
+    );
+    if let Some(m) = s.saved.snapshot.selected() {
+        for (id, q) in s.saved.snapshot.available(false) {
             html.push_str(&format!(
-                "<option value=\"{}\" {}>{}</option>",
-                esc(&m.name),
-                if m.name == s.saved.snapshot.selected {
+                "<option value=\"{id}\">{} × {q}</option>",
+                esc(&m
+                    .item_names
+                    .get(&id)
+                    .cloned()
+                    .unwrap_or_else(|| planner::item_name(id)))
+            ));
+        }
+    }
+    let quantity = s
+        .plan()
+        .inventory
+        .get(index)
+        .map(|i| i.quantity)
+        .unwrap_or(1);
+    html.push_str(&format!("</select></label><label class=\"account-form\">Stack quantity<input id=\"inventory-quantity\" type=\"number\" min=\"1\" max=\"2147483647\" value=\"{quantity}\"></label><p class=\"small-note\">Stacks may contain multiple runes or ammunition. Other items occupy one slot each. Required trip items must remain carried.</p>"));
+    html
+}
+
+fn encounter_targets(s: &State) -> Vec<i32> {
+    match s.saved.options.boss {
+        Boss::Barrows => vec![1673, 1674, 1676, 1677, 1675, 1672],
+        Boss::Toa => vec![11778, 11719, 11730, 11789],
+        Boss::Custom => s.saved.options.targets.iter().map(|t| t.id).collect(),
+    }
+}
+fn comparison_style(s: &State) -> &str {
+    s.edit_style
+        .as_deref()
+        .unwrap_or(if s.saved.options.boss == Boss::Barrows {
+            "Magic"
+        } else if s.saved.options.boss == Boss::Custom {
+            s.saved
+                .options
+                .targets
+                .first()
+                .map(|t| t.style.as_str())
+                .unwrap_or("Melee")
+        } else {
+            "Melee"
+        })
+}
+fn comparison_monster(s: &State) -> Option<&'static planner::Monster> {
+    let targets = encounter_targets(s);
+    let id = s
+        .compare_target
+        .filter(|id| targets.contains(id))
+        .or_else(|| targets.first().copied())?;
+    planner::monsters().iter().find(|m| m.id == id)
+}
+fn combat_panel(s: &State, p: &Plan) -> String {
+    if s.shared_setup.is_some() {
+        return String::new();
+    }
+    let style = comparison_style(s);
+    let set = planned_style(s, p, style);
+    let bonus = combat::bonuses(&set);
+    let mut html = String::from(
+        r#"<section class="panel combat-panel"><div class="panel-heading"><h2>Combat stats</h2></div><div class="combat-body">"#,
+    );
+    for style in ["Melee", "Ranged", "Magic"] {
+        html.push_str(&button(&format!("edit-style:{style}"), style, "phase"));
+    }
+    html.push_str(r#"<label>Against<select id="compare-target">"#);
+    for id in encounter_targets(s) {
+        if let Some(m) = planner::monsters().iter().find(|m| m.id == id) {
+            html.push_str(&format!(
+                r#"<option value="{id}" {}>{}</option>"#,
+                if comparison_monster(s).is_some_and(|m| m.id == id) {
                     "selected"
                 } else {
                     ""
@@ -750,29 +1376,385 @@ fn account_page(s: &State) -> String {
         }
     }
     html.push_str("</select></label>");
-    if let Some(m) = s.saved.snapshot.selected() {
-        html.push_str(&format!("<div><small>RETRIEVED</small><strong>{}</strong></div><div><small>GROUPIRON LAST UPDATE</small><strong>{}</strong></div><div><small>OBSERVED ITEM TYPES</small><strong>{}</strong></div></div><p class=\"small-note\">GroupIron's member timestamp is not proof that the bank was opened recently. Reopen your bank in RuneLite before reconnecting.</p>",esc(&s.saved.snapshot.fetched_at),esc(m.last_updated.as_deref().unwrap_or("Unknown")),planner::raw_item_count(m)));
+    if let (Some(m), Some(target)) = (s.saved.snapshot.selected(), comparison_monster(s)) {
+        match combat::calculate_at_invocation(m,&set,style,target,&p.spell,s.saved.options.raid_level){Ok(r)=>html.push_str(&format!(r#"<dl class="combat-values"><div><dt>DPS</dt><dd>{:.3}</dd></div><div><dt>Hit chance</dt><dd>{:.1}%</dd></div><div><dt>Max hit</dt><dd>{}</dd></div><div><dt>Attack speed</dt><dd>{} ticks</dd></div></dl><p>{} attacks · {:.1} seconds per attack</p>"#,r.dps,r.accuracy*100.0,r.max_hit,r.attack_ticks,esc(&r.attack_type),r.attack_ticks as f64*0.6)),Err(e)=>html.push_str(&format!("<p class=\"combat-unavailable\">DPS unavailable: {}</p>",esc(&e)))}
+    }
+    html.push_str(
+        "<details><summary>Base equipment bonuses</summary><table class=\"bonus-table\"><tbody>",
+    );
+    for (label, map, key) in [
+        ("Stab attack", &bonus.offensive, "stab"),
+        ("Slash attack", &bonus.offensive, "slash"),
+        ("Crush attack", &bonus.offensive, "crush"),
+        ("Magic attack", &bonus.offensive, "magic"),
+        ("Ranged attack", &bonus.offensive, "ranged"),
+        ("Strength", &bonus.other, "str"),
+        ("Ranged strength", &bonus.other, "ranged_str"),
+        ("Prayer bonus", &bonus.other, "prayer"),
+        ("Stab defence", &bonus.defensive, "stab"),
+        ("Slash defence", &bonus.defensive, "slash"),
+        ("Crush defence", &bonus.defensive, "crush"),
+        ("Magic defence", &bonus.defensive, "magic"),
+        ("Ranged defence", &bonus.defensive, "ranged"),
+    ] {
         html.push_str(&format!(
-            "<div class=\"access-grid\"><label>{} complete{}</label>",
-            if s.saved.options.boss == Boss::Barrows {
-                "Priest in Peril"
-            } else {
-                "Beneath Cursed Sands"
-            },
-            access_select("access", s.saved.options.access_override)
+            "<tr><th>{label}</th><td>{:+}</td></tr>",
+            map.get(key).copied().unwrap_or(0)
         ));
-        if s.saved.options.boss == Boss::Barrows {
+    }
+    html.push_str(&format!(
+        "<tr><th>Magic damage</th><td>{:.1}%</td></tr>",
+        bonus.other.get("magic_str").copied().unwrap_or(0) as f64 / 10.0
+    ));
+    html.push_str("</tbody></table></details><details><summary>DPS assumptions</summary><p class=\"small-note\">Unboosted, no offensive prayers, no specials or recoil. ToA assumes solo, path level 0, and the selected raid level. Bolt effects use full target HP without the Kandarin diary bonus. DPS is for uninterrupted attacks while the target is vulnerable. Melee uses accurate; ranged uses rapid; powered staves use accurate and standard spells use autocast. Standard attacks only: no movement, eating, kill-time prediction or incoming damage. Unsupported effects show no DPS.</p></details></div></section>");
+    html
+}
+fn tier_table(s: &State) -> String {
+    let style = comparison_style(s);
+    let plan = s.plan();
+    let set = planned_style(s, &plan, style);
+    let Some(member) = s.saved.snapshot.selected() else {
+        return String::new();
+    };
+    let target = comparison_monster(s);
+    let spell = planner::plan(&s.saved.snapshot, &s.saved.options).spell;
+    let mut html = format!(
+        r#"<section class="owned-tiers"><h2>Your bank: equipment tiers</h2><p>{style} · click an owned item to use it. Rows compare one slot at a time with the other equipment held fixed.</p><p>When DPS is supported, choices are sorted by calculated DPS against the selected monster. Otherwise the reviewed starter order is shown. This is not a global best-in-slot search.</p><table class="wiki-table"><thead><tr><th>Slot</th><th>Owned choices, best supported DPS first</th></tr></thead><tbody>"#
+    );
+    for slot in [0, 1, 2, 3, 4, 5, 7, 9, 10, 12, 13] {
+        let mut choices = planner::owned_tiers(&s.saved.snapshot, &s.saved.options, style, slot)
+            .into_iter()
+            .map(|g| {
+                let mut trial = set.clone();
+                trial[slot] = Some(g.id);
+                if slot == 3
+                    && planner::equipment()
+                        .iter()
+                        .any(|e| e.id == g.id && e.two_handed)
+                {
+                    trial[5] = None;
+                }
+                let dps = if g.usable && !g.excluded {
+                    target
+                        .and_then(|m| {
+                            combat::calculate_at_invocation(
+                                member,
+                                &trial,
+                                style,
+                                m,
+                                &spell,
+                                s.saved.options.raid_level,
+                            )
+                            .ok()
+                        })
+                        .map(|r| r.dps)
+                } else {
+                    None
+                };
+                (g, dps)
+            })
+            .collect::<Vec<_>>();
+        choices.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
+        html.push_str(&format!("<tr><th>{}</th><td>", planner::SLOTS[slot]));
+        if choices.is_empty() {
+            html.push_str("<span class=\"tier-empty\">No owned equipment for this slot</span>");
+        }
+        let more = choices.len().saturating_sub(6);
+        for (index, (g, dps)) in choices.into_iter().enumerate() {
+            if index == 6 {
+                html.push_str(&format!(
+                    "<details><summary>{more} more owned choices</summary>"
+                ));
+            }
+            let disabled = if g.usable && !g.excluded {
+                ""
+            } else {
+                "disabled"
+            };
+            html.push_str(&format!(r#"<button class="tier-item {}" data-action="pick-gear:{style}:{slot}:{}" {disabled}>{}<span>{}<small>{}</small></span></button>"#,if set[slot]==Some(g.id){"tier-selected"}else{""},g.id,image(g.id),esc(&planner::item_name(g.id)),dps.map(|d|format!("{d:.3} DPS")).unwrap_or_else(||if g.excluded{"Excluded".into()}else if !g.usable{"Skill requirements unconfirmed / unmet".into()}else{"DPS not supported".into()})));
+        }
+        if more > 0 {
+            html.push_str("</details>");
+        }
+        html.push_str("</td></tr>");
+    }
+    html.push_str("</tbody></table><p>Armour and accessories use the full owned-equipment catalog. Weapons use reviewed attack behaviours. Your bank itself is never included in a share link.</p></section>");
+    html
+}
+
+fn planned_style(s: &State, p: &Plan, style: &str) -> Vec<Option<i32>> {
+    if style == planner::primary_style(&s.saved.options) {
+        return p.equipment.clone();
+    }
+    p.phases
+        .iter()
+        .find(|phase| {
+            phase.style == style
+                || (style == "Magic" && s.saved.options.boss == Boss::Toa && phase.name == "Akkha")
+        })
+        .map(|phase| phase.equipment.clone())
+        .unwrap_or_else(|| planner::equipment_for_style(&s.saved.snapshot, &s.saved.options, style))
+}
+fn switch_panel(s: &State, p: &Plan) -> String {
+    if s.shared_setup.is_some() {
+        return String::new();
+    }
+    let mut html = String::from(
+        r#"<section class="panel switch-panel"><div class="panel-heading"><h2>Make switching comfortable</h2></div><div class="combat-body"><label>Maximum items changed per switch<select id="max-switches"><option value="unlimited">Unrestricted</option>"#,
+    );
+    for n in 0..=11 {
+        html.push_str(&format!(
+            r#"<option value="{n}" {}>{n} items</option>"#,
+            if s.saved.options.max_switches == Some(n) {
+                "selected"
+            } else {
+                ""
+            }
+        ));
+    }
+    html.push_str(&format!(r#"</select></label><label>Inventory slots for style-switch gear<input id="switch-slots" type="number" min="0" max="20" value="{}"></label><label>Priority<select id="focus-style">"#,s.saved.options.switch_slots));
+    for (value, label) in [
+        ("Balanced", "Balance the encounter"),
+        ("Magic", "Keep my full magic set"),
+        ("Ranged", "Keep my full ranged set"),
+        ("Melee", "Keep my full melee set"),
+    ] {
+        html.push_str(&format!(
+            r#"<option value="{value}" {}>{label}</option>"#,
+            if s.saved.options.focus_style == value {
+                "selected"
+            } else {
+                ""
+            }
+        ));
+    }
+    html.push_str("</select></label><p>Checks every pair of style sets, including shield displacement. Supplies, tools and optional spec weapons still need their own inventory space.</p><details><summary>Prioritize individual phases</summary><p>1 is normal; higher values favour that target. 0 gives it the lowest damage priority while retaining its required attack style.</p>");
+    for id in encounter_targets(s) {
+        if let Some(target) = planner::monster(id) {
+            html.push_str(&format!(r#"<label>{}<input id="priority-{id}" type="number" min="0" max="10" value="{}"></label>"#,esc(&target.name),s.saved.options.phase_priorities.get(&id).copied().unwrap_or(1)));
+        }
+    }
+    html.push_str("</details>");
+    if let Some(report) = &p.optimization {
+        html.push_str(&format!("<p><strong>At most {} changed slots · {} carried style-switch items</strong></p><table class=\"bonus-table\"><thead><tr><th>Attack window</th><th>Unrestricted DPS</th><th>Budget DPS</th></tr></thead><tbody>",report.max_changes,report.gear_slots));
+        for row in &report.comparisons {
             html.push_str(&format!(
-                "<label>His Faithful Servants started{}</label>",
-                access_select("started", s.saved.options.started_barrows)
+                "<tr><th>{} ({})</th><td>{}</td><td>{}</td></tr>",
+                esc(&row.name),
+                esc(&row.style),
+                row.before.map(|d| format!("{d:.3}")).unwrap_or("—".into()),
+                row.after.map(|d| format!("{d:.3}")).unwrap_or("—".into())
             ));
         }
-        html.push_str("</div><details class=\"skill-corrections\"><summary>Skills & local corrections</summary><p>Imported values are XP, converted to levels. Editing a level saves a local correction; reconnecting replaces it.</p><div class=\"skills-grid\">");
-        for (i, skill) in SKILLS.iter().enumerate() {
-            html.push_str(&format!("<label>{skill}<input id=\"skill-{i}\" type=\"number\" min=\"1\" max=\"99\" value=\"{}\" placeholder=\"?\"></label>",m.level(skill).map(|v|v.to_string()).unwrap_or_default()));
-        }
-        html.push_str("</div></details>");
+        html.push_str(&format!(
+            "</tbody></table><details><summary>Search coverage</summary><p>{}</p></details>",
+            esc(&report.note)
+        ));
+    } else if s.saved.options.max_switches.is_some() {
+        html.push_str("<p class=\"combat-unavailable\">No feasible budget setup found. Review preparation blockers below.</p>");
     }
-    html.push_str(&format!("</section><div class=\"account-tools\">{}{}<span>Backups contain account data and goals, never your GroupIron token.</span></div>",button("demo","Explore sample account","text-button"),button("forget","Forget saved account","text-button danger")));
+    html.push_str("</div></section>");
+    html
+}
+
+fn gear_picker(s: &State) -> String {
+    let Some(slot) = s.edit_equipment else {
+        return String::new();
+    };
+    let style = comparison_style(s);
+    format!(
+        r#"<div class="picker-backdrop"><section class="gear-picker" role="dialog" aria-modal="true" aria-labelledby="gear-picker-title"><div class="panel-heading"><h2 id="gear-picker-title">{} · owned equipment</h2>{}</div><div class="picker-controls"><label>Search your items<input id="gear-search" type="search" value="{}" placeholder="Search owned items…" autocomplete="off"></label><label>Order by<select id="gear-sort"><option value="dps" {}>DPS</option><option value="defence" {}>Defence: total bonuses</option><option value="magic-def" {}>Defence: magic</option><option value="ranged-def" {}>Defence: ranged</option></select></label></div><p class="picker-note">{style} against {}. DPS holds your other equipment fixed; defence is equipment bonuses, not damage taken.</p><div class="picker-actions">{} {}</div><div class="picker-scroll"><div class="bis-scale">{}</div><h3 class="owned-heading">Your owned items</h3><div id="gear-pick-results" class="gear-pick-results">{}</div></div></section></div>"#,
+        planner::SLOTS[slot],
+        button("close-picker", "Close ×", "phase"),
+        esc(&s.gear_search),
+        if s.gear_sort == "dps" { "selected" } else { "" },
+        if s.gear_sort == "defence" {
+            "selected"
+        } else {
+            ""
+        },
+        if s.gear_sort == "magic-def" {
+            "selected"
+        } else {
+            ""
+        },
+        if s.gear_sort == "ranged-def" {
+            "selected"
+        } else {
+            ""
+        },
+        esc(&comparison_monster(s)
+            .map(|m| m.name.as_str())
+            .unwrap_or("selected encounter")),
+        button(&format!("auto-gear:{slot}"), "Use recommended", "phase"),
+        button(
+            &format!("pick-gear:{style}:{slot}:0"),
+            "Leave empty",
+            "phase"
+        ),
+        bis_scale(s),
+        gear_choices(s)
+    )
+}
+fn gear_choices(s: &State) -> String {
+    let Some(slot) = s.edit_equipment else {
+        return String::new();
+    };
+    let style = comparison_style(s);
+    let p = s.plan();
+    let set = planned_style(s, &p, style);
+    let Some(member) = s.saved.snapshot.selected() else {
+        return String::new();
+    };
+    let owned = s.saved.snapshot.available(false);
+    let query = s.gear_search.to_lowercase();
+    let mut items = planner::equipment()
+        .iter()
+        .filter(|g| {
+            g.slot == planner::SLOT_KEYS[slot]
+                && owned.contains_key(&g.id)
+                && (query.is_empty() || planner::item_name(g.id).to_lowercase().contains(&query))
+        })
+        .map(|g| {
+            let usable = planner::can_use(g.id, member)
+                && (slot != 13 || owned.get(&g.id).copied().unwrap_or(0) >= 100);
+            let mut trial = set.clone();
+            trial[slot] = Some(g.id);
+            if slot == 3 && g.two_handed {
+                trial[5] = None;
+            }
+            let dps = if usable {
+                comparison_monster(s)
+                    .and_then(|m| {
+                        combat::calculate_at_invocation(
+                            member,
+                            &trial,
+                            style,
+                            m,
+                            &p.spell,
+                            s.saved.options.raid_level,
+                        )
+                        .ok()
+                    })
+                    .map(|r| r.dps)
+            } else {
+                None
+            };
+            let defence = combat::bonuses(&trial).defensive;
+            let own_defence = combat::stats(g.id).map(|g| &g.defensive);
+            let score = own_defence
+                .map(|map| match s.gear_sort.as_str() {
+                    "magic-def" => map.get("magic").copied().unwrap_or(0),
+                    "ranged-def" => map.get("ranged").copied().unwrap_or(0),
+                    _ => map.values().sum(),
+                })
+                .unwrap_or(0);
+            let _ = defence;
+            (g, usable, dps, score)
+        })
+        .collect::<Vec<_>>();
+    items.sort_by(|a, b| {
+        if s.gear_sort == "dps" {
+            b.2.partial_cmp(&a.2)
+                .unwrap_or(std::cmp::Ordering::Equal)
+                .then_with(|| a.0.name.cmp(&b.0.name))
+        } else {
+            b.3.cmp(&a.3).then_with(|| a.0.name.cmp(&b.0.name))
+        }
+    });
+    let mut html = format!("<p class=\"picker-note\">{} owned items</p>", items.len());
+    if items.is_empty() {
+        html.push_str("<p>No owned items match this search.</p>");
+    }
+    for (g, usable, dps, defence) in items {
+        html.push_str(&format!(r#"<button class="gear-pick {}" data-action="pick-gear:{style}:{slot}:{}" {}>{}<span><strong>{}</strong><small>{} · {defence:+} defence</small><small>{}</small></span><b>× {}</b></button>"#,if set[slot]==Some(g.id){"selected"}else{""},g.id,if usable{""}else{"disabled"},image(g.id),esc(&planner::item_name(g.id)),dps.map(|v|format!("{v:.3} DPS")).unwrap_or_else(||"DPS unavailable".into()),if usable{"Click to equip"}else{"Skill requirements unconfirmed or unmet"},owned[&g.id]));
+    }
+    html
+}
+
+fn bis_scale(s: &State) -> String {
+    let Some(slot) = s.edit_equipment else {
+        return String::new();
+    };
+    let style = comparison_style(s);
+    let p = s.plan();
+    let set = planned_style(s, &p, style);
+    let owned = s.saved.snapshot.available(false);
+    let Some(member) = s.saved.snapshot.selected() else {
+        return String::new();
+    };
+    let choices = reference::tiers(style, slot);
+    if choices.is_empty() {
+        return String::new();
+    }
+    let mut html = String::from(
+        "<h3>BIS & upgrade scale</h3><p class=\"picker-note\">Reviewed main-game progression examples. Exact order depends on your target, attack style and other gear; this is not a global BIS proof. Unowned items can become upgrade goals.</p><div class=\"bis-items\">",
+    );
+    for (rank, g) in choices.into_iter().enumerate() {
+        let have = owned.contains_key(&g.id);
+        let mut trial = set.clone();
+        trial[slot] = Some(g.id);
+        if slot == 3 && g.two_handed {
+            trial[5] = None;
+        }
+        let dps = comparison_monster(s)
+            .and_then(|m| {
+                combat::calculate_at_invocation(
+                    member,
+                    &trial,
+                    style,
+                    m,
+                    &p.spell,
+                    s.saved.options.raid_level,
+                )
+                .ok()
+            })
+            .map(|r| format!("{:.3} DPS", r.dps))
+            .unwrap_or_else(|| "Effect not modelled".into());
+        let eligible = planner::can_use(g.id, member);
+        html.push_str(&format!(r#"<article class="bis-item {}"><small>Tier {}</small>{}<strong>{}</strong><span>{}</span><small>{}</small>{}</article>"#,if have{"owned"}else{""},rank+1,image(g.id),esc(&planner::item_name(g.id)),esc(&dps),if have{"Owned"}else{"Not owned"},if have&&eligible{button(&format!("pick-gear:{style}:{slot}:{}",g.id),"Equip","phase")}else if !have{button(&format!("goal-item:{}",g.id),"Track upgrade","phase")}else{"<span>Check skill requirements</span>".into()}));
+    }
+    html.push_str("</div>");
+    if slot == 3 && style == "Melee" {
+        html.push_str(&keris_family(s, &set));
+    }
+    html
+}
+
+fn keris_family(s: &State, set: &Vec<Option<i32>>) -> String {
+    let Some(member) = s.saved.snapshot.selected() else {
+        return String::new();
+    };
+    let owned = s.saved.snapshot.available(false);
+    let Some(target) = planner::monster(11719) else {
+        return String::new();
+    };
+    let mut html = String::from(
+        r#"<section class="keris-family"><h3>Keris variants</h3><p>Full-HP Kephri comparison, using your other equipment. A plain partisan never counts as an upgraded one.</p><table class="bonus-table"><thead><tr><th>Exact weapon</th><th>Ownership</th><th>DPS</th><th>Effect</th></tr></thead><tbody>"#,
+    );
+    for (id, effect) in reference::KERIS_VARIANTS {
+        let have = owned.contains_key(&id);
+        let mut trial = set.clone();
+        trial[3] = Some(id);
+        let dps = combat::calculate_at_invocation(
+            member,
+            &trial,
+            "Melee",
+            target,
+            "",
+            s.saved.options.raid_level,
+        )
+        .ok()
+        .map(|r| format!("{:.3}", r.dps))
+        .unwrap_or("—".into());
+        html.push_str(&format!(
+            "<tr><th>{} {}</th><td>{}</td><td>{dps}</td><td>{}</td></tr>",
+            image(id),
+            esc(&planner::item_name(id)),
+            if have { "Owned" } else { "Not owned" },
+            esc(effect)
+        ));
+    }
+    html.push_str("</tbody></table></section>");
     html
 }

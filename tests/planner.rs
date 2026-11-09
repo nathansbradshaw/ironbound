@@ -7,6 +7,54 @@ use serde_json::{Value, json};
 use std::collections::BTreeMap;
 
 #[test]
+fn local_corrections_preserve_unknown_skills() {
+    let mut m = Member {
+        name: "Iron".into(),
+        ..Default::default()
+    };
+    m.level_overrides.insert("Magic".into(), 75);
+    assert_eq!(m.level("Magic"), Some(75));
+    assert_eq!(m.level("Attack"), None);
+    assert_eq!(m.total_level(), None);
+}
+#[test]
+fn rune_axe_is_not_a_puzzle_pickaxe() {
+    let mut s = account::demo();
+    for pair in s.members[0].bank.as_mut().unwrap().chunks_exact_mut(2) {
+        if pair[0] == 1275 {
+            pair[0] = 1359;
+        }
+    }
+    let p = planner::plan(
+        &s,
+        &Options {
+            boss: Boss::Toa,
+            ..Default::default()
+        },
+    );
+    assert!(p.missing.iter().any(|m| m.contains("pickaxe")));
+    assert!(!p.inventory.iter().any(|p| p.id == 1359));
+}
+#[test]
+fn quest_status_does_not_filter_owned_equipment() {
+    let mut s = account::demo();
+    s.members[0].quests = None;
+    assert!(planner::can_use(10828, &s.members[0]));
+    s.members[0].level_overrides.insert("Defence".into(), 50);
+    assert!(!planner::can_use(10828, &s.members[0]));
+}
+#[test]
+fn unsupported_skill_corrections_rejected() {
+    assert!(
+        Snapshot::parse(
+            r#"[{"name":"Iron","level_overrides":{"Magic":100}}]"#,
+            "now".into()
+        )
+        .is_err()
+    );
+}
+
+#[test]
 fn xp_boundaries() {
     assert_eq!(account::xp_for_level(2), 83);
     assert_eq!(account::xp_for_level(99), 13_034_431);
@@ -15,7 +63,7 @@ fn xp_boundaries() {
     assert_eq!(account::level_for_xp(200_000_000), 99);
 }
 #[test]
-fn groupiron_alphabetical_xp_order() {
+fn snapshot_alphabetical_xp_order() {
     let mut skills = vec![0; 24];
     skills[13] = account::xp_for_level(75);
     skills[1] = account::xp_for_level(60);
@@ -95,24 +143,32 @@ fn imported_quest_map_handles_access() {
     assert_eq!(m.quest("His Faithful Servants"), Some(2));
 }
 #[test]
-fn access_unknown_requires_confirmation() {
+fn quest_status_never_blocks_exports() {
     let mut s = account::demo();
     s.members[0].quests = None;
-    let mut o = Options::default();
-    assert!(!planner::plan(&s, &o).exportable());
-    o.access_override = Some(true);
-    o.started_barrows = Some(true);
-    assert!(planner::plan(&s, &o).exportable());
-}
-#[test]
-fn access_denied_blocks_export() {
-    let s = account::demo();
     let o = Options {
         access_override: Some(false),
+        started_barrows: Some(false),
         ..Default::default()
     };
     let p = planner::plan(&s, &o);
-    assert!(export::inventory_setup(&p, &o, "Iron").is_err());
+    assert!(p.exportable());
+    assert!(export::inventory_setup(&p, &o, "Iron").is_ok());
+    assert!(
+        p.checks
+            .iter()
+            .all(|c| !c.detail.to_lowercase().contains("quest"))
+    );
+}
+#[test]
+fn starter_guidelines_are_advisory_but_item_levels_still_apply() {
+    let mut bank = account::demo();
+    bank.members[0].level_overrides.insert("Prayer".into(), 1);
+    let p = planner::plan(&bank, &Options::default());
+    assert!(p.checks.iter().any(|c| c.state == Some(false)));
+    assert!(p.exportable());
+    bank.members[0].level_overrides.insert("Magic".into(), 1);
+    assert!(!planner::plan(&bank, &Options::default()).exportable());
 }
 #[test]
 fn exclusions_are_honoured() {
@@ -264,16 +320,28 @@ fn export_uses_portable_wrapper_and_full_containers() {
 #[test]
 fn next_goals_follow_skills_and_access() {
     let s = account::demo();
-    let goals = planner::goals(s.selected().unwrap(), Boss::Barrows);
-    assert!(goals.iter().find(|g| g.id == "magic").unwrap().complete);
-    assert!(!goals.iter().find(|g| g.id == "herblore").unwrap().complete);
+    let goals = planner::goals(&s, Boss::Barrows);
     assert!(
         goals
             .iter()
-            .find(|g| g.id == "herblore")
+            .find(|g| g.id == "barrows-magic")
+            .unwrap()
+            .complete
+    );
+    assert!(
+        !goals
+            .iter()
+            .find(|g| g.id == "barrows-hilt")
+            .unwrap()
+            .complete
+    );
+    assert!(
+        goals
+            .iter()
+            .find(|g| g.id == "barrows-hilt")
             .unwrap()
             .next
-            .contains("58 to 63")
+            .contains("medium Combat Achievements")
     );
 }
 #[test]

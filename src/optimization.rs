@@ -1,0 +1,409 @@
+//! Bounded encounter search with pairwise switches and one shared carried-item budget.
+use crate::{
+    account::Member,
+    combat,
+    planner::{self, Boss, Options},
+};
+use std::collections::{BTreeMap, BTreeSet};
+pub type Set = Vec<Option<i32>>;
+#[derive(Clone, Debug)]
+pub struct StyleSet {
+    pub style: String,
+    pub equipment: Set,
+}
+#[derive(Clone, Debug)]
+pub struct Comparison {
+    pub name: String,
+    pub style: String,
+    pub before: Option<f64>,
+    pub after: Option<f64>,
+}
+#[derive(Clone, Debug)]
+pub struct Report {
+    pub max_changes: usize,
+    pub gear_slots: usize,
+    pub comparisons: Vec<Comparison>,
+    pub note: String,
+}
+#[derive(Clone)]
+struct Candidate {
+    set: Set,
+    cost: f64,
+}
+pub fn changes(a: &Set, b: &Set) -> usize {
+    a.iter().zip(b).filter(|(a, b)| a != b).count()
+}
+pub fn carried(sets: &[StyleSet], starting: &str) -> usize {
+    let Some(base) = sets.iter().find(|s| s.style == starting) else {
+        return usize::MAX;
+    };
+    sets.iter()
+        .flat_map(|s| {
+            s.equipment
+                .iter()
+                .enumerate()
+                .filter_map(|(slot, id)| id.filter(|id| base.equipment[slot] != Some(*id)))
+        })
+        .collect::<BTreeSet<_>>()
+        .len()
+}
+fn targets(o: &Options) -> Vec<(i32, &str)> {
+    match o.boss {
+        Boss::Barrows => vec![
+            (1673, "Magic"),
+            (1674, "Magic"),
+            (1676, "Magic"),
+            (1677, "Magic"),
+            (1675, "Magic"),
+            (1672, "Ranged"),
+        ],
+        Boss::Toa => vec![
+            (11778, "Melee"),
+            (11719, "Melee"),
+            (11730, "Ranged"),
+            (11789, "Magic"),
+        ],
+        Boss::Custom => o.targets.iter().map(|t| (t.id, t.style.as_str())).collect(),
+    }
+}
+fn spell(m: &Member, set: &Set, owned: &BTreeMap<i32, u32>) -> &'static str {
+    if matches!(set[3], Some(1381 | 1405)) {
+        if m.level("Magic").unwrap_or(0) >= 62 && owned.get(&565).copied().unwrap_or(0) >= 150 {
+            "Wind Wave"
+        } else {
+            "Wind Blast"
+        }
+    } else {
+        ""
+    }
+}
+fn value(
+    m: &Member,
+    set: &Set,
+    style: &str,
+    o: &Options,
+    owned: &BTreeMap<i32, u32>,
+) -> Option<f64> {
+    let relevant: Vec<_> = targets(o)
+        .into_iter()
+        .filter(|(_, s)| *s == style)
+        .collect();
+    if relevant.is_empty() {
+        return None;
+    }
+    let mut total = 0.0;
+    for (id, _) in relevant {
+        let target = planner::monster(id)?;
+        let r = combat::calculate_at_invocation(
+            m,
+            set,
+            style,
+            target,
+            spell(m, set, owned),
+            o.raid_level,
+        )
+        .ok()?;
+        if r.dps <= 0.0 {
+            return None;
+        }
+        total += o.phase_priorities.get(&id).copied().unwrap_or(1).min(10) as f64
+            * target.skills.get("hp").copied().unwrap_or(100) as f64
+            / r.dps;
+    }
+    Some(total)
+}
+fn normalize(mut set: Set) -> Set {
+    if set[3].is_some_and(|id| planner::gear(id).is_some_and(|g| g.two_handed)) {
+        set[5] = None;
+    }
+    set
+}
+fn candidates(
+    m: &Member,
+    base: &Set,
+    ideal: &StyleSet,
+    o: &Options,
+    owned: &BTreeMap<i32, u32>,
+    limit: usize,
+) -> Vec<Candidate> {
+    let diff: Vec<_> = base
+        .iter()
+        .zip(&ideal.equipment)
+        .enumerate()
+        .filter(|(_, (a, b))| a != b)
+        .map(|(i, _)| i)
+        .collect();
+    let supported = value(m, &ideal.equipment, &ideal.style, o, owned).is_some();
+    let mut buckets = BTreeMap::<usize, Vec<Candidate>>::new();
+    for mask in 0usize..1usize << diff.len() {
+        let mut set = base.clone();
+        for (i, slot) in diff.iter().enumerate() {
+            if mask & (1 << i) != 0 {
+                set[*slot] = ideal.equipment[*slot];
+            }
+        }
+        set = normalize(set);
+        if o.gear_overrides.iter().any(|(key, id)| {
+            key.strip_prefix(&format!("{}:", ideal.style))
+                .and_then(|s| s.parse::<usize>().ok())
+                .is_some_and(|slot| {
+                    slot < 14 && set[slot] != if *id == 0 { None } else { Some(*id) }
+                })
+        }) {
+            continue;
+        }
+        if set[3] != ideal.equipment[3]
+            || (ideal.style == "Ranged" && set[13] != ideal.equipment[13])
+            || changes(base, &set) > limit
+        {
+            continue;
+        }
+        let cost = if supported {
+            let Some(v) = value(m, &set, &ideal.style, o, owned) else {
+                continue;
+            };
+            v
+        } else {
+            (14 - set
+                .iter()
+                .zip(&ideal.equipment)
+                .filter(|(a, b)| a == b)
+                .count()) as f64
+                * 1000.0
+        };
+        let slots = set
+            .iter()
+            .enumerate()
+            .filter_map(|(slot, id)| id.filter(|id| base[slot] != Some(*id)))
+            .collect::<BTreeSet<_>>()
+            .len();
+        let list = buckets.entry(slots).or_default();
+        list.push(Candidate { set, cost });
+        list.sort_by(|a, b| a.cost.total_cmp(&b.cost));
+        list.truncate(4);
+    }
+    buckets.into_values().flatten().collect()
+}
+fn evaluate(
+    m: &Member,
+    base: &Set,
+    anchor: usize,
+    ideals: &[StyleSet],
+    o: &Options,
+    owned: &BTreeMap<i32, u32>,
+    limit: usize,
+    bag: usize,
+) -> Option<(Vec<StyleSet>, f64)> {
+    let mut choices = vec![];
+    for (i, ideal) in ideals.iter().enumerate() {
+        if i == anchor {
+            choices.push(vec![Candidate {
+                set: base.clone(),
+                cost: value(m, base, &ideal.style, o, owned).unwrap_or(0.0),
+            }]);
+        } else {
+            choices.push(candidates(m, base, ideal, o, owned, limit));
+        }
+    }
+    struct Walk<'a> {
+        choices: &'a [Vec<Candidate>],
+        ideals: &'a [StyleSet],
+        o: &'a Options,
+        limit: usize,
+        bag: usize,
+        best: Option<(Vec<StyleSet>, f64)>,
+    }
+    impl Walk<'_> {
+        fn step(&mut self, index: usize, sets: &mut Vec<StyleSet>, cost: f64) {
+            if index == self.choices.len() {
+                let slots = carried(sets, planner::primary_style(self.o));
+                if slots <= self.bag
+                    && self.best.as_ref().is_none_or(|(s, c)| {
+                        cost < *c - 1e-8
+                            || ((cost - *c).abs() < 1e-8
+                                && slots < carried(s, planner::primary_style(self.o)))
+                    })
+                {
+                    self.best = Some((sets.clone(), cost));
+                }
+                return;
+            }
+            for candidate in &self.choices[index] {
+                if sets
+                    .iter()
+                    .any(|s| changes(&s.equipment, &candidate.set) > self.limit)
+                {
+                    continue;
+                }
+                sets.push(StyleSet {
+                    style: self.ideals[index].style.clone(),
+                    equipment: candidate.set.clone(),
+                });
+                self.step(index + 1, sets, cost + candidate.cost);
+                sets.pop();
+            }
+        }
+    }
+    let mut walk = Walk {
+        choices: &choices,
+        ideals,
+        o,
+        limit,
+        bag,
+        best: None,
+    };
+    walk.step(0, &mut vec![], 0.0);
+    walk.best
+}
+pub fn solve(
+    m: &Member,
+    owned: &BTreeMap<i32, u32>,
+    ideals: Vec<StyleSet>,
+    o: &Options,
+) -> Result<(Vec<StyleSet>, Report), String> {
+    let limit = o.max_switches.unwrap_or(11).min(11);
+    let bag = o.switch_slots.min(20);
+    let anchor = ideals
+        .iter()
+        .position(|s| s.style == o.focus_style)
+        .or_else(|| {
+            ideals
+                .iter()
+                .position(|s| s.style == planner::primary_style(o))
+        })
+        .unwrap_or(0);
+    let mut base = ideals[anchor].equipment.clone();
+    let mut seed = evaluate(m, &base, anchor, &ideals, o, owned, limit, bag);
+    if o.focus_style == "Balanced" {
+        for slot in [0, 1, 2, 4, 5, 7, 9, 10, 12, 13] {
+            if o.gear_overrides
+                .contains_key(&format!("{}:{slot}", ideals[anchor].style))
+            {
+                continue;
+            }
+            for other in &ideals {
+                let mut trial = base.clone();
+                trial[slot] = other.equipment[slot];
+                trial = normalize(trial);
+                if let Some(result) = evaluate(m, &trial, anchor, &ideals, o, owned, limit, bag) {
+                    if seed.as_ref().is_none_or(|(sets, cost)| {
+                        result.1 < *cost - 1e-8
+                            || ((result.1 - *cost).abs() < 1e-8
+                                && carried(&result.0, planner::primary_style(o))
+                                    < carried(sets, planner::primary_style(o)))
+                    }) {
+                        base = trial;
+                        seed = Some(result);
+                    }
+                }
+            }
+        }
+    }
+    let mut best=seed.ok_or_else(||format!("No setup found within {limit} changed slots per switch and {bag} switch-gear slots. Increase a limit or change the encounter."))?;
+    if o.focus_style == "Balanced" {
+        for _ in 0..2 {
+            let mut improved = false;
+            for slot in [0, 1, 2, 4, 5, 7, 9, 10, 12, 13] {
+                if o.gear_overrides
+                    .contains_key(&format!("{}:{slot}", ideals[anchor].style))
+                {
+                    continue;
+                }
+                let ids: BTreeSet<_> = ideals.iter().map(|s| s.equipment[slot]).collect();
+                for id in ids {
+                    if base[slot] == id {
+                        continue;
+                    }
+                    let mut trial = base.clone();
+                    trial[slot] = id;
+                    trial = normalize(trial);
+                    if let Some(candidate) =
+                        evaluate(m, &trial, anchor, &ideals, o, owned, limit, bag)
+                    {
+                        if candidate.1 < best.1 - 1e-8
+                            || ((candidate.1 - best.1).abs() < 1e-8
+                                && carried(&candidate.0, planner::primary_style(o))
+                                    < carried(&best.0, planner::primary_style(o)))
+                        {
+                            base = trial;
+                            best = candidate;
+                            improved = true;
+                        }
+                    }
+                }
+            }
+            if !improved {
+                break;
+            }
+        }
+    }
+    let comparisons = targets(o)
+        .into_iter()
+        .filter_map(|(id, style)| {
+            let target = planner::monster(id)?;
+            let before = &ideals.iter().find(|s| s.style == style)?.equipment;
+            let after = &best.0.iter().find(|s| s.style == style)?.equipment;
+            Some(Comparison {
+                name: target.name.clone(),
+                style: style.into(),
+                before: combat::calculate_at_invocation(
+                    m,
+                    before,
+                    style,
+                    target,
+                    spell(m, before, owned),
+                    o.raid_level,
+                )
+                .ok()
+                .map(|r| r.dps),
+                after: combat::calculate_at_invocation(
+                    m,
+                    after,
+                    style,
+                    target,
+                    spell(m, after, owned),
+                    o.raid_level,
+                )
+                .ok()
+                .map(|r| r.dps),
+            })
+        })
+        .collect::<Vec<_>>();
+    let max_changes = best
+        .0
+        .iter()
+        .flat_map(|a| {
+            best.0
+                .iter()
+                .map(move |b| changes(&a.equipment, &b.equipment))
+        })
+        .max()
+        .unwrap_or(0);
+    let gear_slots = carried(&best.0, planner::primary_style(o));
+    let partial = comparisons
+        .iter()
+        .any(|c| c.before.is_none() || c.after.is_none());
+    Ok((
+        best.0,
+        Report {
+            max_changes,
+            gear_slots,
+            comparisons,
+            note: format!(
+                "Best found in a bounded search over owned sets and hybrid anchor pieces. {} {}",
+                if o.focus_style == "Balanced" {
+                    "Balanced mode minimizes combined HP/DPS across supported attack windows."
+                } else {
+                    "The focused style’s starting set is held fixed; other styles absorb the trade-off."
+                },
+                if partial {
+                    "Some targets lack DPS support; those use gear-priority fallback."
+                } else if o.boss == Boss::Toa {
+                    "Wardens are excluded from the DPS objective; packing still includes their styles."
+                } else {
+                    "Movement and supply consumption are excluded."
+                }
+            ),
+        },
+    ))
+}

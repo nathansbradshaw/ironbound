@@ -1,11 +1,33 @@
 use crate::planner::{Options, Plan};
 use serde_json::{Value, json};
 
+/// RuneLite Bank Tags v1 CSV. Filtering only; quantities belong in Inventory Setups.
+pub fn bank_tags(plan: &Plan, options: &Options) -> Result<String, String> {
+    if !plan.exportable() {
+        return Err("Resolve setup blockers before exporting.".into());
+    }
+    let ids: std::collections::BTreeSet<_> = plan
+        .equipment
+        .iter()
+        .flatten()
+        .copied()
+        .chain(plan.inventory.iter().map(|p| p.id))
+        .collect();
+    let mut fields = vec![
+        "banktags".into(),
+        "1".into(),
+        format!("Ironbound - {}", options.boss.name()),
+        plan.equipment[3].unwrap_or(952).to_string(),
+    ];
+    fields.extend(ids.into_iter().map(|id| id.to_string()));
+    Ok(fields.join(","))
+}
+
 /// InventorySetupPortable -> InventorySetupSerializable, as used by the plugin's Import setup button.
-pub fn inventory_setup(plan: &Plan, options: &Options, account: &str) -> Result<String, String> {
+pub fn inventory_setup(plan: &Plan, options: &Options, _account: &str) -> Result<String, String> {
     if !plan.exportable() {
         return Err(
-            "Resolve missing equipment, access blockers and inventory capacity before exporting."
+            "Resolve missing equipment, skill checks and inventory capacity before exporting."
                 .into(),
         );
     }
@@ -28,7 +50,7 @@ pub fn inventory_setup(plan: &Plan, options: &Options, account: &str) -> Result<
     let mut layout: Vec<i32> = plan.equipment.iter().flatten().copied().collect();
     layout.extend(plan.inventory.iter().map(|p| p.id));
     let notes = format!(
-        "Ironbound / {account} / {}. {}. {}. Room plan: {}. Starter catalog; verify charges, access and supplies. No automatic game actions.",
+        "Ironbound / {}. {}. {}. Room plan: {}. Starter catalog; verify charges and supplies. No automatic game actions.",
         options.boss.name(),
         plan.label,
         plan.spell,

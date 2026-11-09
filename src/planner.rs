@@ -514,7 +514,9 @@ fn style_set(
     }
     // Armour and accessories come from the complete owned equipment catalog, not weapon presets.
     for slot in [0, 1, 2, 4, 5, 7, 9, 10, 12] {
-        let current = set[slot].map(|id| equipment_score(id, style)).unwrap_or(0);
+        let current = set[slot]
+            .map(|id| equipment_score(id, style))
+            .unwrap_or_default();
         if let Some((id, score)) = catalog
             .iter()
             .filter(|g| g.slot == slot_keys[slot] && owned.contains_key(&g.id) && can_use(g.id, m))
@@ -685,7 +687,13 @@ fn refine_dps(
                         continue;
                     }
                     if let Some(dps) = metric(&trial) {
-                        if dps > best + 1e-9 {
+                        // Equal damage/prayer utility must not keep weaker armour
+                        // merely because it appeared first in the catalog.
+                        if dps > best + 1e-9
+                            || (dps - best).abs() <= 1e-9
+                                && equipment_tiebreak(&trial, style)
+                                    > equipment_tiebreak(&chosen, style)
+                        {
                             best = dps;
                             chosen = trial.clone();
                         }
@@ -702,12 +710,15 @@ fn refine_dps(
         }
     }
 }
-fn equipment_score(id: i32, style: &str) -> i32 {
-    let Some(s) = crate::combat::equipment_stats().iter().find(|s| s.id == id) else {
-        return 0;
+// Offensive stats seed the search; defence resolves ties before free prayer
+// bonus. Prayer economy only trades away combat stats through the explicit
+// settings in defence::score, never through an unconditional prayer bonus.
+fn equipment_score(id: i32, style: &str) -> (i32, i32, i32) {
+    let Some(s) = crate::combat::stats(id) else {
+        return (0, 0, 0);
     };
     let get = |m: &BTreeMap<String, i32>, k: &str| m.get(k).copied().unwrap_or(0);
-    let score = match style {
+    let score = match crate::rules::base_style(style) {
         "Magic" => get(&s.bonuses, "magic_str") * 100 + get(&s.offensive, "magic") * 10,
         "Ranged" => get(&s.bonuses, "ranged_str") * 100 + get(&s.offensive, "ranged") * 10,
         _ => {
@@ -720,7 +731,14 @@ fn equipment_score(id: i32, style: &str) -> i32 {
                     * 10
         }
     };
-    score + get(&s.bonuses, "prayer")
+    (score, s.defensive.values().sum(), get(&s.bonuses, "prayer"))
+}
+
+fn equipment_tiebreak(set: &[Option<i32>], style: &str) -> (i32, i32, i32) {
+    set.iter().flatten().fold((0, 0, 0), |total, id| {
+        let (offence, defence, prayer) = equipment_score(*id, style);
+        (total.0 + defence, total.1 + offence, total.2 + prayer)
+    })
 }
 
 pub fn plan(snapshot: &Snapshot, options: &Options) -> Plan {

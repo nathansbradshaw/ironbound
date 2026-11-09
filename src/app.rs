@@ -32,6 +32,8 @@ struct State {
     export_text: Option<String>,
     shared_setup: Option<share::Setup>,
     edit_inventory: Option<usize>,
+    inventory_query: String,
+    inventory_filter: String,
     edit_style: Option<String>,
     compare_target: Option<i32>,
     edit_equipment: Option<usize>,
@@ -113,6 +115,8 @@ impl State {
             demo_return: None,
             shared_setup,
             edit_inventory: None,
+            inventory_query: String::new(),
+            inventory_filter: "All".into(),
             edit_style: None,
             compare_target: None,
             edit_equipment: None,
@@ -270,10 +274,16 @@ pub fn start() -> Result<(), JsValue> {
         if let Some(el) = target {
             if let Some(action) = el.get_attribute("data-action") {
                 let return_slot = STATE.with(|s| s.borrow().edit_equipment);
+                let return_inventory = STATE.with(|s| s.borrow().edit_inventory);
                 act(&action);
                 if STATE.with(|s| s.borrow().edit_equipment.is_none()) {
                     if let Some(slot) = return_slot {
                         focus_equipment(slot);
+                    }
+                }
+                if STATE.with(|s| s.borrow().edit_inventory.is_none()) {
+                    if let Some(slot) = return_inventory {
+                        focus_inventory(slot);
                     }
                 }
             }
@@ -291,6 +301,14 @@ pub fn start() -> Result<(), JsValue> {
                     let mut s = state.borrow_mut();
                     s.encounter_query = el.value();
                     refresh_encounter_browser(&s);
+                });
+            } else if el.id() == "inventory-search" {
+                STATE.with(|state| {
+                    let mut s = state.borrow_mut();
+                    s.inventory_query = el.value();
+                    if let Some(results) = document().get_element_by_id("inventory-pick-results") {
+                        results.set_inner_html(&inventory_choices(&s));
+                    }
                 });
             } else if el.id() == "gear-search" {
                 STATE.with(|state| {
@@ -327,7 +345,12 @@ pub fn start() -> Result<(), JsValue> {
             .ok()
             .and_then(|v| v.as_string())
             .unwrap_or_default();
-        if key == "Tab" && STATE.with(|s| s.borrow().edit_equipment.is_some()) {
+        if key == "Tab"
+            && STATE.with(|s| {
+                let s = s.borrow();
+                s.edit_equipment.is_some() || s.edit_inventory.is_some()
+            })
+        {
             if let Ok(Some(dialog)) = document().query_selector(".gear-picker") {
                 if let Ok(nodes) = dialog
                     .query_selector_all("button:not([disabled]), input, select, summary, a[href]")
@@ -370,12 +393,25 @@ pub fn start() -> Result<(), JsValue> {
                     }
                 }
             }
-        } else if key == "Escape" && STATE.with(|s| s.borrow().edit_equipment.is_some()) {
+        } else if key == "Escape"
+            && STATE.with(|s| {
+                let s = s.borrow();
+                s.edit_equipment.is_some() || s.edit_inventory.is_some()
+            })
+        {
             let slot = STATE.with(|s| s.borrow().edit_equipment);
-            STATE.with(|s| s.borrow_mut().edit_equipment = None);
+            let inventory = STATE.with(|s| s.borrow().edit_inventory);
+            STATE.with(|s| {
+                let mut s = s.borrow_mut();
+                s.edit_equipment = None;
+                s.edit_inventory = None;
+            });
             render();
             if let Some(slot) = slot {
                 focus_equipment(slot);
+            }
+            if let Some(slot) = inventory {
+                focus_inventory(slot);
             }
         }
     });
@@ -435,8 +471,7 @@ pub fn start() -> Result<(), JsValue> {
             "raid-level",
             "access",
             "started",
-            "inventory-item",
-            "inventory-quantity",
+            "inventory-filter",
         ]
         .contains(&id.as_str())
             && !id.starts_with("skill-")
@@ -447,6 +482,7 @@ pub fn start() -> Result<(), JsValue> {
             return;
         }
         STATE.with(|state|{let mut s=state.borrow_mut();if s.shared_setup.is_some() && !id.starts_with("skill-"){s.notice("Choose Rebuild using my items before editing this shared setup.",true);return;}match id.as_str(){
+            "inventory-filter"=>{if let Ok(sel)=el.dyn_into::<HtmlSelectElement>(){s.inventory_filter=sel.value();}},
             _ if id.starts_with("priority-")=>{if let(Ok(target),Ok(weight))=(id[9..].parse::<i32>(),input(&id).parse::<u32>()){if encounter_targets(&s).contains(&target){s.saved.options.phase_priorities.insert(target,weight.min(10));}}},
             "gear-sort"=>{if let Ok(sel)=el.dyn_into::<HtmlSelectElement>(){s.gear_sort=sel.value();}},
             "incoming-attack"=>{if let Ok(sel)=el.dyn_into::<HtmlSelectElement>(){s.incoming_attack=Some(sel.value());}},
@@ -469,8 +505,6 @@ pub fn start() -> Result<(), JsValue> {
             "access"=>{if let Ok(select)=el.dyn_into::<HtmlSelectElement>(){s.saved.options.access_override=match select.value().as_str(){"yes"=>Some(true),"no"=>Some(false),_=>None};}},
             "started"=>{if let Ok(select)=el.dyn_into::<HtmlSelectElement>(){s.saved.options.started_barrows=match select.value().as_str(){"yes"=>Some(true),"no"=>Some(false),_=>None};}},
             _ if id.starts_with("gear-")=>{if let Ok(sel)=el.dyn_into::<HtmlSelectElement>(){if let Ok(value)=sel.value().parse::<i32>(){s.saved.options.gear_overrides.insert(id[5..].into(),value);s.saved.options.inventory_overrides.clear();}}},
-            "inventory-quantity"=>{if let Some(index)=s.edit_inventory{if let Ok(q)=input("inventory-quantity").parse::<u32>(){s.saved.options.inventory_quantities.insert(index,q);}}},
-            "inventory-item"=>{if let (Some(index),Ok(sel))=(s.edit_inventory,el.dyn_into::<HtmlSelectElement>()){if let Ok(value)=sel.value().parse::<i32>(){if value>0{s.saved.options.inventory_overrides.insert(index,value);s.edit_inventory=None;}}}},
             _ if id.starts_with("skill-")=>{if let (Ok(index),Ok(level))=(id[6..].parse::<usize>(),input(&id).parse::<u32>()){if index<24&&(1..=99).contains(&level){let selected=s.saved.snapshot.selected.clone();if let Some(m)=s.saved.snapshot.members.iter_mut().find(|m|m.name==selected){m.level_overrides.insert(SKILLS[index].into(),level);s.notice("Skill correction saved locally. Public skill lookup replaces local corrections.",false);}}}},
             _=>return,
         }s.export_text=None;s.persist();});
@@ -510,6 +544,15 @@ fn notice(message: &str, error: bool) {
 fn focus_equipment(slot: usize) {
     if let Ok(Some(button)) =
         document().query_selector(&format!("[data-action='edit-equipment:{slot}']"))
+    {
+        if let Ok(button) = button.dyn_into::<web_sys::HtmlElement>() {
+            let _ = button.focus();
+        }
+    }
+}
+fn focus_inventory(slot: usize) {
+    if let Ok(Some(button)) =
+        document().query_selector(&format!("[data-action='edit-inventory:{slot}']"))
     {
         if let Ok(button) = button.dyn_into::<web_sys::HtmlElement>() {
             let _ = button.focus();
@@ -732,6 +775,7 @@ fn act(action: &str) {
         if let Some(tab) = action.strip_prefix("tab:") {
             s.tab = tab.into();
             s.edit_equipment = None;
+            s.edit_inventory = None;
         } else if let Some(view) = action.strip_prefix("view:") {
             if ["loadout", "combat", "prepare"].contains(&view) {
                 s.view = view.into();
@@ -831,6 +875,7 @@ fn act(action: &str) {
             .and_then(|v| v.parse::<usize>().ok())
         {
             if slot < 14 && s.shared_setup.is_none() {
+                s.edit_inventory = None;
                 let plan = s.plan();
                 let style = s
                     .phase
@@ -901,7 +946,49 @@ fn act(action: &str) {
                 }
             }
         } else if let Some(i) = action.strip_prefix("edit-inventory:") {
-            s.edit_inventory = i.parse().ok();
+            if s.shared_setup.is_some() {
+                s.notice(
+                    "Rebuild using your items before editing this shared packing list.",
+                    true,
+                );
+            } else {
+                s.edit_inventory = i.parse::<usize>().ok().filter(|i| *i < 28);
+                s.edit_equipment = None;
+                s.inventory_query.clear();
+                s.inventory_filter = "All".into();
+            }
+        } else if action == "close-inventory" {
+            s.edit_inventory = None;
+        } else if action == "reset-inventory" || action == "empty-inventory" {
+            if let Some(index) = s.edit_inventory {
+                if action == "empty-inventory" {
+                    s.saved.options.inventory_overrides.insert(index, 0);
+                } else {
+                    s.saved.options.inventory_overrides.remove(&index);
+                }
+                s.saved.options.inventory_quantities.remove(&index);
+                s.edit_inventory = None;
+            }
+        } else if let Some(id) = action
+            .strip_prefix("pick-inventory:")
+            .and_then(|v| v.parse::<i32>().ok())
+        {
+            if let Some(index) = s.edit_inventory {
+                let free = inventory_available(&s, &s.plan(), index, id);
+                if free > 0 {
+                    let quantity = if planner::is_stackable(id) {
+                        input("inventory-stack")
+                            .parse::<u32>()
+                            .unwrap_or(1)
+                            .clamp(1, free.min(i32::MAX as u32))
+                    } else {
+                        1
+                    };
+                    s.saved.options.inventory_overrides.insert(index, id);
+                    s.saved.options.inventory_quantities.insert(index, quantity);
+                    s.edit_inventory = None;
+                }
+            }
         } else if let Some(style) = action.strip_prefix("edit-style:") {
             if crate::rules::STYLES.contains(&style) {
                 s.edit_style = Some(style.into());
@@ -1237,8 +1324,10 @@ fn render() {
     }
     html.push_str("</div><footer><span>Ironbound — an unofficial OSRS fan site.</span><a href=\"https://oldschool.runescape.wiki/\" target=\"_blank\" rel=\"noreferrer\">OSRS Wiki ↗</a><span>Starter catalog · 9 Nov 2026</span></footer></main></div>");
     if s.edit_equipment.is_some(){html.push_str(&gear_picker(&s));}
+    if let Some(index)=s.edit_inventory{html.push_str(&inventory_editor(&s,index));}
     if let Some(el)=document().get_element_by_id("app"){el.set_inner_html(&html);}
     if s.edit_equipment.is_some(){if let Ok(Some(main))=document().query_selector("main"){let _=main.set_attribute("inert","");}if let Some(search)=document().get_element_by_id("gear-search").and_then(|e|e.dyn_into::<web_sys::HtmlElement>().ok()){let _=search.focus();}}
+    if s.edit_inventory.is_some(){if let Ok(Some(main))=document().query_selector("main"){let _=main.set_attribute("inert","");}if let Some(search)=document().get_element_by_id("inventory-search").and_then(|e|e.dyn_into::<web_sys::HtmlElement>().ok()){let _=search.focus();}}
 });
 }
 
@@ -1481,10 +1570,10 @@ fn inventory_panel(s: &State, p: &Plan) -> String {
         "<section class=\"panel packing-panel\"><div class=\"panel-heading\"><h2>{} Packing list</h2><span class=\"slot-count {}\">{} / 28 slots</span></div><div class=\"packing-body\"><div class=\"inventory-grid\">",
         image(385),
         if p.inventory.len() > 28 { "over" } else { "" },
-        p.inventory.len()
+        p.inventory_slots()
     );
     for i in 0..28 {
-        let item = p.inventory.get(i);
+        let item = p.inventory.get(i).filter(|p| p.id > 0 && p.quantity > 0);
         html.push_str(&format!("<button class=\"inventory-edit\" data-action=\"edit-inventory:{i}\" aria-label=\"Change inventory slot {}\">",i+1));
         html.push_str(&slot(
             item.map(|p| p.id),
@@ -1500,12 +1589,7 @@ fn inventory_panel(s: &State, p: &Plan) -> String {
         ));
         html.push_str("</button>");
     }
-    html.push_str(&format!("</div><details class=\"supply-settings\"><summary>Adjust supplies</summary><p>Starting quantities, not a prediction of consumption.</p><label>Food slots<input id=\"food\" type=\"number\" min=\"0\" max=\"20\" value=\"{}\"></label><label>Prayer / restore bottles<input id=\"potions\" type=\"number\" min=\"0\" max=\"12\" value=\"{}\"></label><div class=\"small-note\">◈ {} slots free at the start</div></details></div>",s.saved.options.food,s.saved.options.prayer_potions,28usize.saturating_sub(p.inventory.len())));
-    if let Some(i) = s.edit_inventory {
-        if s.shared_setup.is_none() {
-            html.push_str(&inventory_editor(s, i));
-        }
-    }
+    html.push_str(&format!("</div><details class=\"supply-settings\"><summary>Adjust supplies</summary><p>Starting quantities, not a prediction of consumption.</p><label>Food slots<input id=\"food\" type=\"number\" min=\"0\" max=\"20\" value=\"{}\"></label><label>Prayer / restore bottles<input id=\"potions\" type=\"number\" min=\"0\" max=\"12\" value=\"{}\"></label><div class=\"small-note\">◈ {} slots free at the start</div></details></div>",s.saved.options.food,s.saved.options.prayer_potions,28usize.saturating_sub(p.inventory_slots())));
     if !p.missing.is_empty() {
         html.push_str("<div class=\"missing-list\"><strong>Before you set out</strong><ul>");
         for missing in &p.missing {
@@ -1806,21 +1890,17 @@ fn custom_group(s: &State) -> String {
 }
 
 fn inventory_editor(s: &State, index: usize) -> String {
-    let mut html = format!(
-        "<label class=\"account-form\">Change inventory slot {}<select id=\"inventory-item\"><option value=\"-1\">Choose an owned item…</option>",
-        index + 1
-    );
-    if let Some(m) = s.saved.snapshot.selected() {
-        for (id, q) in s.saved.snapshot.available(false) {
-            html.push_str(&format!(
-                "<option value=\"{id}\">{} × {q}</option>",
-                esc(&m
-                    .item_names
-                    .get(&id)
-                    .cloned()
-                    .unwrap_or_else(|| planner::item_name(id)))
-            ));
-        }
+    let mut filters = String::from("<option value=\"All\">All types</option>");
+    for category in crate::inventory::Category::ALL {
+        let label = category.label();
+        filters.push_str(&format!(
+            "<option value=\"{label}\" {}>{label}</option>",
+            if s.inventory_filter == label {
+                "selected"
+            } else {
+                ""
+            }
+        ));
     }
     let quantity = s
         .plan()
@@ -1828,7 +1908,99 @@ fn inventory_editor(s: &State, index: usize) -> String {
         .get(index)
         .map(|i| i.quantity)
         .unwrap_or(1);
-    html.push_str(&format!("</select></label><label class=\"account-form\">Stack quantity<input id=\"inventory-quantity\" type=\"number\" min=\"1\" max=\"2147483647\" value=\"{quantity}\"></label><p class=\"small-note\">Stacks may contain multiple runes or ammunition. Other items occupy one slot each. Required trip items must remain carried.</p>"));
+    format!(
+        r#"<div class="picker-backdrop"><section class="gear-picker inventory-picker" role="dialog" aria-modal="true" aria-labelledby="inventory-picker-title"><div class="panel-heading"><h2 id="inventory-picker-title">Inventory · slot {}</h2>{}</div><div class="picker-controls"><label>Search your items<input id="inventory-search" type="search" placeholder="Search owned items…" value="{}" autocomplete="off"></label><label>Item type<select id="inventory-filter">{filters}</select></label></div><div class="picker-actions"><label class="inventory-stack-label">Stack quantity<input id="inventory-stack" type="number" min="1" max="2147483647" value="{}"></label>{} {}</div><p class="picker-note">Grouped by type, then name. Reviewed rune/ammo stacks use the quantity above; other items use one slot. Required trip items are rechecked.</p><div class="picker-scroll" id="inventory-pick-results">{}</div></section></div>"#,
+        index + 1,
+        button("close-inventory", "Close ×", "phase"),
+        esc(&s.inventory_query),
+        quantity.max(1),
+        button("reset-inventory", "Restore automatic", "phase"),
+        button("empty-inventory", "Leave empty", "phase"),
+        inventory_choices(s)
+    )
+}
+
+fn inventory_available(s: &State, p: &Plan, slot: usize, id: i32) -> u32 {
+    let owned = s
+        .saved
+        .snapshot
+        .available(false)
+        .get(&id)
+        .copied()
+        .unwrap_or(0) as u64;
+    inventory_remaining(p, slot, id, owned)
+}
+fn inventory_remaining(p: &Plan, slot: usize, id: i32, owned: u64) -> u32 {
+    let worn: u64 = p
+        .equipment
+        .iter()
+        .enumerate()
+        .filter(|(_, item)| **item == Some(id))
+        .map(|(slot, _)| if slot == 13 { 100 } else { 1 })
+        .sum();
+    let packed: u64 = p
+        .inventory
+        .iter()
+        .enumerate()
+        .filter(|(index, item)| *index != slot && item.id == id)
+        .map(|(_, item)| item.quantity as u64)
+        .sum();
+    owned.saturating_sub(worn + packed).min(u32::MAX as u64) as u32
+}
+
+fn inventory_choices(s: &State) -> String {
+    let Some(index) = s.edit_inventory else {
+        return String::new();
+    };
+    let Some(member) = s.saved.snapshot.selected() else {
+        return String::new();
+    };
+    let plan = s.plan();
+    let current = plan.inventory.get(index).map(|p| p.id);
+    let query = s.inventory_query.trim().to_lowercase();
+    let owned = s.saved.snapshot.available(false);
+    let mut choices: Vec<_> = owned
+        .iter()
+        .map(|(&id, &quantity)| (id, quantity))
+        .filter(|(_, quantity)| *quantity > 0)
+        .filter_map(|(id, quantity)| {
+            let name = member
+                .item_names
+                .get(&id)
+                .cloned()
+                .unwrap_or_else(|| planner::item_name(id));
+            let category = crate::inventory::category(id, &name);
+            if (!query.is_empty() && !name.to_lowercase().contains(&query))
+                || (s.inventory_filter != "All" && s.inventory_filter != category.label())
+            {
+                return None;
+            }
+            Some((category, name, id, quantity))
+        })
+        .collect();
+    choices.sort_by(|a, b| {
+        a.0.cmp(&b.0)
+            .then_with(|| a.1.to_lowercase().cmp(&b.1.to_lowercase()))
+            .then(a.2.cmp(&b.2))
+    });
+    let mut html = String::new();
+    let mut last = None;
+    for (category, name, id, quantity) in choices {
+        if last != Some(category) {
+            html.push_str(&format!(
+                "<h3 class=\"owned-heading\">{}</h3>",
+                category.label()
+            ));
+            last = Some(category);
+        }
+        let available = inventory_remaining(&plan, index, id, owned[&id] as u64);
+        html.push_str(&format!(r#"<button class="gear-pick {}" data-action="pick-inventory:{id}" {}>{}<span><strong>{}</strong><small>{}{} · {available} available</small></span><b>× {quantity}</b></button>"#,if current==Some(id){"selected"}else{""},if available==0{"disabled"}else{""},image(id),esc(&name),if current==Some(id){"In this slot · "}else{""},category.label()));
+    }
+    if html.is_empty() {
+        html.push_str(
+            "<p class=\"picker-note\">No owned items match. Try another type or search.</p>",
+        );
+    }
     html
 }
 

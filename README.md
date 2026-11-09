@@ -20,6 +20,7 @@ Your account stays on that browser. Import it again when using a different devic
 - **Plan a trip:** boss and raid templates, or your own group of monsters. Select your CoX rooms or choose each Fractured Archive fork.
 - **Switch less:** limit changed items and carried gear; favour one style or phase.
 - **Compare gear:** outgoing DPS, supported incoming damage, defence and prayer drain.
+- **Pack your inventory:** click any slot, search owned items by type, and keep your chosen positions when exporting.
 - **Plan longer trips:** weigh prayer efficiency against damage and see a prayer-supply estimate.
 - **Track upgrades:** compare owned equipment with reviewed unowned options.
 - **Take it into RuneLite:** export Inventory Setups or Bank Tags, or share a setup link.

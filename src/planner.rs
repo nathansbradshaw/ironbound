@@ -280,6 +280,12 @@ pub struct Plan {
     pub spell: String,
 }
 impl Plan {
+    pub fn inventory_slots(&self) -> usize {
+        self.inventory
+            .iter()
+            .filter(|p| p.id > 0 && p.quantity > 0)
+            .count()
+    }
     pub fn exportable(&self) -> bool {
         self.missing.is_empty() && self.inventory.len() <= 28 && self.equipment[3].is_some()
     }
@@ -1197,15 +1203,21 @@ fn plan_uncached(snapshot: &Snapshot, options: &Options) -> Plan {
             continue;
         }
         if *index >= out.inventory.len() && *id > 0 {
-            out.inventory.push(Packed {
+            out.inventory.resize_with(*index + 1, || Packed {
+                id: 0,
+                quantity: 0,
+                purpose: String::new(),
+            });
+            out.inventory[*index] = Packed {
                 id: *id,
                 quantity: 1,
                 purpose: "Manual item addition".into(),
-            });
+            };
             continue;
         }
         if *index < out.inventory.len() {
             if *id == 0 {
+                out.inventory[*index].id = 0;
                 out.inventory[*index].quantity = 0;
             } else {
                 out.inventory[*index] = Packed {
@@ -1223,7 +1235,9 @@ fn plan_uncached(snapshot: &Snapshot, options: &Options) -> Plan {
             }
         }
     }
-    out.inventory.retain(|p| p.quantity > 0);
+    while out.inventory.last().is_some_and(|p| p.quantity == 0) {
+        out.inventory.pop();
+    }
     for (id, q) in essentials {
         if out
             .inventory

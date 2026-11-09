@@ -137,6 +137,9 @@ impl Setup {
             }
         }
         if self.inventory.iter().any(|i| {
+            if i.id == 0 && i.quantity == 0 {
+                return false;
+            }
             i.id <= 0
                 || i.id > 1_000_000
                 || i.quantity == 0

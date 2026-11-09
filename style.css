@@ -264,3 +264,6 @@ details.account-summary[open]>summary{margin-bottom:7px}
 }
 .encounter-detail h1{font-size:32px;line-height:1.2;color:#4b240d}
 @media(max-width:480px){.encounter-detail h1{font-size:27px}}
+/* Quiet defaults; detail remains available on demand. */
+.loadout-notes>summary{font:20px Scape,monospace;color:#ddc17f;text-decoration:none}
+.export-heading p:empty{display:none}

@@ -34,6 +34,17 @@ impl Category {
         }
     }
 }
+pub fn public_name(id: i32) -> Option<String> {
+    static NAMES: std::sync::OnceLock<std::collections::BTreeMap<i32, String>> =
+        std::sync::OnceLock::new();
+    NAMES
+        .get_or_init(|| {
+            serde_json::from_str(include_str!("../assets/item-names.json"))
+                .expect("public item names")
+        })
+        .get(&id)
+        .cloned()
+}
 pub fn category(id: i32, name: &str) -> Category {
     let n = name.to_lowercase();
     if n.ends_with(" rune") || n.ends_with(" runes") {
@@ -56,6 +67,7 @@ pub fn category(id: i32, name: &str) -> Category {
         "magic essence",
         "remedy",
         "balm",
+        "guthix rest",
     ]
     .iter()
     .any(|v| n.contains(v))
@@ -68,6 +80,9 @@ pub fn category(id: i32, name: &str) -> Category {
     }
     if n.contains("teleport") || n.ends_with(" tablet") {
         return Category::Teleports;
+    }
+    if crate::supplies::food(id).is_some() {
+        return Category::Food;
     }
     if n.contains("pickaxe")
         || n.ends_with(" axe")

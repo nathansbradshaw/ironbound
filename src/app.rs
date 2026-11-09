@@ -1966,7 +1966,7 @@ fn inventory_editor(s: &State, index: usize) -> String {
         .map(|i| i.quantity)
         .unwrap_or(1);
     format!(
-        r#"<div class="picker-backdrop"><section class="gear-picker inventory-picker" role="dialog" aria-modal="true" aria-labelledby="inventory-picker-title"><div class="panel-heading"><h2 id="inventory-picker-title">Inventory · slot {}</h2>{}</div><div class="picker-controls"><label>Search your items<input id="inventory-search" type="search" placeholder="Search owned items…" value="{}" autocomplete="off"></label><label>Item type<select id="inventory-filter">{filters}</select></label></div><div class="picker-actions"><label class="inventory-stack-label">Stack quantity<input id="inventory-stack" type="number" min="1" max="2147483647" value="{}"></label>{} {}</div><p class="picker-note">Grouped by type, then name. Reviewed rune/ammo stacks use the quantity above; other items use one slot. Required trip items are rechecked.</p><div class="picker-scroll" id="inventory-pick-results">{}</div></section></div>"#,
+        r#"<div class="picker-backdrop"><section class="gear-picker inventory-picker" role="dialog" aria-modal="true" aria-labelledby="inventory-picker-title"><div class="panel-heading"><h2 id="inventory-picker-title">Inventory · slot {}</h2>{}</div><div class="picker-controls"><label>Search your items<input id="inventory-search" type="search" placeholder="Search owned items…" value="{}" autocomplete="off"></label><label>Item type<select id="inventory-filter">{filters}</select></label></div><div class="picker-actions"><label class="inventory-stack-label">Stack quantity<input id="inventory-stack" type="number" min="1" max="2147483647" value="{}"></label>{} {}</div><p class="picker-note">Food: HP per slot. Potions: restoration or boost within each role, then doses. Stack quantity applies to reviewed runes/ammo.</p><div class="picker-scroll" id="inventory-pick-results">{}</div></section></div>"#,
         index + 1,
         button("close-inventory", "Close ×", "phase"),
         esc(&s.inventory_query),
@@ -2032,26 +2032,32 @@ fn inventory_choices(s: &State) -> String {
             {
                 return None;
             }
-            Some((category, name, id, quantity))
+            let value = crate::supplies::value(category, id, &name, member);
+            Some((category, name, id, quantity, value))
         })
         .collect();
     choices.sort_by(|a, b| {
         a.0.cmp(&b.0)
+            .then_with(|| a.4.compare(&b.4))
             .then_with(|| a.1.to_lowercase().cmp(&b.1.to_lowercase()))
             .then(a.2.cmp(&b.2))
     });
     let mut html = String::new();
     let mut last = None;
-    for (category, name, id, quantity) in choices {
-        if last != Some(category) {
+    for (category, name, id, quantity, value) in choices {
+        if last != Some((category, value.role)) {
             html.push_str(&format!(
                 "<h3 class=\"owned-heading\">{}</h3>",
-                category.label()
+                if value.role.is_empty() {
+                    category.label().into()
+                } else {
+                    format!("{} · {}", category.label(), value.role)
+                }
             ));
-            last = Some(category);
+            last = Some((category, value.role));
         }
         let available = inventory_remaining(&plan, index, id, owned[&id] as u64);
-        html.push_str(&format!(r#"<button class="gear-pick {}" data-action="pick-inventory:{id}" {}>{}<span><strong>{}</strong><small>{}{} · {available} available</small></span><b>× {quantity}</b></button>"#,if current==Some(id){"selected"}else{""},if available==0{"disabled"}else{""},image(id),esc(&name),if current==Some(id){"In this slot · "}else{""},category.label()));
+        html.push_str(&format!(r#"<button class="gear-pick {}" data-action="pick-inventory:{id}" {}>{}<span><strong>{}</strong><small>{}</small><small>{}{available} available</small></span><b>× {quantity}</b></button>"#,if current==Some(id){"selected"}else{""},if available==0{"disabled"}else{""},image(id),esc(&name),esc(if value.detail.is_empty(){category.label()}else{&value.detail}),if current==Some(id){"In this slot · "}else{""}));
     }
     if html.is_empty() {
         html.push_str(

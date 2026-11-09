@@ -22,6 +22,7 @@ struct Saved {
 }
 struct State {
     saved: Saved,
+    demo_return: Option<Saved>,
     tab: String,
     view: String,
     phase: Option<usize>,
@@ -41,6 +42,7 @@ struct State {
     encounter_filter: String,
     building_group: bool,
     raid_rooms_open: bool,
+    switch_preferences_open: bool,
 }
 impl State {
     fn initial() -> Self {
@@ -66,6 +68,15 @@ impl State {
         });
         if saved.snapshot.source == "Demo" {
             saved.snapshot = account::demo();
+        }
+        let key = goal_key(&saved.snapshot.selected, &saved.options);
+        if saved.options.boss == Boss::Custom {
+            if let Some(legacy) = saved
+                .pins
+                .remove(&format!("{}:custom", saved.snapshot.selected))
+            {
+                saved.pins.entry(key).or_insert(legacy);
+            }
         }
         saved.options.food = saved.options.food.min(20);
         saved.options.prayer_potions = saved.options.prayer_potions.min(12);
@@ -99,6 +110,7 @@ impl State {
             saved.options = setup.options();
         }
         Self {
+            demo_return: None,
             shared_setup,
             edit_inventory: None,
             edit_style: None,
@@ -111,6 +123,7 @@ impl State {
             encounter_filter: "Popular".into(),
             building_group: false,
             raid_rooms_open: false,
+            switch_preferences_open: false,
             saved,
             tab: "bossing".into(),
             view: "loadout".into(),
@@ -128,6 +141,10 @@ impl State {
             .unwrap_or_else(|| planner::plan(&self.saved.snapshot, &self.saved.options))
     }
     fn persist(&self) {
+        // An example is a temporary preview. Never replace the saved account or its URL.
+        if self.demo_return.is_some() {
+            return;
+        }
         let mut stored = self.saved.clone();
         if self.shared_setup.is_none() {
             let base = format!(
@@ -161,14 +178,31 @@ impl State {
     fn pins(&self) -> Vec<String> {
         self.saved
             .pins
-            .get(&format!(
-                "{}:{}",
-                self.saved.snapshot.selected,
-                self.saved.options.boss.key()
+            .get(&goal_key(
+                &self.saved.snapshot.selected,
+                &self.saved.options,
             ))
             .cloned()
             .unwrap_or_default()
     }
+}
+fn goal_key(account: &str, options: &Options) -> String {
+    let encounter = if options.boss != Boss::Custom {
+        options.boss.key().to_string()
+    } else if let Some(raid) = crate::raids::for_targets(&options.targets) {
+        format!("custom:raid:{}", raid.id)
+    } else if let Some(entry) = selected_encounter(options) {
+        format!("custom:encounter:{}", entry.name)
+    } else {
+        let mut targets: Vec<_> = options
+            .targets
+            .iter()
+            .map(|t| format!("{}:{}", t.id, t.style))
+            .collect();
+        targets.sort();
+        format!("custom:group:{}", targets.join(","))
+    };
+    format!("{account}:{encounter}")
 }
 thread_local! {static STATE:RefCell<State>=RefCell::new(State::initial());}
 fn window() -> web_sys::Window {
@@ -235,7 +269,13 @@ pub fn start() -> Result<(), JsValue> {
             .and_then(|e| e.closest("[data-action]").ok().flatten());
         if let Some(el) = target {
             if let Some(action) = el.get_attribute("data-action") {
+                let return_slot = STATE.with(|s| s.borrow().edit_equipment);
                 act(&action);
+                if STATE.with(|s| s.borrow().edit_equipment.is_none()) {
+                    if let Some(slot) = return_slot {
+                        focus_equipment(slot);
+                    }
+                }
             }
         }
     });
@@ -269,6 +309,10 @@ pub fn start() -> Result<(), JsValue> {
         if let Some(el) = e.target().and_then(|t| t.dyn_into::<Element>().ok()) {
             if el.id() == "raid-room-picker" {
                 STATE.with(|state| state.borrow_mut().raid_rooms_open = el.has_attribute("open"));
+            } else if el.id() == "switch-preferences" {
+                STATE.with(|state| {
+                    state.borrow_mut().switch_preferences_open = el.has_attribute("open")
+                });
             }
         }
     });
@@ -279,14 +323,60 @@ pub fn start() -> Result<(), JsValue> {
     )?;
     disclosure.forget();
     let escape = Closure::<dyn FnMut(web_sys::Event)>::new(|e: web_sys::Event| {
-        if js_sys::Reflect::get(e.as_ref(), &JsValue::from_str("key"))
+        let key = js_sys::Reflect::get(e.as_ref(), &JsValue::from_str("key"))
             .ok()
             .and_then(|v| v.as_string())
-            .as_deref()
-            == Some("Escape")
-        {
+            .unwrap_or_default();
+        if key == "Tab" && STATE.with(|s| s.borrow().edit_equipment.is_some()) {
+            if let Ok(Some(dialog)) = document().query_selector(".gear-picker") {
+                if let Ok(nodes) = dialog
+                    .query_selector_all("button:not([disabled]), input, select, summary, a[href]")
+                {
+                    let visible: Vec<Element> = (0..nodes.length())
+                        .filter_map(|i| nodes.item(i)?.dyn_into::<Element>().ok())
+                        .filter(|el| el.client_width() > 0 || el.client_height() > 0)
+                        .filter(|el| {
+                            let mut ancestor = el.parent_element();
+                            while let Some(parent) = ancestor {
+                                if parent.tag_name() == "DETAILS"
+                                    && !parent.has_attribute("open")
+                                    && !(el.tag_name() == "SUMMARY"
+                                        && el.parent_element().as_ref() == Some(&parent))
+                                {
+                                    return false;
+                                }
+                                ancestor = parent.parent_element();
+                            }
+                            true
+                        })
+                        .collect();
+                    if !visible.is_empty() {
+                        let backwards =
+                            js_sys::Reflect::get(e.as_ref(), &JsValue::from_str("shiftKey"))
+                                .ok()
+                                .and_then(|v| v.as_bool())
+                                .unwrap_or(false);
+                        let active = document().active_element();
+                        let edge = visible.get(if backwards { 0 } else { visible.len() - 1 });
+                        if active.is_none() || active.as_ref() == edge {
+                            e.prevent_default();
+                            if let Some(next) = visible
+                                .get(if backwards { visible.len() - 1 } else { 0 })
+                                .and_then(|n| n.dyn_ref::<web_sys::HtmlElement>())
+                            {
+                                let _ = next.focus();
+                            }
+                        }
+                    }
+                }
+            }
+        } else if key == "Escape" && STATE.with(|s| s.borrow().edit_equipment.is_some()) {
+            let slot = STATE.with(|s| s.borrow().edit_equipment);
             STATE.with(|s| s.borrow_mut().edit_equipment = None);
             render();
+            if let Some(slot) = slot {
+                focus_equipment(slot);
+            }
         }
     });
     document().add_event_listener_with_callback("keydown", escape.as_ref().unchecked_ref())?;
@@ -417,19 +507,54 @@ fn notice(message: &str, error: bool) {
     STATE.with(|s| s.borrow_mut().notice(message, error));
     render();
 }
+fn focus_equipment(slot: usize) {
+    if let Ok(Some(button)) =
+        document().query_selector(&format!("[data-action='edit-equipment:{slot}']"))
+    {
+        if let Ok(button) = button.dyn_into::<web_sys::HtmlElement>() {
+            let _ = button.focus();
+        }
+    }
+}
 fn act(action: &str) {
     if let Some(filter) = action.strip_prefix("encounter-filter:") {
         if ["Popular", "Bosses", "Raids", "Groups"].contains(&filter) {
             STATE.with(|state| {
                 let mut s = state.borrow_mut();
                 s.encounter_filter = filter.into();
+                s.encounter_query.clear();
+                if let Some(input) = document()
+                    .get_element_by_id("encounter-search")
+                    .and_then(|e| e.dyn_into::<HtmlInputElement>().ok())
+                {
+                    input.set_value("");
+                }
                 refresh_encounter_browser(&s);
             });
         }
         return;
     }
     match action {
+        "clear-encounters" => {
+            STATE.with(|state| {
+                let mut s = state.borrow_mut();
+                s.encounter_query.clear();
+                s.encounter_filter = "Popular".into();
+                if let Some(input) = document()
+                    .get_element_by_id("encounter-search")
+                    .and_then(|e| e.dyn_into::<HtmlInputElement>().ok())
+                {
+                    input.set_value("");
+                }
+                refresh_encounter_browser(&s);
+            });
+            return;
+        }
         "load-levels" => {
+            if STATE.with(|s| s.borrow().demo_return.is_some()) {
+                notice("Return to your account to look up your levels.", false);
+                return;
+            }
             let name = input("player-name").trim().to_string();
             if name.is_empty()
                 || name.len() > 12
@@ -468,9 +593,11 @@ fn act(action: &str) {
                         .unwrap_or_default()
                         .to_string();
                     let url = format!("{base}{hash}");
-                    let _ = window()
-                        .history()
-                        .and_then(|h| h.replace_state_with_url(&JsValue::NULL, "", Some(&url)));
+                    if STATE.with(|s| s.borrow().demo_return.is_none()) {
+                        let _ = window()
+                            .history()
+                            .and_then(|h| h.replace_state_with_url(&JsValue::NULL, "", Some(&url)));
+                    }
                     STATE.with(|s| s.borrow_mut().export_text = Some(url.clone()));
                     spawn_local(async move {
                         let copied =
@@ -580,6 +707,10 @@ fn act(action: &str) {
             return;
         }
         "forget" => {
+            if STATE.with(|s| s.borrow().demo_return.is_some()) {
+                notice("Return to your account before removing saved data.", true);
+                return;
+            }
             if !window().confirm_with_message("Remove the saved account and goals from this browser? Your bank export file will not be changed.").unwrap_or(false){return;}
             if let Some(storage) = window().local_storage().ok().flatten() {
                 let _ = storage.remove_item(STORAGE);
@@ -688,11 +819,7 @@ fn act(action: &str) {
             .and_then(|v| v.parse::<i32>().ok())
         {
             if planner::gear(id).is_some() {
-                let key = format!(
-                    "{}:{}",
-                    s.saved.snapshot.selected,
-                    s.saved.options.boss.key()
-                );
+                let key = goal_key(&s.saved.snapshot.selected, &s.saved.options);
                 s.saved.pins.insert(key, vec![format!("item:{id}")]);
                 s.edit_equipment = None;
                 s.notice("Upgrade goal saved for this encounter.", false);
@@ -813,11 +940,27 @@ fn act(action: &str) {
             s.edit_style = None;
             s.compare_target = None;
         } else if action == "demo" {
+            if s.demo_return.is_none() && s.saved.snapshot.source != "Demo" {
+                s.demo_return = Some(s.saved.clone());
+            }
             s.saved.snapshot = account::demo();
             s.saved.options = Options::default();
+            s.saved.pins = BTreeMap::new();
+            s.shared_setup = None;
             s.tab = "bossing".into();
             s.phase = None;
-            s.notice("Example account loaded locally.", false);
+            s.edit_style = None;
+            s.compare_target = None;
+            s.notice("Example preview. Your saved account is unchanged.", false);
+        } else if action == "restore-account" {
+            if let Some(saved) = s.demo_return.take() {
+                s.saved = saved;
+                s.shared_setup = None;
+                s.phase = None;
+                s.edit_style = None;
+                s.compare_target = None;
+                s.tab = "bossing".into();
+            }
         } else if action == "add-target" {
             let raw = input("monster");
             let id = raw.rsplit(" · ").next().and_then(|v| v.parse().ok());
@@ -853,11 +996,7 @@ fn act(action: &str) {
                 s.phase = None;
             }
         } else if let Some(id) = action.strip_prefix("pin:") {
-            let selected = format!(
-                "{}:{}",
-                s.saved.snapshot.selected,
-                s.saved.options.boss.key()
-            );
+            let selected = goal_key(&s.saved.snapshot.selected, &s.saved.options);
             let pins = s.saved.pins.entry(selected).or_default();
             if pins.iter().any(|v| v == id) {
                 pins.retain(|v| v != id);
@@ -927,10 +1066,48 @@ fn import_raw(raw: &str) {
         let name = input("player-name");
         match Snapshot::from_bank_tsv(raw, &name, now) {
             Ok(mut snapshot) => {
-                STATE.with(|state|{let mut s=state.borrow_mut();
-                if s.saved.snapshot.source!="Demo" {if let Some(old)=s.saved.snapshot.selected(){snapshot.members[0].skills=old.skills.clone();snapshot.members[0].level_overrides=old.level_overrides.clone();snapshot.members[0].last_updated=old.last_updated.clone();snapshot.members[0].name=old.name.clone();snapshot.selected=old.name.clone();}}
-                s.saved.snapshot=snapshot;s.shared_setup=None;s.saved.options.access_override=None;s.saved.options.started_barrows=None;s.saved.options.gear_overrides.clear();s.tab="bossing".into();s.phase=None;s.persist();s.notice("Bank imported on this device. Enter or look up your levels to build a setup.",false);
-            });
+                STATE.with(|state| {
+                    let mut s = state.borrow_mut();
+                    if s.saved.snapshot.source != "Demo" {
+                        if let Some(old) = s.saved.snapshot.selected() {
+                            snapshot.members[0].skills = old.skills.clone();
+                            snapshot.members[0].level_overrides = old.level_overrides.clone();
+                            snapshot.members[0].last_updated = old.last_updated.clone();
+                            snapshot.members[0].name = old.name.clone();
+                            snapshot.selected = old.name.clone();
+                        }
+                    }
+                    s.demo_return = None;
+                    s.saved.snapshot = snapshot;
+                    s.shared_setup = None;
+                    s.saved.options.access_override = None;
+                    s.saved.options.started_barrows = None;
+                    s.saved.options.gear_overrides.clear();
+                    let ready = s.saved.snapshot.selected().is_some_and(|m| {
+                        [
+                            "Attack",
+                            "Strength",
+                            "Defence",
+                            "Ranged",
+                            "Magic",
+                            "Prayer",
+                            "Hitpoints",
+                        ]
+                        .iter()
+                        .all(|skill| m.level(skill).is_some())
+                    });
+                    s.tab = if ready { "bossing" } else { "account" }.into();
+                    s.phase = None;
+                    s.persist();
+                    s.notice(
+                        if ready {
+                            "Bank updated on this device."
+                        } else {
+                            "Bank imported. Add your combat levels below to build a setup."
+                        },
+                        false,
+                    );
+                });
                 render();
             }
             Err(e) => notice(&e, true),
@@ -959,7 +1136,13 @@ fn import_raw(raw: &str) {
         saved.options.raid_level = saved.options.raid_level.min(150);
         STATE.with(|s| {
             let mut s = s.borrow_mut();
+            s.demo_return = None;
             s.saved = saved;
+            s.shared_setup = None;
+            s.edit_style = None;
+            s.compare_target = None;
+            s.edit_equipment = None;
+            s.edit_inventory = None;
             s.tab = "bossing".into();
             s.phase = None;
             s.persist();
@@ -971,8 +1154,14 @@ fn import_raw(raw: &str) {
     match Snapshot::parse(raw, now) {
         Ok(snapshot) => STATE.with(|s| {
             let mut s = s.borrow_mut();
+            s.demo_return = None;
             s.saved.snapshot = snapshot;
             s.saved.options = Options::default();
+            s.shared_setup = None;
+            s.edit_style = None;
+            s.compare_target = None;
+            s.edit_equipment = None;
+            s.edit_inventory = None;
             s.phase = None;
             s.tab = "bossing".into();
             s.persist();
@@ -1018,11 +1207,13 @@ fn render() {
     let demo=snapshot.source=="Demo";
     let nav=|(key,label,icon):(&str,&str,i32)|format!("<button class=\"nav-item {}\" data-action=\"tab:{key}\">{}<span>{label}</span>{}</button>",if s.tab==key{"active"}else{""},image(icon),if key=="goals"{format!("<span class=\"nav-count\">{}</span>",s.pins().len())}else{String::new()});
     let mut html=format!("<div class=\"app-shell\"><aside class=\"sidebar\"><a class=\"brand\" href=\"#\" aria-label=\"Ironbound home\"><span class=\"brand-mark\">{}</span><span>IRONBOUND<small>IRONMAN BOSSING & GEAR</small></span></a><div class=\"sidebar-rule\"></div><div class=\"nav-label\">YOUR ADVENTURE</div><nav aria-label=\"Main navigation\">{}{}</nav><div class=\"sidebar-note\"><span class=\"tiny-rune\">✦</span><p>Ironman bossing planner</p></div><div class=\"sidebar-bottom\"><div class=\"local-indicator\"><span></span>Saved on this device</div><small>Independent OSRS fan project.<br>Game assets © Jagex.</small></div></aside><main class=\"main\"><header class=\"topbar\"><span class=\"breadcrumb\">Your journal <span>/</span> {}</span><div class=\"account-pill\">{}<span>{}<small>{}</small></span></div></header>",image(2347),nav(("bossing","Bossing",4151)),nav(("account","Your account",1712)),match s.tab.as_str(){"goals"=>"Progression goals","account"=>"Your account",_=>"Bossing"},image(10828),esc(&snapshot.selected),if demo{"Example Ironman"}else{"Imported account"});
-    if demo{html.push_str(&format!("<div class=\"demo-banner\"><p>Sample account</p>{}</div>",button("tab:account","Import bank","text-button")));}
+    if demo{html.push_str(&format!("<div class=\"demo-banner\"><p>{}</p>{}</div>",if s.demo_return.is_some(){"Example preview · your bank is safe"}else{"Sample account"},if s.demo_return.is_some(){button("restore-account","Return to your account","text-button")}else{button("tab:account","Import bank","text-button")}));}
     if !s.message.is_empty(){html.push_str(&format!("<div role=\"status\" class=\"notice {}\">{}</div>",if s.error{"error"}else{""},esc(&s.message)));}
     html.push_str("<div class=\"page-content\">");
     if s.tab=="account"{html.push_str(&account_page(&s));}
     else{
+        html.push_str(&encounter_detail(&s,&plan));
+        html.push_str("<div class=\"encounter-actions\">");
         html.push_str(&format!("<details class=\"encounter-picker\" {}><summary>Change encounter</summary>",if s.building_group||(options.boss==Boss::Custom&&options.targets.is_empty()){"open"}else{""}));
         html.push_str(&encounter_catalog(&s));
         html.push_str(&format!("<details class=\"custom-builder\" {}><summary>Build a custom group</summary>",if s.building_group{"open"}else{""}));
@@ -1031,8 +1222,9 @@ fn render() {
         html.push_str("</details>");
         html.push_str("</details>");
         if s.shared_setup.is_some(){html.push_str(&format!("<p class=\"notice\">Viewing a shared setup. Your saved bank is unchanged. {}</p>",button("use-bank","Rebuild using my items","text-button")));}
-        html.push_str(&encounter_detail(&s,&plan));
         html.push_str(&raid_rooms(&s));
+        html.push_str("</div>");
+        if s.shared_setup.is_none(){html.push_str(&switch_controls(&s));}
         html.push_str("<nav class=\"planner-tabs\" aria-label=\"Planner sections\">");
         for (view,label) in [("loadout","Gear & inventory"),("combat","Combat & switches"),("prepare","Preparation")] {let disabled=if view=="combat"&&s.shared_setup.is_some(){"disabled title=\"Rebuild using your items to calculate combat stats\""}else{""};html.push_str(&format!("<button class=\"workspace-tab {}\" data-action=\"view:{view}\" aria-pressed=\"{}\" {disabled}>{label}{}</button>",if s.view==view{"active"}else{""},s.view==view,if view=="prepare"&&!plan.missing.is_empty(){format!(" <span class=\"issue-count\">{}</span>",plan.missing.len())}else{String::new()}));}
         html.push_str("</nav><section class=\"workspace-view\">");
@@ -1046,7 +1238,7 @@ fn render() {
     html.push_str("</div><footer><span>Ironbound — an unofficial OSRS fan site.</span><a href=\"https://oldschool.runescape.wiki/\" target=\"_blank\" rel=\"noreferrer\">OSRS Wiki ↗</a><span>Starter catalog · 9 Nov 2026</span></footer></main></div>");
     if s.edit_equipment.is_some(){html.push_str(&gear_picker(&s));}
     if let Some(el)=document().get_element_by_id("app"){el.set_inner_html(&html);}
-    if s.edit_equipment.is_some(){if let Some(search)=document().get_element_by_id("gear-search").and_then(|e|e.dyn_into::<web_sys::HtmlElement>().ok()){let _=search.focus();}}
+    if s.edit_equipment.is_some(){if let Ok(Some(main))=document().query_selector("main"){let _=main.set_attribute("inert","");}if let Some(search)=document().get_element_by_id("gear-search").and_then(|e|e.dyn_into::<web_sys::HtmlElement>().ok()){let _=search.focus();}}
 });
 }
 
@@ -1061,11 +1253,24 @@ fn encounter_detail(s: &State, p: &Plan) -> String {
         })
         .unwrap_or_else(|| boss.source().into());
     let mut html = format!(
-        "<section class=\"encounter-detail\"><h1>{}</h1><div class=\"detail-facts\"><span>{} switch items</span><a href=\"{}\" target=\"_blank\" rel=\"noreferrer\">Wiki guide ↗</a></div>",
+        "<section class=\"encounter-detail planner-summary\"><h1>{}</h1><div class=\"detail-facts\"><span>{} carried gear slots</span><a href=\"{}\" target=\"_blank\" rel=\"noreferrer\">Wiki guide ↗</a></div>",
         encounter_label(&s.saved.options),
         p.switches,
         esc(&guide)
     );
+    let coverage = if s.shared_setup.is_some() {
+        "Shared packing list · levels not included"
+    } else if boss == Boss::Toa
+        || selected_encounter(&s.saved.options)
+            .is_some_and(|e| e.coverage().contains("DPS partial"))
+    {
+        "Gear plan · some damage calculations unavailable"
+    } else if boss == Boss::Custom && selected_encounter(&s.saved.options).is_none() {
+        "Custom gear plan · mechanics need review"
+    } else {
+        "Normal-attack estimates · special mechanics need review"
+    };
+    html.push_str(&format!("<p class=\"plan-coverage\">{coverage}</p>"));
     if boss == Boss::Toa {
         html.push_str(&format!("<label class=\"raid-control\">Raid level <input id=\"raid-level\" type=\"number\" min=\"0\" max=\"150\" value=\"{}\"><span>Mechanic-specific invocation planning is outside this starter model.</span></label>",s.saved.options.raid_level));
     }
@@ -1145,8 +1350,13 @@ fn loadout_panel(s: &State, p: &Plan) -> String {
     let current = s.phase.and_then(|i| p.phases.get(i));
     let set = current.map(|p| &p.equipment).unwrap_or(&p.equipment);
     let mut html = format!(
-        "<section class=\"panel loadout-panel\"><div class=\"panel-heading\"><h2>{} Equipment</h2>{}</div><div class=\"loadout-content\"><div class=\"equipment-paper\"><div class=\"paper-header\">{}</div><div class=\"equipment-grid\">",
+        "<section class=\"panel loadout-panel\"><div class=\"panel-heading\"><h2>{} {}</h2>{}</div><div class=\"loadout-content\"><div class=\"equipment-paper\"><div class=\"paper-header\">{}</div><div class=\"equipment-grid\">",
         image(12954),
+        if current.is_some() {
+            "Phase preview"
+        } else {
+            "Starting gear"
+        },
         badge(
             if s.shared_setup.is_some() {
                 "SHARED SETUP"
@@ -1200,11 +1410,6 @@ fn loadout_panel(s: &State, p: &Plan) -> String {
             esc(&p.spell)
         ));
     }
-    html.push_str(&button(
-        "casual",
-        "Use 4-item switches",
-        "button ghost full",
-    ));
     html.push_str("<details><summary>Exclude items</summary><div class=\"gear-list\">");
     for id in set.iter().flatten() {
         html.push_str(&format!(
@@ -1262,9 +1467,10 @@ fn loadout_panel(s: &State, p: &Plan) -> String {
     html.push_str("</div>");
     if let Some(phase) = current {
         html.push_str(&format!(
-            "<p class=\"phase-note\"><strong>{}</strong> · {}</p>",
+            "<p class=\"phase-note\"><strong>{}</strong> · {}</p><p class=\"packing-label\">Preview only. Packing list and export use starting gear. {}</p>",
             esc(&phase.style),
-            esc(&phase.note)
+            esc(&phase.note),
+            button("starting", "Back to starting gear", "text-button")
         ));
     }
     html.push_str("</section>");
@@ -1272,7 +1478,7 @@ fn loadout_panel(s: &State, p: &Plan) -> String {
 }
 fn inventory_panel(s: &State, p: &Plan) -> String {
     let mut html = format!(
-        "<section class=\"panel\"><div class=\"panel-heading\"><h2>{} Inventory</h2><span class=\"slot-count {}\">{} / 28 slots</span></div><div class=\"packing-body\"><div class=\"inventory-grid\">",
+        "<section class=\"panel packing-panel\"><div class=\"panel-heading\"><h2>{} Packing list</h2><span class=\"slot-count {}\">{} / 28 slots</span></div><div class=\"packing-body\"><div class=\"inventory-grid\">",
         image(385),
         if p.inventory.len() > 28 { "over" } else { "" },
         p.inventory.len()
@@ -1337,7 +1543,7 @@ fn export_panel(s: &State, p: &Plan) -> String {
     let mut html = format!(
         "<section class=\"export-card\"><div class=\"export-heading\"><h2>Export</h2><p>{}</p></div><div class=\"export-actions\"><button data-action=\"copy\" class=\"button gold\" {disabled}>Copy Inventory Setup</button><button data-action=\"share\" class=\"button ghost\">Copy link</button></div><details><summary>Other formats & help</summary><div class=\"export-secondary\"><button data-action=\"download-setup\" class=\"button ghost\" {disabled}>Download setup JSON</button><button data-action=\"bank-tags\" class=\"button ghost\">Copy Bank Tags</button></div><ol><li>Enable Inventory Setups and Bank Tags in RuneLite.</li><li>Choose Import setup in Inventory Setups.</li><li>Paste the copied text.</li></ol><p>Check staff charges before your trip.</p></details>",
         if p.exportable() {
-            ""
+            "Starting gear + packed inventory. Phase previews are not exported."
         } else {
             "Review missing items in Preparation."
         }
@@ -1349,9 +1555,6 @@ fn export_panel(s: &State, p: &Plan) -> String {
     html
 }
 fn next_goal(s: &State) -> String {
-    if s.saved.options.boss == Boss::Custom {
-        return String::new();
-    }
     let Some(_) = s.saved.snapshot.selected() else {
         return String::new();
     };
@@ -1380,6 +1583,9 @@ fn next_goal(s: &State) -> String {
         }
     }
 
+    if s.saved.options.boss == Boss::Custom {
+        return "<section class=\"panel goal-teaser\"><h3>Your bossing upgrade</h3><p>Choose an upgrade from a gear slot's BIS list.</p></section>".into();
+    }
     let goal = goals
         .iter()
         .find(|g| pins.iter().any(|p| p == g.id) && !g.complete)
@@ -1415,7 +1621,11 @@ fn account_page(s: &State) -> String {
         } else {
             &s.saved.snapshot.selected
         }),
-        if s.busy { "disabled" } else { "" },
+        if s.busy || s.demo_return.is_some() {
+            "disabled"
+        } else {
+            ""
+        },
         esc(m
             .and_then(|m| m.last_updated.as_deref())
             .unwrap_or("Unknown / manual"))
@@ -1437,8 +1647,16 @@ fn account_page(s: &State) -> String {
     html.push_str(&format!(
         "<div class=\"account-tools\">{} {} {}</div>",
         button("backup", "Download private backup", "text-button"),
-        button("demo", "Explore example", "text-button"),
-        button("forget", "Forget saved account", "text-button danger")
+        if s.demo_return.is_some() {
+            button("restore-account", "Return to your account", "button gold")
+        } else {
+            button("demo", "Explore example", "text-button")
+        },
+        if s.demo_return.is_some() {
+            String::new()
+        } else {
+            button("forget", "Forget saved account", "text-button danger")
+        }
     ));
     html
 }
@@ -1525,7 +1743,10 @@ fn encounter_results(s: &State) -> String {
         html.push_str(&format!(r#"<button class="encounter-choice" data-action="choose-encounter:{index}" {}><span><strong>{}</strong><small>{coverage}</small></span><span aria-hidden="true">→</span></button>"#,if e.targets.is_empty(){"disabled"}else{""},esc(label)));
     }
     if html.is_empty() {
-        html.push_str("<p>No encounters found.</p>");
+        html.push_str(&format!(
+            "<p>No encounters match these filters. {}</p>",
+            button("clear-encounters", "Clear filters", "text-button")
+        ));
     }
     html
 }
@@ -1801,8 +2022,8 @@ fn combat_panel(s: &State, p: &Plan) -> String {
     let mut html = String::from(
         r#"<section class="panel combat-panel"><div class="panel-heading"><h2>Combat stats</h2></div><div class="combat-body">"#,
     );
-    for style in crate::rules::STYLES {
-        html.push_str(&button(&format!("edit-style:{style}"), style, "phase"));
+    for candidate in crate::rules::STYLES {
+        html.push_str(&format!("<button class=\"phase {}\" data-action=\"edit-style:{candidate}\" aria-pressed=\"{}\">{candidate}</button>",if candidate == style { "active" } else { "" },candidate == style));
     }
     html.push_str(r#"<label>Against<select id="compare-target">"#);
     let mut priority_ids = std::collections::BTreeSet::new();
@@ -1944,12 +2165,12 @@ fn planned_style(s: &State, p: &Plan, style: &str) -> Vec<Option<i32>> {
         .map(|phase| phase.equipment.clone())
         .unwrap_or_else(|| planner::equipment_for_style(&s.saved.snapshot, &s.saved.options, style))
 }
-fn switch_panel(s: &State, p: &Plan) -> String {
+fn switch_controls(s: &State) -> String {
     if s.shared_setup.is_some() {
         return String::new();
     }
     let mut html = String::from(
-        r#"<section class="panel switch-panel"><div class="panel-heading"><h2>Make switching comfortable</h2></div><div class="combat-body"><label>Maximum items changed per switch<select id="max-switches"><option value="unlimited">Unrestricted</option>"#,
+        r#"<section class="flow-controls" aria-label="Switching preferences"><label>Items per switch<select id="max-switches"><option value="unlimited">No limit</option>"#,
     );
     for n in 0..=11 {
         html.push_str(&format!(
@@ -1961,7 +2182,7 @@ fn switch_panel(s: &State, p: &Plan) -> String {
             }
         ));
     }
-    html.push_str(&format!(r#"</select></label><label>Inventory slots for style-switch gear<input id="switch-slots" type="number" min="0" max="20" value="{}"></label><label>Priority<select id="focus-style">"#,s.saved.options.switch_slots));
+    html.push_str(&format!(r#"</select></label><details id="switch-preferences" {}><summary>Priorities & bag space</summary><div class="switch-preferences-fields"><label>Gear slots in bag<input id="switch-slots" type="number" min="0" max="20" value="{}"></label><label>Prioritize<select id="focus-style">"#,if s.switch_preferences_open { "open" } else { "" },s.saved.options.switch_slots));
     for (value, label) in [
         ("Balanced", "Balance the encounter"),
         ("Magic", "Keep my full magic set"),
@@ -1980,7 +2201,17 @@ fn switch_panel(s: &State, p: &Plan) -> String {
             }
         ));
     }
-    html.push_str("</select></label><details><summary>Phase priorities</summary><p>1 is normal. Increase to favour a phase; 0 gives it the lowest priority.</p>");
+    html.push_str("</select></label></div></details></section>");
+    html
+}
+
+fn switch_panel(s: &State, p: &Plan) -> String {
+    if s.shared_setup.is_some() {
+        return String::new();
+    }
+    let mut html = String::from(
+        "<section class=\"panel switch-panel\"><div class=\"panel-heading\"><h2>Switch comparison</h2></div><div class=\"combat-body\"><details><summary>Phase priorities</summary><p>1 is normal. Increase to favour a phase; 0 gives it the lowest priority.</p>",
+    );
     let mut priority_ids = std::collections::BTreeSet::new();
     for id in encounter_targets(s)
         .into_iter()
@@ -2163,11 +2394,51 @@ fn gear_choices(s: &State) -> String {
         }
     });
     let mut html = format!("<p class=\"picker-note\">{} owned items</p>", items.len());
+    if ["dps", "overall"].contains(&s.gear_sort.as_str())
+        && !items.iter().any(|row| row.2.is_some())
+    {
+        html.push_str("<p class=\"picker-note\">Damage ranking unavailable for this attack window. Items are listed alphabetically; compare defence or prayer instead.</p>");
+    }
     if items.is_empty() {
         html.push_str("<p>No owned items match this search.</p>");
     }
-    for (g, usable, dps, defence, _overall, incoming, drain, prayer_bonus) in items {
-        html.push_str(&format!(r#"<button class="gear-pick {}" data-action="pick-gear:{style}:{slot}:{}" {}>{}<span><strong>{}</strong><small>{} · {defence:+} defence</small><small>Incoming {} · {prayer_bonus:+} prayer · {drain:.1} points/min</small><small>{}</small></span><b>× {}</b></button>"#,if set[slot]==Some(g.id){"selected"}else{""},g.id,if usable{""}else{"disabled"},image(g.id),esc(&planner::item_name(g.id)),dps.map(|v|format!("{v:.3} DPS")).unwrap_or_else(||"DPS unavailable".into()),incoming.map(|v|format!("{v:.3} DPS")).unwrap_or_else(||"unverified".into()),if usable{"Click to equip"}else{"Skill requirements unconfirmed or unmet"},owned[&g.id]));
+    let current_dps = comparison_monster(s)
+        .and_then(|target| {
+            combat::calculate_configured(
+                member,
+                &set,
+                style,
+                target,
+                &p.spell,
+                s.saved.options.raid_level,
+                &s.saved.options.combat,
+            )
+            .ok()
+        })
+        .map(|r| r.dps);
+    for (g, usable, dps, defence, _overall, _incoming, drain, prayer_bonus) in items {
+        let metric = match s.gear_sort.as_str() {
+            "prayer" => format!("{prayer_bonus:+} setup prayer · {drain:.1} points/min"),
+            "defence" | "magic-def" | "ranged-def" => format!("{defence:+} item defence"),
+            _ => dps
+                .map(|v| {
+                    format!(
+                        "{v:.3} DPS{}",
+                        current_dps
+                            .map(|old| format!(" · {:+.3} vs current", v - old))
+                            .unwrap_or_default()
+                    )
+                })
+                .unwrap_or_else(|| "Damage unverified".into()),
+        };
+        let state = if !usable {
+            "Skill requirements unconfirmed or unmet"
+        } else if set[slot] == Some(g.id) {
+            "Equipped"
+        } else {
+            ""
+        };
+        html.push_str(&format!(r#"<button class="gear-pick {}" data-action="pick-gear:{style}:{slot}:{}" {}>{}<span><strong>{}</strong><small>{}</small><small>{state}</small></span><b>× {}</b></button>"#,if set[slot]==Some(g.id){"selected"}else{""},g.id,if usable{""}else{"disabled"},image(g.id),esc(&planner::item_name(g.id)),esc(&metric),owned[&g.id]));
     }
     html
 }

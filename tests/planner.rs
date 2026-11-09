@@ -7,6 +7,16 @@ use serde_json::{Value, json};
 use std::collections::BTreeMap;
 
 #[test]
+fn an_empty_checklist_does_not_claim_readiness() {
+    let mut plan = planner::plan(&account::demo(), &Options::default());
+    plan.checks.clear();
+    plan.missing.clear();
+    assert_eq!(plan.status(), "No encounter-specific checks");
+    plan.missing.push("Required supply".into());
+    assert_eq!(plan.status(), "Preparation needed");
+}
+
+#[test]
 fn local_corrections_preserve_unknown_skills() {
     let mut m = Member {
         name: "Iron".into(),

@@ -13,6 +13,8 @@ An OSRS-style bossing planner for Ironmen. Find gear **you actually own**, keep 
 
 Your account stays on that browser. Import it again when using a different device or the hosted site instead of localhost.
 
+**Starting gear + packing list** is what you export. Phase views preview your switches. **Explore example** opens a temporary demo; your saved bank stays safe.
+
 ## What you can do
 
 - **Plan a trip:** boss and raid templates, or your own group of monsters. Select your CoX rooms or choose each Fractured Archive fork.

@@ -291,6 +291,8 @@ impl Plan {
             "Preparation needed"
         } else if self.checks.iter().any(|c| c.state.is_none()) {
             "Confirm your levels"
+        } else if self.checks.is_empty() {
+            "No encounter-specific checks"
         } else {
             "Meets starter guidelines"
         }

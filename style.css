@@ -320,6 +320,8 @@ details.raid-route{margin:0 0 18px;padding:0 2px 12px;border-bottom:1px solid #9
 .raid-room:disabled{opacity:1;cursor:default;background:#bda77c22;border-color:#aa956f;box-shadow:none;color:#624e30}
 .raid-room:disabled strong{font-weight:normal}
 .raid-room:disabled small{color:#7e694a}
+/* Preview items remain readable while editing is restricted to Start. */
+.inventory-edit:disabled{opacity:1;cursor:default}
 @media(max-width:480px){
  .raid-route-groups{grid-template-columns:1fr;gap:15px}
  .raid-route>summary{font-size:21px}

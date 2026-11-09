@@ -1221,9 +1221,9 @@ fn render() {
         html.push_str(&button("custom-done","Done","button ghost"));
         html.push_str("</details>");
         html.push_str("</details>");
-        if s.shared_setup.is_some(){html.push_str(&format!("<p class=\"notice\">Viewing a shared setup. Your saved bank is unchanged. {}</p>",button("use-bank","Rebuild using my items","text-button")));}
         html.push_str(&raid_rooms(&s));
         html.push_str("</div>");
+        if s.shared_setup.is_some(){html.push_str(&format!("<p class=\"notice\">Viewing a shared setup. Your saved bank is unchanged. {}</p>",button("use-bank","Rebuild using my items","text-button")));}
         if s.shared_setup.is_none(){html.push_str(&switch_controls(&s));}
         html.push_str("<nav class=\"planner-tabs\" aria-label=\"Planner sections\">");
         for (view,label) in [("loadout","Gear & inventory"),("combat","Combat & switches"),("prepare","Preparation")] {let disabled=if view=="combat"&&s.shared_setup.is_some(){"disabled title=\"Rebuild using your items to calculate combat stats\""}else{""};html.push_str(&format!("<button class=\"workspace-tab {}\" data-action=\"view:{view}\" aria-pressed=\"{}\" {disabled}>{label}{}</button>",if s.view==view{"active"}else{""},s.view==view,if view=="prepare"&&!plan.missing.is_empty(){format!(" <span class=\"issue-count\">{}</span>",plan.missing.len())}else{String::new()}));}

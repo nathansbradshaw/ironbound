@@ -21,6 +21,7 @@ Your account stays on that browser. Import it again when using a different devic
 - **Switch less:** limit changed items and carried gear; favour one style or phase.
 - **Compare gear:** outgoing DPS, supported incoming damage, defence and prayer drain.
 - **Pack your inventory:** click any slot, search owned items by type, and keep your chosen positions when exporting.
+- **Compare supplies:** food by potential healing per slot; potions by restoration or boost within each role, with fuller bottles first on ties.
 - **Plan longer trips:** weigh prayer efficiency against damage and see a prayer-supply estimate.
 - **Track upgrades:** compare owned equipment with reviewed unowned options.
 - **Take it into RuneLite:** export Inventory Setups or Bank Tags, or share a setup link.
@@ -75,6 +76,8 @@ Output: `dist/`. To preview locally, check port ownership first, then:
 ```sh
 cargo run --locked --bin site -- serve 3040
 ```
+
+Refresh the public icon catalog with `cargo run --locked --bin site -- assets-inventory`. Rebuild food profiles from the public RuneLite files linked in [SOURCES.md](SOURCES.md) with `cargo run --locked --bin consumables -- ItemStatChanges.java ItemID.java`.
 
 Stop a task-owned server after testing, unless it is being kept open for the user.
 

@@ -97,7 +97,9 @@ pub fn item_name(id: i32) -> String {
                         format!("{} ({})", g.name, g.version)
                     }
                 })
-                .unwrap_or_else(|| format!("Item {id}"));
+                .unwrap_or_else(|| {
+                    crate::inventory::public_name(id).unwrap_or_else(|| format!("Item {id}"))
+                });
         }
     }
     .into()

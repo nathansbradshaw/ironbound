@@ -23,6 +23,53 @@ fn copy_tree(from: &Path, to: &Path) -> std::io::Result<()> {
     }
     Ok(())
 }
+fn copy_runtime_assets() -> Result<(), Box<dyn std::error::Error>> {
+    // Icons and data tables are embedded in Wasm. Publish only referenced files.
+    let mut assets = std::collections::BTreeSet::new();
+    for source in ["index.html", "style.css"] {
+        let text = fs::read_to_string(source)?;
+        for reference in text.split("./assets/").skip(1) {
+            let relative = reference
+                .split(['\'', '"', ')', '>', '?', '#'])
+                .next()
+                .unwrap_or_default();
+            let path = Path::new(relative);
+            if relative.is_empty()
+                || path
+                    .components()
+                    .any(|part| !matches!(part, std::path::Component::Normal(_)))
+            {
+                return Err("Unsafe public asset reference".into());
+            }
+            if !Path::new("assets").join(path).is_file() {
+                return Err(format!("Missing referenced asset: {relative}").into());
+            }
+            assets.insert(relative.to_string());
+        }
+    }
+    let target = Path::new("dist/assets");
+    // This is owned generated output, never the source assets or local account data.
+    if fs::symlink_metadata("dist")?.file_type().is_symlink() {
+        return Err("Generated dist directory must not be a symlink".into());
+    }
+    if let Ok(metadata) = fs::symlink_metadata(target) {
+        if !metadata.is_dir() || metadata.file_type().is_symlink() {
+            return Err("Generated asset directory is not an ordinary directory".into());
+        }
+        fs::remove_dir_all(target)?;
+    }
+    fs::create_dir_all(target)?;
+    for relative in &assets {
+        let destination = target.join(relative);
+        fs::create_dir_all(destination.parent().ok_or("Invalid runtime asset path")?)?;
+        fs::copy(Path::new("assets").join(relative), destination)?;
+    }
+    println!(
+        "Copied {} referenced runtime assets; source catalogs and duplicate icon PNGs stay out of the static release.",
+        assets.len()
+    );
+    Ok(())
+}
 fn pack_icons() -> Result<(), Box<dyn std::error::Error>> {
     const TABLE: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
     let mut icons = std::collections::BTreeMap::new();
@@ -69,6 +116,114 @@ fn pack_icons() -> Result<(), Box<dyn std::error::Error>> {
     }
     Ok(())
 }
+fn inventory_assets() -> Result<(), Box<dyn std::error::Error>> {
+    // One public snapshot for every client. Never derive asset requests from a bank.
+    let unique = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)?
+        .as_nanos();
+    let staging = std::env::temp_dir().join(format!(
+        "ironbound-public-icons-{}-{unique}",
+        std::process::id()
+    ));
+    fs::create_dir(&staging)?;
+    let result = (|| -> Result<(), Box<dyn std::error::Error>> {
+        let archive = staging.join("public-icons.tar.gz");
+        let extracted = staging.join("items");
+        fs::create_dir(&extracted)?;
+        run(
+            "curl",
+            &[
+                "-fSL",
+                "--retry",
+                "2",
+                "--max-time",
+                "180",
+                "https://codeload.github.com/runelite/static.runelite.net/tar.gz/refs/heads/gh-pages",
+                "-o",
+                archive.to_str().ok_or("Invalid archive path")?,
+            ],
+        )?;
+        run(
+            "tar",
+            &[
+                "-xzf",
+                archive.to_str().ok_or("Invalid archive path")?,
+                "--strip-components=3",
+                "-C",
+                extracted.to_str().ok_or("Invalid extraction path")?,
+                "static.runelite.net-gh-pages/cache/item",
+            ],
+        )?;
+        let names: std::collections::BTreeMap<i32, String> =
+            serde_json::from_slice(&fs::read(extracted.join("names.json"))?)?;
+        if names.len() < 20_000 {
+            return Err("Public item names catalog is incomplete".into());
+        }
+        let mut downloaded = std::collections::BTreeMap::new();
+        for entry in fs::read_dir(extracted.join("icon"))? {
+            let entry = entry?;
+            let path = entry.path();
+            if !entry.file_type()?.is_file()
+                || path.extension().and_then(|v| v.to_str()) != Some("png")
+            {
+                continue;
+            }
+            let id = path
+                .file_stem()
+                .and_then(|v| v.to_str())
+                .and_then(|v| v.parse::<i32>().ok())
+                .ok_or("Invalid icon filename")?;
+            if id <= 0 {
+                continue;
+            }
+            let bytes = fs::read(&path)?;
+            if !bytes.starts_with(b"\x89PNG\r\n\x1a\n") {
+                return Err(format!("Public icon {id} is not PNG").into());
+            }
+            downloaded.insert(id, path);
+        }
+        if downloaded.len() < 20_000 {
+            return Err("Public icon archive is incomplete".into());
+        }
+        fs::create_dir_all("assets/items")?;
+        let mut total_bytes = 0u64;
+        for (id, path) in &downloaded {
+            total_bytes += fs::copy(path, format!("assets/items/{id}.png"))?;
+        }
+        fs::write("assets/item-names.json", serde_json::to_vec(&names)?)?;
+        let mut ids: Vec<i32> = fs::read_dir("assets/items")?
+            .filter_map(|entry| {
+                entry
+                    .ok()?
+                    .path()
+                    .file_stem()?
+                    .to_str()?
+                    .parse::<i32>()
+                    .ok()
+            })
+            .filter(|id| *id > 0)
+            .collect();
+        ids.sort_unstable();
+        ids.dedup();
+        fs::write("assets/item-icons.json", serde_json::to_vec(&ids)?)?;
+        pack_icons()?;
+        let missing = names
+            .keys()
+            .filter(|id| **id > 0 && ids.binary_search(id).is_err())
+            .count();
+        println!(
+            "Cached {} public icons ({total_bytes} PNG bytes); {} total icons and {} public names. {missing} positive named IDs lack an icon. No account data was read.",
+            downloaded.len(),
+            ids.len(),
+            names.len()
+        );
+        Ok(())
+    })();
+    let cleanup = fs::remove_dir_all(&staging);
+    result?;
+    cleanup?;
+    Ok(())
+}
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let args: Vec<_> = std::env::args().collect();
     match args.get(1).map(String::as_str) {
@@ -88,70 +243,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             fs::write("assets/bosses.json", serde_json::to_vec_pretty(&names)?)?;
         }
         Some("pack-icons") => pack_icons()?,
-        Some("assets-all") => {
-            // Always fetch the public catalog, never an account-derived item list.
-            fs::create_dir_all("assets/items")?;
-            let queue = std::sync::Arc::new(std::sync::Mutex::new(
-                ironbound::planner::equipment()
-                    .iter()
-                    .map(|g| g.id)
-                    .collect::<std::collections::BTreeSet<_>>()
-                    .into_iter()
-                    .collect::<Vec<_>>(),
-            ));
-            let failures = std::sync::Arc::new(std::sync::Mutex::new(0usize));
-            let mut workers = vec![];
-            for _ in 0..8 {
-                let queue = queue.clone();
-                let failures = failures.clone();
-                workers.push(std::thread::spawn(move || {
-                    loop {
-                        let Some(id) = queue.lock().unwrap().pop() else {
-                            break;
-                        };
-                        let file = format!("assets/items/{id}.png");
-                        if Path::new(&file).exists() {
-                            continue;
-                        }
-                        let temporary = format!("{file}.part");
-                        let result = Command::new("curl")
-                            .args([
-                                "-fsSL",
-                                "--retry",
-                                "1",
-                                "--max-time",
-                                "15",
-                                &format!("https://static.runelite.net/cache/item/icon/{id}.png"),
-                                "-o",
-                                &temporary,
-                            ])
-                            .output();
-                        if result.is_ok_and(|o| o.status.success())
-                            && fs::read(&temporary)
-                                .is_ok_and(|b| b.starts_with(b"\x89PNG\r\n\x1a\n"))
-                        {
-                            let _ = fs::rename(&temporary, &file);
-                        } else {
-                            let _ = fs::remove_file(&temporary);
-                            *failures.lock().unwrap() += 1;
-                        }
-                    }
-                }));
-            }
-            for worker in workers {
-                let _ = worker.join();
-            }
-            let mut icons: Vec<i32> = fs::read_dir("assets/items")?
-                .filter_map(|e| e.ok()?.path().file_stem()?.to_str()?.parse().ok())
-                .collect();
-            icons.sort_unstable();
-            fs::write("assets/item-icons.json", serde_json::to_vec(&icons)?)?;
-            println!(
-                "Cached {} public equipment icons. {} unavailable icons use placeholders. No account data was read.",
-                icons.len(),
-                failures.lock().unwrap()
-            );
-        }
+        Some("assets-all" | "assets-inventory") => inventory_assets()?,
         Some("compact-monsters") => {
             let raw = fs::read_to_string(args.get(2).ok_or("Provide the public monster catalog")?)?;
             let data: Vec<serde_json::Value> = serde_json::from_str(&raw)?;
@@ -432,7 +524,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
             fs::write("dist/index.html", index)?;
             fs::copy("style.css", "dist/style.css")?;
-            copy_tree(Path::new("assets"), Path::new("dist/assets"))?;
+            copy_runtime_assets()?;
             println!("Built static Rust/Wasm site in dist/");
         }
         Some("serve") => {
@@ -569,7 +661,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             );
         }
         _ => println!(
-            "cargo run --bin site -- [build | serve [port] | assets | fixture [toa] | private-check BANK HISCORES]"
+            "cargo run --bin site -- [build | serve [port] | assets-inventory | assets | fixture [toa] | private-check BANK HISCORES]"
         ),
     }
     Ok(())

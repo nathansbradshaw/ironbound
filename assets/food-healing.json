@@ -1,0 +1,2516 @@
+{
+  "315": {
+    "per_bite": 3,
+    "bites": 1,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "319": {
+    "per_bite": 1,
+    "bites": 1,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "325": {
+    "per_bite": 4,
+    "bites": 1,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "329": {
+    "per_bite": 9,
+    "bites": 1,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "333": {
+    "per_bite": 7,
+    "bites": 1,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "337": {
+    "per_bite": 6,
+    "bites": 1,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "339": {
+    "per_bite": 7,
+    "bites": 1,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "347": {
+    "per_bite": 5,
+    "bites": 1,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "351": {
+    "per_bite": 8,
+    "bites": 1,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "355": {
+    "per_bite": 6,
+    "bites": 1,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "361": {
+    "per_bite": 10,
+    "bites": 1,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "365": {
+    "per_bite": 13,
+    "bites": 1,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "373": {
+    "per_bite": 14,
+    "bites": 1,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "379": {
+    "per_bite": 12,
+    "bites": 1,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "385": {
+    "per_bite": 20,
+    "bites": 1,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "391": {
+    "per_bite": 22,
+    "bites": 1,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "397": {
+    "per_bite": 21,
+    "bites": 1,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "403": {
+    "per_bite": 4,
+    "bites": 1,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "1861": {
+    "per_bite": 3,
+    "bites": 1,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "1869": {
+    "per_bite": 2,
+    "bites": 1,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "1871": {
+    "per_bite": 1,
+    "bites": 1,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "1875": {
+    "per_bite": 3,
+    "bites": 1,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "1883": {
+    "per_bite": 19,
+    "bites": 1,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "1885": {
+    "per_bite": 19,
+    "bites": 1,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "1891": {
+    "per_bite": 4,
+    "bites": 3,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "1893": {
+    "per_bite": 4,
+    "bites": 2,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "1895": {
+    "per_bite": 4,
+    "bites": 1,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "1897": {
+    "per_bite": 5,
+    "bites": 3,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "1899": {
+    "per_bite": 5,
+    "bites": 2,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "1901": {
+    "per_bite": 5,
+    "bites": 1,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "1905": {
+    "per_bite": 1,
+    "bites": 1,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "1907": {
+    "per_bite": 1,
+    "bites": 1,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "1909": {
+    "per_bite": 1,
+    "bites": 1,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "1911": {
+    "per_bite": 1,
+    "bites": 1,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "1913": {
+    "per_bite": 1,
+    "bites": 1,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "1915": {
+    "per_bite": 3,
+    "bites": 1,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "1917": {
+    "per_bite": 1,
+    "bites": 1,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "1942": {
+    "per_bite": 1,
+    "bites": 1,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "1957": {
+    "per_bite": 1,
+    "bites": 1,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "1959": {
+    "per_bite": 14,
+    "bites": 1,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "1961": {
+    "per_bite": 14,
+    "bites": 1,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "1963": {
+    "per_bite": 2,
+    "bites": 1,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "1965": {
+    "per_bite": 1,
+    "bites": 1,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "1967": {
+    "per_bite": 1,
+    "bites": 1,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "1969": {
+    "per_bite": 2,
+    "bites": 1,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "1973": {
+    "per_bite": 3,
+    "bites": 1,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "1977": {
+    "per_bite": 4,
+    "bites": 1,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "1978": {
+    "per_bite": 3,
+    "bites": 1,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "1982": {
+    "per_bite": 2,
+    "bites": 1,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "1985": {
+    "per_bite": 2,
+    "bites": 1,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "1989": {
+    "per_bite": 7,
+    "bites": 1,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "1993": {
+    "per_bite": 11,
+    "bites": 1,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "2003": {
+    "per_bite": 11,
+    "bites": 1,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "2011": {
+    "per_bite": 19,
+    "bites": 1,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "2015": {
+    "per_bite": 5,
+    "bites": 1,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "2017": {
+    "per_bite": 5,
+    "bites": 1,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "2019": {
+    "per_bite": 5,
+    "bites": 1,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "2021": {
+    "per_bite": 5,
+    "bites": 1,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "2028": {
+    "per_bite": 7,
+    "bites": 1,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "2030": {
+    "per_bite": 5,
+    "bites": 1,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "2032": {
+    "per_bite": 5,
+    "bites": 1,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "2034": {
+    "per_bite": 9,
+    "bites": 1,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "2036": {
+    "per_bite": 9,
+    "bites": 1,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "2038": {
+    "per_bite": 5,
+    "bites": 1,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "2040": {
+    "per_bite": 5,
+    "bites": 1,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "2048": {
+    "per_bite": 9,
+    "bites": 1,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "2054": {
+    "per_bite": 5,
+    "bites": 1,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "2064": {
+    "per_bite": 7,
+    "bites": 1,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "2074": {
+    "per_bite": 5,
+    "bites": 1,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "2080": {
+    "per_bite": 5,
+    "bites": 1,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "2084": {
+    "per_bite": 9,
+    "bites": 1,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "2092": {
+    "per_bite": 5,
+    "bites": 1,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "2102": {
+    "per_bite": 2,
+    "bites": 1,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "2104": {
+    "per_bite": 2,
+    "bites": 1,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "2106": {
+    "per_bite": 2,
+    "bites": 1,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "2108": {
+    "per_bite": 2,
+    "bites": 1,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "2110": {
+    "per_bite": 2,
+    "bites": 1,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "2112": {
+    "per_bite": 2,
+    "bites": 1,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "2116": {
+    "per_bite": 2,
+    "bites": 1,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "2118": {
+    "per_bite": 2,
+    "bites": 1,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "2120": {
+    "per_bite": 2,
+    "bites": 1,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "2122": {
+    "per_bite": 2,
+    "bites": 1,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "2124": {
+    "per_bite": 2,
+    "bites": 1,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "2126": {
+    "per_bite": 2,
+    "bites": 1,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "2128": {
+    "per_bite": 1,
+    "bites": 1,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "2130": {
+    "per_bite": 1,
+    "bites": 1,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "2140": {
+    "per_bite": 3,
+    "bites": 1,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "2142": {
+    "per_bite": 3,
+    "bites": 1,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "2149": {
+    "per_bite": 11,
+    "bites": 1,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "2152": {
+    "per_bite": 3,
+    "bites": 1,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "2162": {
+    "per_bite": 2,
+    "bites": 1,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "2185": {
+    "per_bite": 15,
+    "bites": 1,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "2187": {
+    "per_bite": 15,
+    "bites": 1,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "2191": {
+    "per_bite": 12,
+    "bites": 1,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "2195": {
+    "per_bite": 12,
+    "bites": 1,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "2205": {
+    "per_bite": 8,
+    "bites": 1,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "2209": {
+    "per_bite": 7,
+    "bites": 1,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "2213": {
+    "per_bite": 7,
+    "bites": 1,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "2217": {
+    "per_bite": 8,
+    "bites": 1,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "2219": {
+    "per_bite": 11,
+    "bites": 1,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "2221": {
+    "per_bite": 11,
+    "bites": 1,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "2223": {
+    "per_bite": 11,
+    "bites": 1,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "2225": {
+    "per_bite": 11,
+    "bites": 1,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "2227": {
+    "per_bite": 11,
+    "bites": 1,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "2229": {
+    "per_bite": 15,
+    "bites": 1,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "2231": {
+    "per_bite": 15,
+    "bites": 1,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "2233": {
+    "per_bite": 12,
+    "bites": 1,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "2235": {
+    "per_bite": 12,
+    "bites": 1,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "2237": {
+    "per_bite": 8,
+    "bites": 1,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "2239": {
+    "per_bite": 7,
+    "bites": 1,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "2241": {
+    "per_bite": 7,
+    "bites": 1,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "2243": {
+    "per_bite": 8,
+    "bites": 1,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "2253": {
+    "per_bite": 11,
+    "bites": 1,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "2255": {
+    "per_bite": 11,
+    "bites": 1,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "2259": {
+    "per_bite": 11,
+    "bites": 1,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "2277": {
+    "per_bite": 11,
+    "bites": 1,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "2281": {
+    "per_bite": 11,
+    "bites": 1,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "2289": {
+    "per_bite": 7,
+    "bites": 2,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "2291": {
+    "per_bite": 7,
+    "bites": 1,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "2293": {
+    "per_bite": 8,
+    "bites": 2,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "2295": {
+    "per_bite": 8,
+    "bites": 1,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "2297": {
+    "per_bite": 9,
+    "bites": 2,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "2299": {
+    "per_bite": 9,
+    "bites": 1,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "2301": {
+    "per_bite": 11,
+    "bites": 2,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "2303": {
+    "per_bite": 11,
+    "bites": 1,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "2309": {
+    "per_bite": 5,
+    "bites": 1,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "2323": {
+    "per_bite": 7,
+    "bites": 2,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "2325": {
+    "per_bite": 5,
+    "bites": 2,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "2327": {
+    "per_bite": 6,
+    "bites": 2,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "2331": {
+    "per_bite": 6,
+    "bites": 1,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "2333": {
+    "per_bite": 5,
+    "bites": 1,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "2335": {
+    "per_bite": 7,
+    "bites": 1,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "2343": {
+    "per_bite": 14,
+    "bites": 1,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "2878": {
+    "per_bite": 10,
+    "bites": 1,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "2955": {
+    "per_bite": 4,
+    "bites": 1,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "3144": {
+    "per_bite": 18,
+    "bites": 1,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "3162": {
+    "per_bite": 2,
+    "bites": 1,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "3228": {
+    "per_bite": 5,
+    "bites": 1,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "3801": {
+    "per_bite": 15,
+    "bites": 1,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "3803": {
+    "per_bite": 4,
+    "bites": 1,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "4012": {
+    "per_bite": 4,
+    "bites": 1,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "4014": {
+    "per_bite": 5,
+    "bites": 1,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "4016": {
+    "per_bite": 11,
+    "bites": 1,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "4237": {
+    "per_bite": 1,
+    "bites": 1,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "4239": {
+    "per_bite": 3,
+    "bites": 1,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "4240": {
+    "per_bite": 3,
+    "bites": 1,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "4242": {
+    "per_bite": 3,
+    "bites": 1,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "4243": {
+    "per_bite": 3,
+    "bites": 1,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "4291": {
+    "per_bite": 1,
+    "bites": 1,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "4293": {
+    "per_bite": 1,
+    "bites": 1,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "4485": {
+    "per_bite": 2,
+    "bites": 1,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "4517": {
+    "per_bite": 6,
+    "bites": 1,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "4627": {
+    "per_bite": 1,
+    "bites": 1,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "5504": {
+    "per_bite": 0,
+    "bites": 1,
+    "delayed": 0,
+    "scaling": "strawberry"
+  },
+  "5739": {
+    "per_bite": 1,
+    "bites": 1,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "5741": {
+    "per_bite": 2,
+    "bites": 1,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "5743": {
+    "per_bite": 2,
+    "bites": 1,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "5745": {
+    "per_bite": 2,
+    "bites": 1,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "5747": {
+    "per_bite": 2,
+    "bites": 1,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "5749": {
+    "per_bite": 6,
+    "bites": 1,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "5751": {
+    "per_bite": 1,
+    "bites": 1,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "5753": {
+    "per_bite": 2,
+    "bites": 1,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "5755": {
+    "per_bite": 1,
+    "bites": 1,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "5757": {
+    "per_bite": 2,
+    "bites": 1,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "5759": {
+    "per_bite": 1,
+    "bites": 1,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "5761": {
+    "per_bite": 2,
+    "bites": 1,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "5763": {
+    "per_bite": 1,
+    "bites": 1,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "5765": {
+    "per_bite": 2,
+    "bites": 1,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "5771": {
+    "per_bite": 1,
+    "bites": 1,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "5773": {
+    "per_bite": 1,
+    "bites": 1,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "5775": {
+    "per_bite": 1,
+    "bites": 1,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "5777": {
+    "per_bite": 1,
+    "bites": 1,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "5779": {
+    "per_bite": 1,
+    "bites": 1,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "5781": {
+    "per_bite": 1,
+    "bites": 1,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "5783": {
+    "per_bite": 1,
+    "bites": 1,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "5785": {
+    "per_bite": 1,
+    "bites": 1,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "5787": {
+    "per_bite": 1,
+    "bites": 1,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "5789": {
+    "per_bite": 1,
+    "bites": 1,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "5791": {
+    "per_bite": 1,
+    "bites": 1,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "5793": {
+    "per_bite": 1,
+    "bites": 1,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "5795": {
+    "per_bite": 1,
+    "bites": 1,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "5797": {
+    "per_bite": 1,
+    "bites": 1,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "5799": {
+    "per_bite": 1,
+    "bites": 1,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "5801": {
+    "per_bite": 1,
+    "bites": 1,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "5803": {
+    "per_bite": 1,
+    "bites": 1,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "5805": {
+    "per_bite": 1,
+    "bites": 1,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "5807": {
+    "per_bite": 1,
+    "bites": 1,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "5809": {
+    "per_bite": 1,
+    "bites": 1,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "5811": {
+    "per_bite": 4,
+    "bites": 1,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "5813": {
+    "per_bite": 4,
+    "bites": 1,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "5815": {
+    "per_bite": 4,
+    "bites": 1,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "5817": {
+    "per_bite": 4,
+    "bites": 1,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "5819": {
+    "per_bite": 1,
+    "bites": 1,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "5821": {
+    "per_bite": 1,
+    "bites": 1,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "5823": {
+    "per_bite": 1,
+    "bites": 1,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "5825": {
+    "per_bite": 1,
+    "bites": 1,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "5827": {
+    "per_bite": 1,
+    "bites": 1,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "5829": {
+    "per_bite": 1,
+    "bites": 1,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "5831": {
+    "per_bite": 1,
+    "bites": 1,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "5833": {
+    "per_bite": 1,
+    "bites": 1,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "5835": {
+    "per_bite": 1,
+    "bites": 1,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "5837": {
+    "per_bite": 1,
+    "bites": 1,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "5839": {
+    "per_bite": 1,
+    "bites": 1,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "5841": {
+    "per_bite": 1,
+    "bites": 1,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "5843": {
+    "per_bite": 1,
+    "bites": 1,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "5845": {
+    "per_bite": 1,
+    "bites": 1,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "5847": {
+    "per_bite": 1,
+    "bites": 1,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "5849": {
+    "per_bite": 1,
+    "bites": 1,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "5851": {
+    "per_bite": 2,
+    "bites": 1,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "5853": {
+    "per_bite": 2,
+    "bites": 1,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "5855": {
+    "per_bite": 2,
+    "bites": 1,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "5857": {
+    "per_bite": 2,
+    "bites": 1,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "5859": {
+    "per_bite": 1,
+    "bites": 1,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "5861": {
+    "per_bite": 1,
+    "bites": 1,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "5863": {
+    "per_bite": 1,
+    "bites": 1,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "5865": {
+    "per_bite": 1,
+    "bites": 1,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "5867": {
+    "per_bite": 2,
+    "bites": 1,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "5869": {
+    "per_bite": 2,
+    "bites": 1,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "5871": {
+    "per_bite": 2,
+    "bites": 1,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "5873": {
+    "per_bite": 2,
+    "bites": 1,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "5875": {
+    "per_bite": 2,
+    "bites": 1,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "5877": {
+    "per_bite": 2,
+    "bites": 1,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "5879": {
+    "per_bite": 2,
+    "bites": 1,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "5881": {
+    "per_bite": 2,
+    "bites": 1,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "5883": {
+    "per_bite": 2,
+    "bites": 1,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "5885": {
+    "per_bite": 2,
+    "bites": 1,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "5887": {
+    "per_bite": 2,
+    "bites": 1,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "5889": {
+    "per_bite": 2,
+    "bites": 1,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "5891": {
+    "per_bite": 6,
+    "bites": 1,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "5893": {
+    "per_bite": 6,
+    "bites": 1,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "5895": {
+    "per_bite": 6,
+    "bites": 1,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "5897": {
+    "per_bite": 6,
+    "bites": 1,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "5899": {
+    "per_bite": 2,
+    "bites": 1,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "5901": {
+    "per_bite": 2,
+    "bites": 1,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "5903": {
+    "per_bite": 2,
+    "bites": 1,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "5905": {
+    "per_bite": 2,
+    "bites": 1,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "5907": {
+    "per_bite": 2,
+    "bites": 1,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "5909": {
+    "per_bite": 2,
+    "bites": 1,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "5911": {
+    "per_bite": 2,
+    "bites": 1,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "5913": {
+    "per_bite": 2,
+    "bites": 1,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "5915": {
+    "per_bite": 2,
+    "bites": 1,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "5917": {
+    "per_bite": 2,
+    "bites": 1,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "5919": {
+    "per_bite": 2,
+    "bites": 1,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "5921": {
+    "per_bite": 2,
+    "bites": 1,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "5923": {
+    "per_bite": 2,
+    "bites": 1,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "5925": {
+    "per_bite": 2,
+    "bites": 1,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "5927": {
+    "per_bite": 2,
+    "bites": 1,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "5929": {
+    "per_bite": 2,
+    "bites": 1,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "5972": {
+    "per_bite": 8,
+    "bites": 1,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "5984": {
+    "per_bite": 0,
+    "bites": 1,
+    "delayed": 0,
+    "scaling": "watermelon"
+  },
+  "6311": {
+    "per_bite": 12,
+    "bites": 1,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "6469": {
+    "per_bite": 3,
+    "bites": 1,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "6701": {
+    "per_bite": 4,
+    "bites": 1,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "6703": {
+    "per_bite": 14,
+    "bites": 1,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "6705": {
+    "per_bite": 16,
+    "bites": 1,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "6794": {
+    "per_bite": 7,
+    "bites": 1,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "6883": {
+    "per_bite": 8,
+    "bites": 1,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "6961": {
+    "per_bite": 6,
+    "bites": 1,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "6962": {
+    "per_bite": 6,
+    "bites": 1,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "6963": {
+    "per_bite": 6,
+    "bites": 1,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "6965": {
+    "per_bite": 6,
+    "bites": 1,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "7054": {
+    "per_bite": 14,
+    "bites": 1,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "7056": {
+    "per_bite": 16,
+    "bites": 1,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "7058": {
+    "per_bite": 20,
+    "bites": 1,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "7060": {
+    "per_bite": 22,
+    "bites": 1,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "7062": {
+    "per_bite": 5,
+    "bites": 1,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "7064": {
+    "per_bite": 8,
+    "bites": 1,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "7066": {
+    "per_bite": 11,
+    "bites": 1,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "7068": {
+    "per_bite": 13,
+    "bites": 1,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "7070": {
+    "per_bite": 2,
+    "bites": 1,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "7072": {
+    "per_bite": 2,
+    "bites": 1,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "7078": {
+    "per_bite": 5,
+    "bites": 1,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "7082": {
+    "per_bite": 5,
+    "bites": 1,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "7084": {
+    "per_bite": 5,
+    "bites": 1,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "7086": {
+    "per_bite": 10,
+    "bites": 1,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "7157": {
+    "per_bite": 14,
+    "bites": 1,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "7178": {
+    "per_bite": 6,
+    "bites": 2,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "7180": {
+    "per_bite": 6,
+    "bites": 1,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "7188": {
+    "per_bite": 6,
+    "bites": 2,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "7190": {
+    "per_bite": 6,
+    "bites": 1,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "7198": {
+    "per_bite": 8,
+    "bites": 2,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "7200": {
+    "per_bite": 8,
+    "bites": 1,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "7208": {
+    "per_bite": 11,
+    "bites": 2,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "7210": {
+    "per_bite": 11,
+    "bites": 1,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "7218": {
+    "per_bite": 11,
+    "bites": 2,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "7220": {
+    "per_bite": 11,
+    "bites": 1,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "7223": {
+    "per_bite": 7,
+    "bites": 1,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "7521": {
+    "per_bite": 10,
+    "bites": 1,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "7530": {
+    "per_bite": 11,
+    "bites": 1,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "7568": {
+    "per_bite": 15,
+    "bites": 1,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "7572": {
+    "per_bite": 5,
+    "bites": 1,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "7573": {
+    "per_bite": 5,
+    "bites": 1,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "7574": {
+    "per_bite": 5,
+    "bites": 1,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "7575": {
+    "per_bite": 5,
+    "bites": 1,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "7579": {
+    "per_bite": 20,
+    "bites": 1,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "7740": {
+    "per_bite": 1,
+    "bites": 1,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "7744": {
+    "per_bite": 1,
+    "bites": 1,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "7746": {
+    "per_bite": 1,
+    "bites": 1,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "7748": {
+    "per_bite": 1,
+    "bites": 1,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "7752": {
+    "per_bite": 1,
+    "bites": 1,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "7754": {
+    "per_bite": 1,
+    "bites": 1,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "7919": {
+    "per_bite": 14,
+    "bites": 1,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "7934": {
+    "per_bite": 10,
+    "bites": 1,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "7943": {
+    "per_bite": 1,
+    "bites": 1,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "7946": {
+    "per_bite": 16,
+    "bites": 1,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "9052": {
+    "per_bite": 3,
+    "bites": 1,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "9980": {
+    "per_bite": 6,
+    "bites": 1,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "9988": {
+    "per_bite": 8,
+    "bites": 1,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "9994": {
+    "per_bite": 2,
+    "bites": 1,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "9996": {
+    "per_bite": 3,
+    "bites": 1,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "10136": {
+    "per_bite": 11,
+    "bites": 1,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "10960": {
+    "per_bite": 2,
+    "bites": 1,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "10961": {
+    "per_bite": 2,
+    "bites": 1,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "10962": {
+    "per_bite": 2,
+    "bites": 1,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "10963": {
+    "per_bite": 2,
+    "bites": 1,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "10964": {
+    "per_bite": 2,
+    "bites": 1,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "10965": {
+    "per_bite": 2,
+    "bites": 1,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "10966": {
+    "per_bite": 2,
+    "bites": 1,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "10967": {
+    "per_bite": 2,
+    "bites": 1,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "10968": {
+    "per_bite": 2,
+    "bites": 1,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "10969": {
+    "per_bite": 2,
+    "bites": 1,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "10970": {
+    "per_bite": 3,
+    "bites": 1,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "10971": {
+    "per_bite": 10,
+    "bites": 1,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "11324": {
+    "per_bite": 3,
+    "bites": 1,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "11326": {
+    "per_bite": 5,
+    "bites": 1,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "11433": {
+    "per_bite": 3,
+    "bites": 1,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "11435": {
+    "per_bite": 3,
+    "bites": 1,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "11437": {
+    "per_bite": 3,
+    "bites": 1,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "11439": {
+    "per_bite": 3,
+    "bites": 1,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "11473": {
+    "per_bite": 6,
+    "bites": 1,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "11475": {
+    "per_bite": 6,
+    "bites": 1,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "11501": {
+    "per_bite": 6,
+    "bites": 1,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "11503": {
+    "per_bite": 6,
+    "bites": 1,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "11505": {
+    "per_bite": 6,
+    "bites": 1,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "11507": {
+    "per_bite": 6,
+    "bites": 1,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "11916": {
+    "per_bite": 3,
+    "bites": 1,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "11936": {
+    "per_bite": 22,
+    "bites": 1,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "11960": {
+    "per_bite": 6,
+    "bites": 1,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "11962": {
+    "per_bite": 6,
+    "bites": 1,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "13441": {
+    "per_bite": 0,
+    "bites": 1,
+    "delayed": 0,
+    "scaling": "anglerfish"
+  },
+  "19659": {
+    "per_bite": 7,
+    "bites": 1,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "19662": {
+    "per_bite": 7,
+    "bites": 2,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "20390": {
+    "per_bite": 20,
+    "bites": 1,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "20856": {
+    "per_bite": 5,
+    "bites": 1,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "20858": {
+    "per_bite": 8,
+    "bites": 1,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "20860": {
+    "per_bite": 11,
+    "bites": 1,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "20862": {
+    "per_bite": 14,
+    "bites": 1,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "20864": {
+    "per_bite": 17,
+    "bites": 1,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "20866": {
+    "per_bite": 20,
+    "bites": 1,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "20868": {
+    "per_bite": 23,
+    "bites": 1,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "20871": {
+    "per_bite": 6,
+    "bites": 1,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "20873": {
+    "per_bite": 8,
+    "bites": 1,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "20875": {
+    "per_bite": 11,
+    "bites": 1,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "20877": {
+    "per_bite": 14,
+    "bites": 1,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "20879": {
+    "per_bite": 17,
+    "bites": 1,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "20881": {
+    "per_bite": 20,
+    "bites": 1,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "20883": {
+    "per_bite": 23,
+    "bites": 1,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "21687": {
+    "per_bite": 8,
+    "bites": 1,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "21690": {
+    "per_bite": 8,
+    "bites": 2,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "21994": {
+    "per_bite": 6,
+    "bites": 1,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "21997": {
+    "per_bite": 6,
+    "bites": 1,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "22221": {
+    "per_bite": 6,
+    "bites": 1,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "22224": {
+    "per_bite": 6,
+    "bites": 1,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "22430": {
+    "per_bite": 2,
+    "bites": 1,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "22792": {
+    "per_bite": 10,
+    "bites": 1,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "22795": {
+    "per_bite": 10,
+    "bites": 2,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "22929": {
+    "per_bite": 10,
+    "bites": 1,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "23533": {
+    "per_bite": 18,
+    "bites": 1,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "23874": {
+    "per_bite": 20,
+    "bites": 1,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "23948": {
+    "per_bite": 1,
+    "bites": 1,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "24589": {
+    "per_bite": 22,
+    "bites": 1,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "24592": {
+    "per_bite": 0,
+    "bites": 1,
+    "delayed": 0,
+    "scaling": "anglerfish"
+  },
+  "24595": {
+    "per_bite": 18,
+    "bites": 1,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "24785": {
+    "per_bite": 5,
+    "bites": 1,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "25631": {
+    "per_bite": 6,
+    "bites": 1,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "25730": {
+    "per_bite": 20,
+    "bites": 1,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "25958": {
+    "per_bite": 16,
+    "bites": 1,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "25960": {
+    "per_bite": 16,
+    "bites": 1,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "26149": {
+    "per_bite": 10,
+    "bites": 1,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "27014": {
+    "per_bite": 1,
+    "bites": 1,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "27323": {
+    "per_bite": 5,
+    "bites": 1,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "27325": {
+    "per_bite": 5,
+    "bites": 1,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "28443": {
+    "per_bite": 15,
+    "bites": 1,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "28896": {
+    "per_bite": 5,
+    "bites": 1,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "29134": {
+    "per_bite": 13,
+    "bites": 1,
+    "delayed": 10,
+    "scaling": ""
+  },
+  "29137": {
+    "per_bite": 11,
+    "bites": 1,
+    "delayed": 8,
+    "scaling": ""
+  },
+  "29140": {
+    "per_bite": 12,
+    "bites": 1,
+    "delayed": 9,
+    "scaling": ""
+  },
+  "29143": {
+    "per_bite": 14,
+    "bites": 1,
+    "delayed": 12,
+    "scaling": ""
+  },
+  "29149": {
+    "per_bite": 8,
+    "bites": 1,
+    "delayed": 6,
+    "scaling": ""
+  },
+  "29152": {
+    "per_bite": 9,
+    "bites": 1,
+    "delayed": 8,
+    "scaling": ""
+  },
+  "29277": {
+    "per_bite": 1,
+    "bites": 1,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "29409": {
+    "per_bite": 1,
+    "bites": 1,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "29412": {
+    "per_bite": 1,
+    "bites": 1,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "29415": {
+    "per_bite": 16,
+    "bites": 1,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "29418": {
+    "per_bite": 5,
+    "bites": 1,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "29421": {
+    "per_bite": 5,
+    "bites": 1,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "29944": {
+    "per_bite": 16,
+    "bites": 1,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "29947": {
+    "per_bite": 16,
+    "bites": 1,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "29952": {
+    "per_bite": 16,
+    "bites": 1,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "29955": {
+    "per_bite": 16,
+    "bites": 1,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "29958": {
+    "per_bite": 16,
+    "bites": 1,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "29963": {
+    "per_bite": 16,
+    "bites": 1,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "29966": {
+    "per_bite": 16,
+    "bites": 1,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "31174": {
+    "per_bite": 20,
+    "bites": 1,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "31556": {
+    "per_bite": 15,
+    "bites": 1,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "31564": {
+    "per_bite": 17,
+    "bites": 1,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "31689": {
+    "per_bite": 8,
+    "bites": 1,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "31695": {
+    "per_bite": 14,
+    "bites": 1,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "31703": {
+    "per_bite": 19,
+    "bites": 1,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "32312": {
+    "per_bite": 17,
+    "bites": 1,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "32328": {
+    "per_bite": 19,
+    "bites": 1,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "32336": {
+    "per_bite": 20,
+    "bites": 1,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "32344": {
+    "per_bite": 22,
+    "bites": 1,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "32352": {
+    "per_bite": 24,
+    "bites": 1,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "33109": {
+    "per_bite": 9,
+    "bites": 1,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "33628": {
+    "per_bite": 26,
+    "bites": 1,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "33802": {
+    "per_bite": 22,
+    "bites": 1,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "33819": {
+    "per_bite": 99,
+    "bites": 1,
+    "delayed": 0,
+    "scaling": ""
+  },
+  "33820": {
+    "per_bite": 18,
+    "bites": 1,
+    "delayed": 0,
+    "scaling": ""
+  }
+}

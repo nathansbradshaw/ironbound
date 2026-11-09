@@ -37,6 +37,9 @@ struct State {
     gear_search: String,
     gear_sort: String,
     incoming_attack: Option<String>,
+    encounter_query: String,
+    encounter_filter: String,
+    building_group: bool,
 }
 impl State {
     fn initial() -> Self {
@@ -103,6 +106,9 @@ impl State {
             gear_search: String::new(),
             gear_sort: "dps".into(),
             incoming_attack: None,
+            encounter_query: String::new(),
+            encounter_filter: "Popular".into(),
+            building_group: false,
             saved,
             tab: "bossing".into(),
             view: "loadout".into(),
@@ -238,7 +244,13 @@ pub fn start() -> Result<(), JsValue> {
             .target()
             .and_then(|t| t.dyn_into::<HtmlInputElement>().ok())
         {
-            if el.id() == "gear-search" {
+            if el.id() == "encounter-search" {
+                STATE.with(|state| {
+                    let mut s = state.borrow_mut();
+                    s.encounter_query = el.value();
+                    refresh_encounter_browser(&s);
+                });
+            } else if el.id() == "gear-search" {
                 STATE.with(|state| {
                     let mut s = state.borrow_mut();
                     s.gear_search = el.value();
@@ -380,6 +392,16 @@ fn notice(message: &str, error: bool) {
     render();
 }
 fn act(action: &str) {
+    if let Some(filter) = action.strip_prefix("encounter-filter:") {
+        if ["Popular", "Bosses", "Raids", "Groups"].contains(&filter) {
+            STATE.with(|state| {
+                let mut s = state.borrow_mut();
+                s.encounter_filter = filter.into();
+                refresh_encounter_browser(&s);
+            });
+        }
+        return;
+    }
     match action {
         "load-levels" => {
             let name = input("player-name").trim().to_string();
@@ -558,6 +580,8 @@ fn act(action: &str) {
                 s.view = view.into();
                 s.edit_equipment = None;
             }
+        } else if action == "custom-done" {
+            s.building_group = false;
         } else if let Some(boss) = action.strip_prefix("boss:") {
             s.saved.options.boss = if boss == "toa" {
                 Boss::Toa
@@ -575,12 +599,17 @@ fn act(action: &str) {
             s.phase = None;
             s.edit_style = None;
             s.compare_target = None;
-        } else if action == "load-encounter" {
+        } else if action == "load-encounter" || action.starts_with("choose-encounter:") {
             let name = input("encounter-search");
-            if let Some(entry) = crate::encounters::catalog()
-                .iter()
-                .find(|e| e.name.eq_ignore_ascii_case(name.trim()))
-            {
+            let direct = action
+                .strip_prefix("choose-encounter:")
+                .and_then(|id| id.parse::<usize>().ok())
+                .and_then(|index| crate::encounters::catalog().get(index));
+            if let Some(entry) = direct.or_else(|| {
+                crate::encounters::catalog()
+                    .iter()
+                    .find(|e| e.name.eq_ignore_ascii_case(name.trim()))
+            }) {
                 if entry.targets.is_empty() {
                     s.notice(&entry.note, true);
                 } else {
@@ -598,7 +627,8 @@ fn act(action: &str) {
                     s.edit_style = None;
                     s.compare_target = None;
                     s.edit_equipment = None;
-                    s.notice(&entry.note, false);
+                    s.view = "loadout".into();
+                    s.building_group = false;
                 }
             } else {
                 s.notice("Choose a listed boss, raid or encounter.", true);
@@ -749,6 +779,8 @@ fn act(action: &str) {
             if let Some(id) = id {
                 let t = planner::Target { id, style };
                 if t.valid() && s.saved.options.targets.len() < crate::rules::MAX_TARGETS {
+                    s.saved.options.boss = Boss::Custom;
+                    s.building_group = true;
                     s.saved.options.targets.push(t);
                     s.shared_setup = None;
                     s.phase = None;
@@ -941,13 +973,12 @@ fn render() {
     html.push_str("<div class=\"page-content\">");
     if s.tab=="account"{html.push_str(&account_page(&s));}
     else{
-        html.push_str(&format!("<details class=\"encounter-picker\" {}><summary>Change encounter</summary>",if options.boss==Boss::Custom&&options.targets.is_empty(){"open"}else{""}));
-        html.push_str("<div class=\"section-line\"><h2>Choose your encounter</h2><span>Presets or your own group</span></div><div class=\"encounter-grid\">");
-        for (boss,icon,kicker,description) in [(Boss::Barrows,4708,"BOSS ENCOUNTER","Equipment and supplies for the six brothers."),(Boss::Toa,25979,"RAID · STARTER PLAN","Starter equipment for raid levels 0–150.")]{let mut opt=options.clone();opt.boss=boss;if boss!=options.boss{opt.access_override=None;opt.started_barrows=None;}let p=planner::plan(snapshot,&opt);html.push_str(&format!("<button class=\"encounter {}\" data-action=\"boss:{}\"><div class=\"encounter-icon\">{}</div><div><small>{kicker}</small><h3>{}</h3><p>{description}</p>{}</div><span class=\"select-dot\"></span></button>",if boss==options.boss{"selected"}else{""},boss.key(),image(icon),boss.name(),badge(p.status(),if p.status()=="Meets starter guidelines"{"green"}else{"amber"})));}
-        html.push_str("</div>");
-        html.push_str(&encounter_catalog());
-        html.push_str(&button("boss:custom","Build a custom encounter group","button ghost"));
-        if options.boss==Boss::Custom {html.push_str(&custom_group(&s));}
+        html.push_str(&format!("<details class=\"encounter-picker\" {}><summary>Change encounter</summary>",if s.building_group||(options.boss==Boss::Custom&&options.targets.is_empty()){"open"}else{""}));
+        html.push_str(&encounter_catalog(&s));
+        html.push_str(&format!("<details class=\"custom-builder\" {}><summary>Build a custom group</summary>",if s.building_group{"open"}else{""}));
+        html.push_str(&custom_group(&s));
+        html.push_str(&button("custom-done","Done","button ghost"));
+        html.push_str("</details>");
         html.push_str("</details>");
         if s.shared_setup.is_some(){html.push_str(&format!("<p class=\"notice\">Viewing a shared setup. Your saved bank is unchanged. {}</p>",button("use-bank","Rebuild using my items","text-button")));}
         html.push_str(&encounter_detail(&s,&plan));
@@ -1310,21 +1341,124 @@ fn encounter_label(options: &Options) -> &str {
         .map(|e| e.name.as_str())
         .unwrap_or(options.boss.name())
 }
-fn encounter_catalog() -> String {
-    let mut html = String::from(
-        r#"<section class="panel account-form"><h3>Boss, raid or encounter</h3><p>Browse the full boss catalog, or build a group from the monster database. Coverage notes identify packing templates and missing mechanics.</p><label>Encounter<input id="encounter-search" list="encounters" placeholder="Search bosses and raids…"></label><datalist id="encounters">"#,
+fn encounter_catalog(s: &State) -> String {
+    let mut html = format!(
+        r#"<section class="encounter-browser"><h2>Choose an encounter</h2><label><span class="slot-caption">Search encounters</span><input id="encounter-search" type="search" placeholder="Search bosses or raids" value="{}" autocomplete="off"></label><nav class="encounter-filters" aria-label="Encounter categories">"#,
+        esc(&s.encounter_query)
     );
-    for e in crate::encounters::catalog() {
-        html.push_str(&format!(
-            r#"<option value="{}">{}</option>"#,
-            esc(&e.name),
-            e.coverage()
-        ));
+    for filter in ["Popular", "Bosses", "Raids", "Groups"] {
+        html.push_str(&format!(r#"<button id="enc-filter-{filter}" class="encounter-filter {}" data-action="encounter-filter:{filter}" aria-pressed="{}">{filter}</button>"#,if s.encounter_filter==filter{"active"}else{""},s.encounter_filter==filter));
     }
-    html.push_str("</datalist>");
-    html.push_str(&button("load-encounter", "Load encounter", "button ghost"));
-    html.push_str("</section>");
+    html.push_str("</nav><div id=\"encounter-results\">");
+    html.push_str(&encounter_results(s));
+    html.push_str("</div></section>");
     html
+}
+fn encounter_results(s: &State) -> String {
+    let query = s.encounter_query.trim().to_lowercase();
+    let popular = [
+        "Barrows Chests",
+        "Moons of Peril",
+        "Scurrius",
+        "Tombs of Amascut",
+        "Chambers of Xeric",
+        "Theatre of Blood",
+        "Vorkath",
+        "Zulrah",
+    ];
+    let category = |name: &str| {
+        if ["Chambers of Xeric", "Theatre of Blood", "Tombs of Amascut"]
+            .iter()
+            .any(|raid| name.starts_with(raid))
+        {
+            "Raids"
+        } else if [
+            "Moons of Peril",
+            "Dagannoth Kings",
+            "Fight Caves",
+            "Inferno",
+            "Fortis Colosseum",
+        ]
+        .contains(&name)
+        {
+            "Groups"
+        } else {
+            "Bosses"
+        }
+    };
+    let mut entries = crate::encounters::catalog()
+        .iter()
+        .enumerate()
+        .filter(|(_, e)| {
+            if crate::encounters::groups()
+                .iter()
+                .any(|g| g.aliases.contains(&e.name))
+            {
+                return false;
+            }
+            let matches = e.name.to_lowercase().contains(&query)
+                || crate::encounters::groups()
+                    .iter()
+                    .filter(|g| g.name == e.name)
+                    .any(|g| g.aliases.iter().any(|a| a.to_lowercase().contains(&query)));
+            matches
+                && if query.is_empty() && s.encounter_filter == "Popular" {
+                    popular.contains(&e.name.as_str())
+                } else {
+                    s.encounter_filter == "Popular" || category(&e.name) == s.encounter_filter
+                }
+        })
+        .collect::<Vec<_>>();
+    if query.is_empty() && s.encounter_filter == "Popular" {
+        entries.sort_by_key(|(_, e)| {
+            popular
+                .iter()
+                .position(|name| *name == e.name)
+                .unwrap_or(99)
+        });
+    }
+    let mut html = String::new();
+    for (index, e) in entries {
+        let label = if e.name == "Barrows Chests" {
+            "Barrows"
+        } else {
+            &e.name
+        };
+        let coverage = if e.targets.is_empty() {
+            "Not supported yet"
+        } else if e.coverage().contains("DPS partial") {
+            "Gear plan · partial DPS"
+        } else {
+            "Attack estimates"
+        };
+        html.push_str(&format!(r#"<button class="encounter-choice" data-action="choose-encounter:{index}" {}><span><strong>{}</strong><small>{coverage}</small></span><span aria-hidden="true">→</span></button>"#,if e.targets.is_empty(){"disabled"}else{""},esc(label)));
+    }
+    if html.is_empty() {
+        html.push_str("<p>No encounters found.</p>");
+    }
+    html
+}
+fn refresh_encounter_browser(s: &State) {
+    if let Some(results) = document().get_element_by_id("encounter-results") {
+        results.set_inner_html(&encounter_results(s));
+    }
+    for filter in ["Popular", "Bosses", "Raids", "Groups"] {
+        if let Some(el) = document().get_element_by_id(&format!("enc-filter-{filter}")) {
+            el.set_class_name(if s.encounter_filter == filter {
+                "encounter-filter active"
+            } else {
+                "encounter-filter"
+            });
+            let _ = el.set_attribute(
+                "aria-pressed",
+                if s.encounter_filter == filter {
+                    "true"
+                } else {
+                    "false"
+                },
+            );
+        }
+    }
 }
 fn custom_group(s: &State) -> String {
     let mut html = String::from(

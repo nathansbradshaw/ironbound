@@ -90,6 +90,7 @@ fn archive_forks_replace_rooms_and_preserve_all_final_phases() {
     assert!(raid.toggle(&targets, "archive-guardian").is_err());
     assert!(raid.toggle(&targets, "ocellus").is_err());
     let setup = ironbound::share::Setup {
+        ranking: Default::default(),
         combat: Default::default(),
         constraints: None,
         version: 1,

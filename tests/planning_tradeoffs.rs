@@ -70,7 +70,12 @@ fn prayer_preference_changes_real_planner_gear_and_reduces_drain() {
         ..Default::default()
     };
     let damage = planner::plan(&bank, &o);
-    o.combat.prayer_weight = 3;
+    o.ranking.weights = ironbound::ranking::Weights {
+        dps: 10.0,
+        defence: 0.0,
+        prayer: 90.0,
+        weight: 0.0,
+    };
     let efficient = planner::plan(&bank, &o);
     let drain = |set: &[Option<i32>]| prayer::drain_per_minute(prayer::bonus(set), &o.combat);
     assert!(drain(&efficient.equipment) < drain(&damage.equipment));

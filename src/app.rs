@@ -1590,10 +1590,9 @@ fn loadout_panel(s: &State, p: &Plan) -> String {
     html.push_str("</div>");
     if let Some(phase) = current {
         html.push_str(&format!(
-            "<p class=\"phase-note\"><strong>{}</strong> · {}</p><p class=\"packing-label\">Exports Start gear. {}</p>",
+            "<p class=\"phase-note\"><strong>{}</strong> · {}</p>",
             esc(&phase.style),
-            esc(&phase.note),
-            button("starting", "Return to Start gear", "text-button")
+            esc(&phase.note)
         ));
     }
     html.push_str("</section>");

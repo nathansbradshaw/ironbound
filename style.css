@@ -725,4 +725,4 @@ footer{font-size:10px;padding:9px 4px 0}footer>span:last-child{display:none}
 .recommendation-policy p{font:18px/1.3 Scape,monospace;margin:.5rem 0}
 .recommendation-policy a{display:inline-block;margin:.3rem .7rem .3rem 0;color:#ff981f}
 @media(max-width:600px){.recommendation-policy{align-items:flex-start}.recommendation-policy label{flex-basis:100%}.recommendation-policy select{min-height:38px}}
-.flow-controls>label{grid-column:auto}
+.flow-controls>label:last-of-type{grid-column:auto}

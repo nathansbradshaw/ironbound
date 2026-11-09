@@ -26,7 +26,7 @@ Your account stays on that browser. Import it again when using a different devic
 
 **The catalog covers all 72 current hiscores bosses/modes. Their combat mechanics are not all fully supported.**
 
-Coverage notes distinguish packing templates from supported calculations. All three raids have templates, but Challenge/Hard/Expert scaling, full wave simulations and many special phases remain unfinished.
+Coverage notes distinguish packing templates from supported calculations. CoX, ToB and ToA have raid templates; The Fractured Archive currently has an Ocellus phase template. Challenge/Hard/Expert scaling, full wave simulations and many special phases remain unfinished.
 
 Moons includes defence-aware normal attacks, chained hits, flat armour and Blood Moon healing. Its curses, special phases, camp boosts and movement are not fully simulated. Unknown damage mechanics show **unavailable**, rather than zero.
 

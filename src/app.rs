@@ -1356,36 +1356,7 @@ fn encounter_catalog(s: &State) -> String {
 }
 fn encounter_results(s: &State) -> String {
     let query = s.encounter_query.trim().to_lowercase();
-    let popular = [
-        "Barrows Chests",
-        "Moons of Peril",
-        "Scurrius",
-        "Tombs of Amascut",
-        "Chambers of Xeric",
-        "Theatre of Blood",
-        "Vorkath",
-        "Zulrah",
-    ];
-    let category = |name: &str| {
-        if ["Chambers of Xeric", "Theatre of Blood", "Tombs of Amascut"]
-            .iter()
-            .any(|raid| name.starts_with(raid))
-        {
-            "Raids"
-        } else if [
-            "Moons of Peril",
-            "Dagannoth Kings",
-            "Fight Caves",
-            "Inferno",
-            "Fortis Colosseum",
-        ]
-        .contains(&name)
-        {
-            "Groups"
-        } else {
-            "Bosses"
-        }
-    };
+    let popular = &crate::encounters::browser_catalog().popular;
     let mut entries = crate::encounters::catalog()
         .iter()
         .enumerate()
@@ -1403,9 +1374,9 @@ fn encounter_results(s: &State) -> String {
                     .any(|g| g.aliases.iter().any(|a| a.to_lowercase().contains(&query)));
             matches
                 && if query.is_empty() && s.encounter_filter == "Popular" {
-                    popular.contains(&e.name.as_str())
+                    popular.contains(&e.name)
                 } else {
-                    s.encounter_filter == "Popular" || category(&e.name) == s.encounter_filter
+                    s.encounter_filter == "Popular" || e.category() == s.encounter_filter
                 }
         })
         .collect::<Vec<_>>();
@@ -1413,7 +1384,7 @@ fn encounter_results(s: &State) -> String {
         entries.sort_by_key(|(_, e)| {
             popular
                 .iter()
-                .position(|name| *name == e.name)
+                .position(|name| name == &e.name)
                 .unwrap_or(99)
         });
     }

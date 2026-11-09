@@ -1,6 +1,19 @@
 //! Public encounter catalog and reusable mechanic coverage, separate from bank ownership.
 use crate::planner::{self, Monster, Target};
 use serde::Deserialize;
+#[derive(Debug, Deserialize)]
+pub struct BrowserCatalog {
+    pub raids: Vec<String>,
+    pub groups: Vec<String>,
+    pub popular: Vec<String>,
+}
+pub fn browser_catalog() -> &'static BrowserCatalog {
+    static DATA: std::sync::OnceLock<BrowserCatalog> = std::sync::OnceLock::new();
+    DATA.get_or_init(|| {
+        serde_json::from_str(include_str!("../assets/encounter-browser.json"))
+            .expect("encounter browser metadata")
+    })
+}
 #[derive(Clone, Debug, Deserialize)]
 pub struct Group {
     pub name: String,
@@ -55,6 +68,16 @@ pub struct Entry {
     pub bank_equipment: bool,
 }
 impl Entry {
+    pub fn category(&self) -> &'static str {
+        let data = browser_catalog();
+        if data.raids.iter().any(|raid| self.name.starts_with(raid)) {
+            "Raids"
+        } else if data.groups.contains(&self.name) {
+            "Groups"
+        } else {
+            "Bosses"
+        }
+    }
     pub fn coverage(&self) -> &'static str {
         if !self.bank_equipment {
             "Encounter equipment / skilling model needed"

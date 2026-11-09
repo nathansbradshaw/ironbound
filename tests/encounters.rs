@@ -52,8 +52,13 @@ fn authored_groups_only_reference_valid_recorded_targets() {
 }
 
 #[test]
-fn all_three_raids_have_editable_multi_style_room_templates() {
-    for name in ["Chambers of Xeric", "Theatre of Blood", "Tombs of Amascut"] {
+fn all_four_raids_have_editable_multi_style_templates() {
+    for name in [
+        "Chambers of Xeric",
+        "Theatre of Blood",
+        "Tombs of Amascut",
+        "The Fractured Archive",
+    ] {
         let group = encounters::groups()
             .iter()
             .find(|g| g.name == name)
@@ -82,6 +87,29 @@ fn all_three_raids_have_editable_multi_style_room_templates() {
             .len()
             > 12
     );
+}
+
+#[test]
+fn raid_browser_includes_fractured_archive_and_all_raid_modes() {
+    let catalog = encounters::catalog();
+    for name in &encounters::browser_catalog().raids {
+        assert!(
+            catalog.iter().any(|e| &e.name == name),
+            "Missing raid: {name}"
+        );
+        for entry in catalog.iter().filter(|e| e.name.starts_with(name)) {
+            assert_eq!(entry.category(), "Raids");
+        }
+    }
+    let archive = catalog
+        .iter()
+        .find(|e| e.name == "The Fractured Archive")
+        .unwrap();
+    assert_eq!(archive.category(), "Raids");
+    assert!(archive.coverage().contains("partial"));
+    for name in &encounters::browser_catalog().popular {
+        assert!(catalog.iter().any(|e| &e.name == name));
+    }
 }
 
 #[test]

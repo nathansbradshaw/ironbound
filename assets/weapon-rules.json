@@ -1,0 +1,62 @@
+{
+  "families": {
+    "slash": {"style":"Melee","attack_types":["slash"],"formula":"standard"},
+    "versatile": {"style":"Melee","attack_types":["stab","slash","crush"],"stances":{"stab":"controlled","slash":"controlled","crush":"controlled"},"formula":"standard"},
+    "sword": {"style":"Melee","attack_types":["stab","slash"],"stances":{"slash":"aggressive"},"formula":"standard"},
+    "slash_sword": {"style":"Melee","attack_types":["slash","stab"],"stances":{"stab":"controlled"},"formula":"standard"},
+    "axe": {"style":"Melee","attack_types":["slash","crush"],"stances":{"crush":"aggressive"},"formula":"standard"},
+    "crush": {"style":"Melee","attack_types":["crush"],"formula":"standard"},
+    "fang": {"style":"Melee","attack_types":["stab","slash"],"stances":{"slash":"aggressive"},"formula":"standard","effects":["fang"]},
+    "partisan": {"style":"Melee","attack_types":["stab","crush"],"stances":{"crush":"aggressive"},"formula":"standard","effects":["kalphite_damage"],"procs":[{"attribute":"kalphite","numerator":1,"denominator":51,"amount":3,"operation":"multiply","before_accurate_zero":true}]},
+    "bow": {"style":"Ranged","attack_types":["standard"],"formula":"standard","ammo":[892,890],"rapid":true},
+    "crossbow": {"style":"Ranged","attack_types":["heavy"],"formula":"standard","ammo":[9144,9143,9142,9243,9242],"rapid":true},
+    "wind": {"style":"Magic","attack_types":["magic"],"formula":"wind","accuracy_bonus":9,"ticks":5},
+    "iban": {"style":"Magic","attack_types":["magic"],"formula":"fixed","offset":25,"accuracy_bonus":9,"ticks":5},
+    "trident": {"style":"Magic","attack_types":["magic"],"formula":"powered","numerator":1,"denominator":3,"offset":-5,"accuracy_bonus":11,"ticks":4},
+    "swamp": {"style":"Magic","attack_types":["magic"],"formula":"powered","numerator":1,"denominator":3,"offset":-2,"accuracy_bonus":11,"ticks":4},
+    "sanguinesti": {"style":"Magic","attack_types":["magic"],"formula":"powered","numerator":1,"denominator":3,"accuracy_bonus":11,"ticks":4,"procs":[{"numerator":1,"denominator":5,"amount":8,"operation":"add"}]},
+    "shadow": {"style":"Magic","attack_types":["magic"],"formula":"powered","numerator":1,"denominator":3,"offset":1,"accuracy_bonus":11,"ticks":5,"effects":["shadow"]},
+    "warped": {"style":"Magic","attack_types":["magic"],"formula":"powered","numerator":8,"denominator":37,"offset":96,"offset_before_division":true,"accuracy_bonus":11,"ticks":4}
+  },
+  "weapons": [
+    {"ids":[4151,26482],"family":"slash","requirements":{"Attack":70}},
+    {"ids":[12006],"family":"slash","requirements":{"Attack":75}},
+    {"ids":[4587,20000,28031],"family":"slash_sword","requirements":{"Attack":60}},
+    {"ids":[1333],"family":"slash_sword","requirements":{"Attack":40}},
+    {"ids":[11889],"family":"versatile","requirements":{"Attack":70}},
+    {"ids":[21009,28029],"family":"sword","requirements":{"Attack":60}},
+    {"ids":[1215,5698,28025],"family":"sword","requirements":{"Attack":60}},
+    {"ids":[1305],"family":"slash_sword","requirements":{"Attack":60}},
+    {"ids":[28810],"family":"axe","requirements":{"Attack":65}},
+    {"ids":[20727],"family":"axe","multipliers":[{"attribute":"leafy","numerator":47,"denominator":40,"damage":true}],"requirements":{"Attack":65,"Slayer":55}},
+    {"ids":[1434],"family":"crush","requirements":{"Attack":60}},
+    {"ids":[21742],"family":"crush","multipliers":[{"attribute":"golem","numerator":13,"denominator":10,"accuracy":true,"damage":true}],"requirements":{"Attack":50,"Strength":50}},
+    {"ids":[26219,27246],"family":"fang","requirements":{"Attack":82}},
+    {"ids":[25979],"family":"partisan","requirements":{"Attack":65}},
+    {"ids":[27291,27287],"family":"partisan","requirements":{"Attack":80}},
+    {"ids":[25981],"family":"partisan","effects":["kalphite_accuracy"],"requirements":{"Attack":80}},
+    {"ids":[30891],"family":"partisan","kalphite_damage_percent":115,"adjustments":[{"context":"outside_toa","offensive":{"stab":-50},"bonuses":{"str":-22}}],"requirements":{"Attack":80}},
+    {"ids":[861,12788],"family":"bow","requirements":{"Ranged":50}},
+    {"ids":[9185,26486],"family":"crossbow","requirements":{"Ranged":61}},
+    {"ids":[21902],"family":"crossbow","requirements":{"Ranged":65}},
+    {"ids":[11785],"family":"crossbow","requirements":{"Ranged":70}},
+    {"ids":[26374],"family":"crossbow","effects":["zaryte"],"requirements":{"Ranged":80}},
+    {"ids":[1381],"family":"wind","requirements":{}},
+    {"ids":[1405],"family":"wind","requirements":{"Magic":40,"Attack":40}},
+    {"ids":[12658,1409],"family":"iban","requirements":{"Magic":50,"Attack":50}},
+    {"ids":[11905,11907,22288],"family":"trident","requirements":{"Magic":75}},
+    {"ids":[12899,22292],"family":"swamp","requirements":{"Magic":78}},
+    {"ids":[22323,25731],"family":"sanguinesti","requirements":{"Magic":82}},
+    {"ids":[27275],"family":"shadow","requirements":{"Magic":85}},
+    {"ids":[28585],"family":"warped","requirements":{"Magic":62}}
+  ],
+  "ammunition": [
+    {"ids":[892,890,9144,9143,9142],"effect":"none"},
+    {"ids":[9242],"effect":"ruby"},
+    {"ids":[9243],"effect":"diamond"}
+  ],
+  "equipment_effects": [
+    {"ids":[22975],"effect":"brimstone_accuracy"},
+    {"ids":[25264,26770,11665,11664,11663],"effect":"unsupported","reason":"Special rings and Void effects are not implemented yet."}
+  ]
+}

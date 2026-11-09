@@ -727,7 +727,7 @@ fn refine_dps(
 }
 // Offensive stats seed the search; defence resolves ties before free prayer
 // bonus. Prayer economy only trades away combat stats through the explicit
-// settings in defence::score, never through an unconditional prayer bonus.
+// Options::ranking weights, never through an unconditional prayer bonus.
 fn equipment_score(id: i32, style: &str) -> (i32, i32, i32) {
     let Some(s) = crate::combat::stats(id) else {
         return (0, 0, 0);

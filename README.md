@@ -49,7 +49,7 @@ Weapon IDs map to shared families and reusable mechanics. Exact variants stay se
 
 Defaults use unboosted levels. Supported selected prayers affect combat and drain. Standard outgoing calculations cover reviewed melee, bows/crossbows, powered staves, Wind spells and Iban Blast, with supported Fang, Keris, bolt and Shadow effects. ToA calculations assume solo, path level 0 and invocation levels 0–150; Wardens remain unsupported.
 
-Incoming values describe an explicitly selected attack scenario, not a full-fight average. Unknown prayer interactions, special attacks, chip damage and defensive passives remain unverified. Only verified Moon profiles currently influence automatic defence weighting.
+Incoming values describe an explicitly selected attack scenario, not a full-fight average. Unknown prayer interactions, special attacks, chip damage and defensive passives remain unverified. Automatic defence priority uses your selected defence bonuses; incoming scenarios remain separate estimates.
 
 Prayer duration assumes full starting prayer, continuous use and carried ordinary prayer/restore doses. It excludes flicking, regeneration, restoration modifiers and encounter-imposed drains. It is not a whole-trip or kills-per-trip prediction.
 

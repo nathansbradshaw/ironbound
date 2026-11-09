@@ -948,6 +948,15 @@ fn act(action: &str) {
                 "Gear rebuilt using your priorities. Manual equipment choices stay pinned.",
                 false,
             );
+        } else if action == "rank-reset" {
+            if let Some(preferences) = s.ranking_draft.take() {
+                s.saved.options.ranking = preferences;
+            }
+            s.saved.options.gear_overrides.clear();
+            s.notice(
+                "Manual gear choices cleared. Automatic gear uses your priorities.",
+                false,
+            );
         } else if let Some(preset) = action.strip_prefix("rank-preset:") {
             if let Some(weights) = crate::ranking::Weights::preset(preset) {
                 s.saved.options.ranking.weights = weights;
@@ -2485,6 +2494,12 @@ fn ranking_controls(s: &State, prefix: &str) -> String {
         },
         button("rank-apply", "Apply priorities", "phase")
     ));
+    if !s.saved.options.gear_overrides.is_empty() {
+        html.push_str(&format!(
+            "<p>Manual gear choices stay fixed. {}</p>",
+            button("rank-reset", "Reset manual gear", "phase")
+        ));
+    }
     html
 }
 
@@ -2525,6 +2540,23 @@ fn update_gear_ranking(id: &str, value: &str) {
     });
 }
 
+fn picker_priorities(s: &State) -> String {
+    let weights = s
+        .ranking_draft
+        .as_ref()
+        .unwrap_or(&s.saved.options.ranking)
+        .weights
+        .values();
+    format!(
+        "<details class=\"picker-priorities\"><summary>Priorities · DPS {} · defence {} · prayer {} · weight {} <span>Edit</span></summary>{}</details>",
+        weights[0],
+        weights[1],
+        weights[2],
+        weights[3],
+        ranking_controls(s, "rank")
+    )
+}
+
 fn gear_picker(s: &State) -> String {
     let Some(slot) = s.edit_equipment else {
         return String::new();
@@ -2535,7 +2567,7 @@ fn gear_picker(s: &State) -> String {
         planner::SLOTS[slot],
         button("close-picker", "Close ×", "phase"),
         esc(&s.gear_search),
-        ranking_controls(s, "rank"),
+        picker_priorities(s),
         esc(comparison_monster(s)
             .map(|m| m.name.as_str())
             .unwrap_or("selected encounter")),
@@ -2708,7 +2740,7 @@ fn gear_choices(s: &State) -> String {
     } else if !unavailable.is_empty() {
         html.push_str(&format!("<p class=\"ranking-notice\">{} unavailable for these items; omitted from the score.</p>", esc(&unavailable.join(", "))));
     }
-    html.push_str("<p class=\"picker-note\">Each stat is scaled across all usable owned items in this slot. Missing enabled stats rank below complete results. Defence uses bonuses, not a full fight simulation.</p>");
+    html.push_str("<details class=\"ranking-help\"><summary>How scores work</summary><p>Each stat is scaled across all usable owned items in this slot. Search does not change scores. Figures describe the resulting setup. Missing enabled stats rank below complete results. Defence uses bonuses, not a full fight simulation.</p></details>");
     if items.is_empty() {
         html.push_str("<p>No owned items match this search.</p>");
     }

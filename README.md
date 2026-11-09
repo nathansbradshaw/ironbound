@@ -13,7 +13,7 @@ An OSRS-style bossing planner for Ironmen. Find gear **you actually own**, keep 
 
 Your account stays on that browser. Import it again when using a different device or the hosted site instead of localhost.
 
-**Starting gear + packing list** is what you export. Phase views preview your switches. **Explore example** opens a temporary demo; your saved bank stays safe.
+**Starting gear + packing list** is what you export. Choose a boss phase to preview its equipped gear and inventory together; return to **Start** to edit the packing list. **Explore example** opens a temporary demo; your saved bank stays safe.
 
 ## What you can do
 

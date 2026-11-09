@@ -284,6 +284,69 @@ pub struct Plan {
     pub spell: String,
 }
 impl Plan {
+    /// Preview a phase from the saved starting bag without changing the export.
+    pub fn preview_inventory(&self, phase: Option<usize>) -> Vec<Packed> {
+        let mut inventory = self.inventory.clone();
+        let Some(phase) = phase.and_then(|index| self.phases.get(index)) else {
+            return inventory;
+        };
+        let mut freed = BTreeMap::new();
+        // Equip incoming gear first, making room for displaced items (including
+        // a shield removed by a two-handed weapon).
+        for (slot, (start, target)) in self.equipment.iter().zip(&phase.equipment).enumerate() {
+            if start == target {
+                continue;
+            }
+            if let Some(index) = target.and_then(|id| {
+                inventory
+                    .iter()
+                    .position(|item| item.id == id && item.quantity > 0)
+            }) {
+                let quantity = if slot == 13 { 100 } else { 1 };
+                inventory[index].quantity = inventory[index].quantity.saturating_sub(quantity);
+                if inventory[index].quantity == 0 {
+                    inventory[index].id = 0;
+                    freed.insert(slot, index);
+                }
+            }
+        }
+        for (slot, (start, target)) in self.equipment.iter().zip(&phase.equipment).enumerate() {
+            if start == target {
+                continue;
+            }
+            let Some(id) = *start else { continue };
+            let quantity = if slot == 13 { 100 } else { 1 };
+            if is_stackable(id) {
+                if let Some(item) = inventory
+                    .iter_mut()
+                    .find(|item| item.id == id && item.quantity > 0)
+                {
+                    item.quantity += quantity;
+                    continue;
+                }
+            }
+            let item = Packed {
+                id,
+                quantity,
+                purpose: "Unequipped starting gear".into(),
+            };
+            let index = freed
+                .remove(&slot)
+                .filter(|index| inventory[*index].quantity == 0)
+                .or_else(|| {
+                    inventory
+                        .iter()
+                        .position(|item| item.id <= 0 || item.quantity == 0)
+                });
+            if let Some(index) = index {
+                inventory[index] = item;
+            } else {
+                inventory.push(item);
+            }
+        }
+        inventory
+    }
+
     pub fn inventory_slots(&self) -> usize {
         self.inventory
             .iter()

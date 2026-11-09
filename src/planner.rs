@@ -200,6 +200,7 @@ impl Target {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(default)]
 pub struct Options {
+    pub ranking: crate::ranking::Preferences,
     pub combat: crate::defence::Settings,
     pub boss: Boss,
     pub shared: bool,
@@ -223,6 +224,7 @@ pub struct Options {
 impl Default for Options {
     fn default() -> Self {
         Self {
+            ranking: Default::default(),
             combat: Default::default(),
             boss: Boss::Barrows,
             shared: false,
@@ -594,7 +596,7 @@ fn refine_dps(
     };
     let spell = |set: &Vec<Option<i32>>| crate::rules::spell_name(m, set, owned);
     let metric = |set: &Vec<Option<i32>>| {
-        crate::combat::calculate_configured(
+        let dps = crate::combat::calculate_configured(
             m,
             set,
             style,
@@ -604,7 +606,8 @@ fn refine_dps(
             &options.combat,
         )
         .ok()
-        .map(|r| crate::defence::score(m, set, target, r.dps, &options.combat))
+        .map(|r| r.dps);
+        crate::ranking::equipment_metrics(set, dps, options.ranking.defence)
     };
     for _ in 0..2 {
         let mut changed = false;
@@ -628,8 +631,7 @@ fn refine_dps(
                     .map(|g| g.id)
                     .collect()
             };
-            let mut best = metric(set).unwrap_or(-1.0);
-            let mut chosen = set.clone();
+            let mut trials = vec![set.clone()];
             for id in ids {
                 if owned.get(&id).copied().unwrap_or(0) == 0 || !can_use(id, m) {
                     continue;
@@ -686,18 +688,25 @@ fn refine_dps(
                     ) {
                         continue;
                     }
-                    if let Some(dps) = metric(&trial) {
-                        // Equal damage/prayer utility must not keep weaker armour
-                        // merely because it appeared first in the catalog.
-                        if dps > best + 1e-9
-                            || (dps - best).abs() <= 1e-9
-                                && equipment_tiebreak(&trial, style)
-                                    > equipment_tiebreak(&chosen, style)
-                        {
-                            best = dps;
-                            chosen = trial.clone();
-                        }
-                    }
+                    trials.push(trial.clone());
+                }
+            }
+            let scores = crate::ranking::rank(
+                &trials.iter().map(metric).collect::<Vec<_>>(),
+                &options.ranking.weights,
+            )
+            .scores;
+            let mut best = scores[0];
+            let mut chosen = trials[0].clone();
+            for (trial, score) in trials.into_iter().zip(scores).skip(1) {
+                if score.is_some()
+                    && (score > best
+                        || score == best
+                            && equipment_tiebreak(&trial, style)
+                                > equipment_tiebreak(&chosen, style))
+                {
+                    best = score;
+                    chosen = trial;
                 }
             }
             if chosen != *set {

@@ -17,6 +17,7 @@ Your account stays on that browser. Import it again when using a different devic
 
 ## What you can do
 
+- **Set gear priorities:** beside the encounter, choose **DPS first**, **DPS + prayer**, **DPS + defence**, or **All three equal**. Or enter your own fractional weights for DPS, defence, prayer and lighter gear, then **Apply priorities**. Defaults are 99 DPS, 1 defence and 0.01 prayer. The automatic planner and gear picker use these priorities; **Equip top result** selects the picker's top choice.
 - **Plan a trip:** boss and raid templates, or your own group of monsters. Select your CoX rooms or choose each Fractured Archive fork.
 - **Switch less:** limit changed items and carried gear; favour one style or phase.
 - **Compare gear:** outgoing DPS, supported incoming damage, defence and prayer drain.
@@ -51,7 +52,7 @@ Incoming values describe an explicitly selected attack scenario, not a full-figh
 
 Prayer duration assumes full starting prayer, continuous use and carried ordinary prayer/restore doses. It excludes flicking, regeneration, restoration modifiers and encounter-imposed drains. It is not a whole-trip or kills-per-trip prediction.
 
-The optimizer weighs supported damage, boss healing, defence and your prayer preference, while checking pairwise switches, shared stock and the 28-slot inventory. Monster groups support up to 64 attack windows, including Stab, Slash and Crush. Supplies and special encounter requirements may still need manual review.
+The optimizer uses your DPS, selected defence-bonus, prayer and equipment-mass priorities, while checking pairwise switches, shared stock and the 28-slot inventory. Incoming scenarios and boss healing remain advisory estimates. Monster groups support up to 64 attack windows, including Stab, Slash and Crush. Supplies and special encounter requirements may still need manual review.
 
 No quest checks are used. Equipment and spell skill requirements still apply. Reference tiers are reviewed examples, not an exhaustive universal BIS list.
 

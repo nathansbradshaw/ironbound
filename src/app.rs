@@ -36,13 +36,13 @@ struct State {
     compare_target: Option<i32>,
     edit_equipment: Option<usize>,
     gear_search: String,
-    gear_sort: String,
     incoming_attack: Option<String>,
     encounter_query: String,
     encounter_filter: String,
     building_group: bool,
     raid_rooms_open: bool,
     switch_preferences_open: bool,
+    ranking_draft: Option<crate::ranking::Preferences>,
 }
 impl State {
     fn initial() -> Self {
@@ -117,13 +117,13 @@ impl State {
             compare_target: None,
             edit_equipment: None,
             gear_search: String::new(),
-            gear_sort: "dps".into(),
             incoming_attack: None,
             encounter_query: String::new(),
             encounter_filter: "Popular".into(),
             building_group: false,
             raid_rooms_open: false,
             switch_preferences_open: false,
+            ranking_draft: None,
             saved,
             tab: "bossing".into(),
             view: "loadout".into(),
@@ -292,6 +292,8 @@ pub fn start() -> Result<(), JsValue> {
                     s.encounter_query = el.value();
                     refresh_encounter_browser(&s);
                 });
+            } else if el.id().starts_with("rank-") || el.id().starts_with("plan-rank-") {
+                update_gear_ranking(&el.id(), &el.value());
             } else if el.id() == "gear-search" {
                 STATE.with(|state| {
                     let mut s = state.borrow_mut();
@@ -386,6 +388,15 @@ pub fn start() -> Result<(), JsValue> {
             return;
         };
         let id = el.id();
+        if id.starts_with("rank-") || id.starts_with("plan-rank-") {
+            let value = el
+                .dyn_ref::<HtmlInputElement>()
+                .map(|e| e.value())
+                .or_else(|| el.dyn_ref::<HtmlSelectElement>().map(|e| e.value()))
+                .unwrap_or_default();
+            update_gear_ranking(&id, &value);
+            return;
+        }
         if id == "import-file" {
             if let Ok(i) = el.dyn_into::<HtmlInputElement>() {
                 if let Some(file) = i.files().and_then(|f| f.get(0)) {
@@ -416,7 +427,6 @@ pub fn start() -> Result<(), JsValue> {
         }
         // Draft form fields must survive blur: they are committed by their action button.
         if ![
-            "gear-sort",
             "max-switches",
             "switch-slots",
             "focus-style",
@@ -448,7 +458,6 @@ pub fn start() -> Result<(), JsValue> {
         }
         STATE.with(|state|{let mut s=state.borrow_mut();if s.shared_setup.is_some() && !id.starts_with("skill-"){s.notice("Choose Rebuild using my items before editing this shared setup.",true);return;}match id.as_str(){
             _ if id.starts_with("priority-")=>{if let(Ok(target),Ok(weight))=(id[9..].parse::<i32>(),input(&id).parse::<u32>()){if encounter_targets(&s).contains(&target){s.saved.options.phase_priorities.insert(target,weight.min(10));}}},
-            "gear-sort"=>{if let Ok(sel)=el.dyn_into::<HtmlSelectElement>(){s.gear_sort=sel.value();}},
             "incoming-attack"=>{if let Ok(sel)=el.dyn_into::<HtmlSelectElement>(){s.incoming_attack=Some(sel.value());}},
             "protection"=>{if let Ok(sel)=el.dyn_into::<HtmlSelectElement>(){let value=sel.value();if ["None","Melee","Ranged","Magic"].contains(&value.as_str()){s.saved.options.combat.protection=value;}}},
             "offensive-prayer"=>{if let Ok(sel)=el.dyn_into::<HtmlSelectElement>(){let value=sel.value();if crate::prayer::prayers().iter().any(|p|p.name==value){s.saved.options.combat.offensive=value;}}},
@@ -855,11 +864,50 @@ fn act(action: &str) {
             .and_then(|v| v.parse::<usize>().ok())
         {
             let style = comparison_style(&s).to_string();
-            s.saved
-                .options
-                .gear_overrides
-                .remove(&format!("{style}:{slot}"));
-            s.edit_equipment = None;
+            let query = s.gear_search.to_lowercase();
+            let top = ranked_gear(&s).0.into_iter().find(|row| {
+                row.usable
+                    && row.score.is_some()
+                    && (query.is_empty()
+                        || planner::item_name(row.gear.id)
+                            .to_lowercase()
+                            .contains(&query))
+            });
+            if let Some(row) = top {
+                let key_style =
+                    if s.saved.options.fewer_switches && [0, 1, 2, 9, 10, 12].contains(&slot) {
+                        planner::primary_style(&s.saved.options)
+                    } else {
+                        &style
+                    };
+                let key = format!("{key_style}:{slot}");
+                if let Some(preferences) = s.ranking_draft.take() {
+                    s.saved.options.ranking = preferences;
+                }
+                s.saved.options.gear_overrides.insert(key, row.gear.id);
+                s.saved.options.inventory_overrides.clear();
+                s.saved.options.inventory_quantities.clear();
+                s.edit_equipment = None;
+                s.notice("Top result equipped using your ranking weights.", false);
+            } else {
+                s.notice(
+                    "Set an available stat above 0 to choose a ranked result.",
+                    true,
+                );
+            }
+        } else if action == "rank-apply" {
+            if let Some(preferences) = s.ranking_draft.take() {
+                s.saved.options.ranking = preferences;
+            }
+            s.notice(
+                "Gear rebuilt using your priorities. Manual equipment choices stay pinned.",
+                false,
+            );
+        } else if let Some(preset) = action.strip_prefix("rank-preset:") {
+            if let Some(weights) = crate::ranking::Weights::preset(preset) {
+                s.saved.options.ranking.weights = weights;
+                s.ranking_draft = None;
+            }
         } else if action == "casual" {
             s.saved.options.max_switches = Some(4);
             s.saved.options.switch_slots = 8;
@@ -1224,7 +1272,7 @@ fn render() {
         html.push_str(&raid_rooms(&s));
         html.push_str("</div>");
         if s.shared_setup.is_some(){html.push_str(&format!("<p class=\"notice\">Viewing a shared setup. Your saved bank is unchanged. {}</p>",button("use-bank","Rebuild using my items","text-button")));}
-        if s.shared_setup.is_none(){html.push_str(&switch_controls(&s));}
+        if s.shared_setup.is_none(){html.push_str(&switch_controls(&s));html.push_str(&format!("<details class=\"gear-priorities\"><summary>Gear priorities · DPS {} · defence {} · prayer {} · weight {}</summary>{}</details>",s.saved.options.ranking.weights.values()[0],s.saved.options.ranking.weights.values()[1],s.saved.options.ranking.weights.values()[2],s.saved.options.ranking.weights.values()[3],ranking_controls(&s,"plan-rank")));}
         html.push_str("<nav class=\"planner-tabs\" aria-label=\"Planner sections\">");
         for (view,label) in [("loadout","Gear & inventory"),("combat","Combat & switches"),("prepare","Preparation")] {let disabled=if view=="combat"&&s.shared_setup.is_some(){"disabled title=\"Rebuild using your items to calculate combat stats\""}else{""};html.push_str(&format!("<button class=\"workspace-tab {}\" data-action=\"view:{view}\" aria-pressed=\"{}\" {disabled}>{label}{}</button>",if s.view==view{"active"}else{""},s.view==view,if view=="prepare"&&!plan.missing.is_empty(){format!(" <span class=\"issue-count\">{}</span>",plan.missing.len())}else{String::new()}));}
         html.push_str("</nav><section class=\"workspace-view\">");
@@ -1975,41 +2023,7 @@ fn sustain_panel(
             }
         });
     html.push_str(&format!("<table class=\"bonus-table\"><tbody><tr><th>Prayer bonus</th><td>{bonus:+}</td></tr><tr><th>Drain</th><td>{drain:.2} points / minute</td></tr><tr><th>Prayer supply</th><td>{}</td></tr></tbody></table><details><summary>Prayer estimate details</summary><p class=\"small-note\">Full starting prayer, continuous use and this equipment. Excludes flicking, regeneration, restoration bonuses and encounter drains. Incoming damage covers one attack scenario; unknown chip damage and specials are not zero.</p></details>",esc(&duration)));
-    html.push_str("<details><summary>Weigh damage, defence & longer trips</summary><label>Defence weighting<select id=\"safety\">");
-    for (value, label) in [
-        (0, "Damage first"),
-        (1, "Balanced"),
-        (2, "Safer"),
-        (3, "Prioritize safety"),
-    ] {
-        html.push_str(&format!(
-            "<option value=\"{value}\" {}>{label}</option>",
-            if settings.safety == value {
-                "selected"
-            } else {
-                ""
-            }
-        ));
-    }
-    html.push_str(
-        "</select></label><label>Prayer efficiency weighting<select id=\"prayer-weight\">",
-    );
-    for (value, label) in [
-        (0, "No preference"),
-        (1, "Some preference"),
-        (2, "Stronger preference"),
-        (3, "Long trips"),
-    ] {
-        html.push_str(&format!(
-            "<option value=\"{value}\" {}>{label}</option>",
-            if settings.prayer_weight == value {
-                "selected"
-            } else {
-                ""
-            }
-        ));
-    }
-    html.push_str("</select></label><p class=\"small-note\">Weights guide a bounded search, not a guaranteed trip length. Defence affects automatic ranking only for verified encounter profiles. Blood Moon healing reduces net progress even at zero defence weight. Compare gear using Encounter balance, DPS, defence or prayer bonus in the slot picker.</p></details></section>");
+    html.push_str("<p class=\"small-note\">Automatic gear uses Gear priorities beside the encounter. Prayer selections here affect damage and drain estimates.</p></section>");
     html
 }
 fn combat_panel(s: &State, p: &Plan) -> String {
@@ -2252,36 +2266,108 @@ fn switch_panel(s: &State, p: &Plan) -> String {
     html
 }
 
+fn ranking_controls(s: &State, prefix: &str) -> String {
+    let preferences = s.ranking_draft.as_ref().unwrap_or(&s.saved.options.ranking);
+    let mut html = String::from(
+        "<fieldset class=\"ranking-controls\"><legend>Rank by your priorities</legend><div class=\"ranking-weights\">",
+    );
+    for ((key, label), value) in [
+        ("dps", "DPS"),
+        ("defence", "Defence"),
+        ("prayer", "Prayer"),
+        ("weight", "Lighter gear"),
+    ]
+    .into_iter()
+    .zip(preferences.weights.values())
+    {
+        html.push_str(&format!("<label for=\"{prefix}-{key}\">{label}<input id=\"{prefix}-{key}\" type=\"number\" min=\"0\" max=\"100\" step=\"0.01\" value=\"{value}\" aria-label=\"{label} importance\"></label>"));
+    }
+    html.push_str(&format!("</div><label class=\"ranking-defence\">Defence measure<select id=\"{prefix}-defence-type\">"));
+    for kind in crate::ranking::Defence::ALL {
+        html.push_str(&format!(
+            "<option value=\"{}\" {}>{}</option>",
+            kind.key(),
+            if kind == preferences.defence {
+                "selected"
+            } else {
+                ""
+            },
+            kind.label()
+        ));
+    }
+    html.push_str("</select></label><p>Relative weights, not percentages. 0 ignores a stat; lower kilograms score better.</p><div class=\"ranking-presets\">");
+    for (key, label) in [
+        ("damage", "DPS first"),
+        ("prayer", "DPS + prayer"),
+        ("defence", "DPS + defence"),
+        ("equal", "All three equal"),
+    ] {
+        html.push_str(&button(&format!("rank-preset:{key}"), label, "phase"));
+    }
+    html.push_str(&format!(
+        "</div><p id=\"{prefix}-status\">{}</p>{}</fieldset>",
+        if s.ranking_draft.is_some() {
+            "Previewing priorities. Apply to rebuild automatic gear."
+        } else {
+            "Used for automatic gear and slot ranking."
+        },
+        button("rank-apply", "Apply priorities", "phase")
+    ));
+    html
+}
+
+fn update_gear_ranking(id: &str, value: &str) {
+    STATE.with(|state| {
+        let mut s = state.borrow_mut();
+        let mut preferences = s
+            .ranking_draft
+            .clone()
+            .unwrap_or_else(|| s.saved.options.ranking.clone());
+        let key = id
+            .strip_prefix("plan-rank-")
+            .or_else(|| id.strip_prefix("rank-"))
+            .unwrap_or("");
+        if key == "defence-type" {
+            if let Some(kind) = crate::ranking::Defence::ALL
+                .into_iter()
+                .find(|kind| kind.key() == value)
+            {
+                preferences.defence = kind;
+            }
+        } else if let Ok(value) = value.parse::<f64>() {
+            preferences.weights.set(key, value);
+        } else {
+            return;
+        }
+        s.ranking_draft = Some(preferences);
+        if let Some(results) = document().get_element_by_id("gear-pick-results") {
+            results.set_inner_html(&gear_choices(&s));
+        }
+        for prefix in ["rank", "plan-rank"] {
+            if let Some(note) = document().get_element_by_id(&format!("{prefix}-status")) {
+                note.set_text_content(Some(
+                    "Previewing priorities. Apply to rebuild automatic gear.",
+                ));
+            }
+        }
+    });
+}
+
 fn gear_picker(s: &State) -> String {
     let Some(slot) = s.edit_equipment else {
         return String::new();
     };
     let style = comparison_style(s);
-    let sort_options = [
-        ("dps", "DPS"),
-        ("overall", "Encounter balance"),
-        ("defence", "Defence: total bonuses"),
-        ("magic-def", "Defence: magic"),
-        ("ranged-def", "Defence: ranged"),
-        ("prayer", "Prayer bonus"),
-    ]
-    .into_iter()
-    .map(|(key, label)| {
-        format!(
-            "<option value=\"{key}\" {}>{label}</option>",
-            if s.gear_sort == key { "selected" } else { "" }
-        )
-    })
-    .collect::<String>();
     format!(
-        r#"<div class="picker-backdrop"><section class="gear-picker" role="dialog" aria-modal="true" aria-labelledby="gear-picker-title"><div class="panel-heading"><h2 id="gear-picker-title">{} · owned equipment</h2>{}</div><div class="picker-controls"><label>Search your items<input id="gear-search" type="search" value="{}" placeholder="Search owned items…" autocomplete="off"></label><label>Order by<select id="gear-sort">{sort_options}</select></label></div><p class="picker-note">{style} against {}. Compare one slot; your other equipment stays fixed.</p><div class="picker-actions">{} {}</div><div class="picker-scroll"><h3 class="owned-heading">Your owned items</h3><div id="gear-pick-results" class="gear-pick-results">{}</div><details class="secondary-section"><summary>BIS & upgrade reference</summary><div class="bis-scale">{}</div></details></div></section></div>"#,
+        r#"<div class="picker-backdrop"><section class="gear-picker" role="dialog" aria-modal="true" aria-labelledby="gear-picker-title"><div class="panel-heading"><h2 id="gear-picker-title">{} · owned equipment</h2>{}</div><div class="picker-controls"><label>Search your items<input id="gear-search" type="search" value="{}" placeholder="Search owned items…" autocomplete="off"></label></div>{}<p class="picker-note">{style} against {}. Scores compare this slot with the rest of your setup fixed.</p><div class="picker-actions">{} {}</div><div class="picker-scroll"><div id="gear-pick-results" class="gear-pick-results" aria-live="polite">{}</div><details class="secondary-section"><summary>BIS & upgrade reference</summary><div class="bis-scale">{}</div></details></div></section></div>"#,
         planner::SLOTS[slot],
         button("close-picker", "Close ×", "phase"),
         esc(&s.gear_search),
-        esc(&comparison_monster(s)
+        ranking_controls(s, "rank"),
+        esc(comparison_monster(s)
             .map(|m| m.name.as_str())
             .unwrap_or("selected encounter")),
-        button(&format!("auto-gear:{slot}"), "Use recommended", "phase"),
+        button(&format!("auto-gear:{slot}"), "Equip top result", "phase"),
         button(
             &format!("pick-gear:{style}:{slot}:0"),
             "Leave empty",
@@ -2291,27 +2377,32 @@ fn gear_picker(s: &State) -> String {
         bis_scale(s)
     )
 }
-fn gear_choices(s: &State) -> String {
+
+struct GearChoice {
+    gear: &'static planner::Gear,
+    usable: bool,
+    metrics: crate::ranking::Metrics,
+    score: Option<f64>,
+}
+
+fn ranked_gear(s: &State) -> (Vec<GearChoice>, Vec<&'static str>) {
     let Some(slot) = s.edit_equipment else {
-        return String::new();
+        return (vec![], vec![]);
+    };
+    let Some(member) = s.saved.snapshot.selected() else {
+        return (vec![], vec![]);
     };
     let style = comparison_style(s);
     let p = s.plan();
     let set = planned_style(s, &p, style);
-    let Some(member) = s.saved.snapshot.selected() else {
-        return String::new();
-    };
     let owned = s.saved.snapshot.available(false);
-    let query = s.gear_search.to_lowercase();
-    let mut items = planner::equipment()
+    // Rank the entire usable pool. Searching must not change scores or relative order.
+    let mut items: Vec<_> = planner::equipment()
         .iter()
-        .filter(|g| {
-            g.slot == planner::SLOT_KEYS[slot]
-                && owned.contains_key(&g.id)
-                && (query.is_empty() || planner::item_name(g.id).to_lowercase().contains(&query))
-        })
+        .filter(|g| g.slot == planner::SLOT_KEYS[slot] && owned.get(&g.id).is_some_and(|n| *n > 0))
         .map(|g| {
             let usable = planner::can_use(g.id, member)
+                && !s.saved.options.excluded.contains(&g.id)
                 && (slot != 13 || owned.get(&g.id).copied().unwrap_or(0) >= 100);
             let mut trial = set.clone();
             trial[slot] = Some(g.id);
@@ -2320,13 +2411,13 @@ fn gear_choices(s: &State) -> String {
             }
             let dps = if usable {
                 comparison_monster(s)
-                    .and_then(|m| {
+                    .and_then(|target| {
                         combat::calculate_configured(
                             member,
                             &trial,
                             style,
-                            m,
-                            &p.spell,
+                            target,
+                            crate::rules::spell_name(member, &trial, &owned),
                             s.saved.options.raid_level,
                             &s.saved.options.combat,
                         )
@@ -2336,109 +2427,145 @@ fn gear_choices(s: &State) -> String {
             } else {
                 None
             };
-            let own_defence = combat::stats(g.id).map(|g| &g.defensive);
-            let score = own_defence
-                .map(|map| match s.gear_sort.as_str() {
-                    "magic-def" => map.get("magic").copied().unwrap_or(0),
-                    "ranged-def" => map.get("ranged").copied().unwrap_or(0),
-                    _ => map.values().sum(),
-                })
-                .unwrap_or(0);
-            let overall = dps.and_then(|damage| {
-                comparison_monster(s).map(|target| {
-                    crate::defence::score(member, &trial, target, damage, &s.saved.options.combat)
-                })
-            });
-            let incoming = comparison_monster(s)
-                .and_then(|target| {
-                    incoming_choice(s, target).and_then(|attack| {
-                        crate::defence::estimate(
-                            member,
-                            &trial,
-                            target,
-                            &attack,
-                            &s.saved.options.combat,
+            let known_bonuses = trial
+                .iter()
+                .flatten()
+                .all(|id| combat::stats(*id).is_some());
+            let bonuses = combat::bonuses(&trial);
+            let defence = known_bonuses.then(|| {
+                if s.ranking_draft
+                    .as_ref()
+                    .unwrap_or(&s.saved.options.ranking)
+                    .defence
+                    == crate::ranking::Defence::Total
+                {
+                    bonuses.defensive.values().sum::<i32>() as f64
+                } else {
+                    bonuses
+                        .defensive
+                        .get(
+                            s.ranking_draft
+                                .as_ref()
+                                .unwrap_or(&s.saved.options.ranking)
+                                .defence
+                                .key(),
                         )
-                        .ok()
-                    })
-                })
-                .map(|r| r.damage_per_second);
-            let prayer_bonus = crate::prayer::bonus(&trial);
-            let drain = crate::prayer::drain_per_minute(prayer_bonus, &s.saved.options.combat);
-            (
-                g,
+                        .copied()
+                        .unwrap_or(0) as f64
+                }
+            });
+            GearChoice {
+                gear: g,
                 usable,
-                dps,
-                score,
-                overall,
-                incoming,
-                drain,
-                prayer_bonus,
-            )
+                metrics: crate::ranking::Metrics {
+                    dps,
+                    defence,
+                    prayer: known_bonuses.then(|| crate::prayer::bonus(&trial) as f64),
+                    weight: crate::ranking::equipment_weight(&trial),
+                },
+                score: None,
+            }
         })
-        .collect::<Vec<_>>();
-    items.sort_by(|a, b| {
-        if s.gear_sort == "dps" {
-            b.2.partial_cmp(&a.2)
-                .unwrap_or(std::cmp::Ordering::Equal)
-                .then_with(|| a.0.name.cmp(&b.0.name))
-        } else if s.gear_sort == "overall" {
-            b.4.partial_cmp(&a.4)
-                .unwrap_or(std::cmp::Ordering::Equal)
-                .then_with(|| a.0.name.cmp(&b.0.name))
-        } else if s.gear_sort == "prayer" {
-            b.7.cmp(&a.7)
-                .then_with(|| b.2.partial_cmp(&a.2).unwrap_or(std::cmp::Ordering::Equal))
-        } else {
-            b.3.cmp(&a.3).then_with(|| a.0.name.cmp(&b.0.name))
+        .collect();
+    let metrics: Vec<_> = items
+        .iter()
+        .filter(|row| row.usable)
+        .map(|row| row.metrics)
+        .collect();
+    let ranking = crate::ranking::rank(
+        &metrics,
+        &s.ranking_draft
+            .as_ref()
+            .unwrap_or(&s.saved.options.ranking)
+            .weights,
+    );
+    let mut scores = ranking.scores.into_iter();
+    for row in &mut items {
+        if row.usable {
+            row.score = scores.next().flatten();
         }
-    });
-    let mut html = format!("<p class=\"picker-note\">{} owned items</p>", items.len());
-    if ["dps", "overall"].contains(&s.gear_sort.as_str())
-        && !items.iter().any(|row| row.2.is_some())
-    {
-        html.push_str("<p class=\"picker-note\">Damage ranking unavailable for this attack window. Items are listed alphabetically; compare defence or prayer instead.</p>");
     }
+    items.sort_by(|a, b| {
+        b.usable
+            .cmp(&a.usable)
+            .then_with(|| {
+                b.score
+                    .partial_cmp(&a.score)
+                    .unwrap_or(std::cmp::Ordering::Equal)
+            })
+            .then_with(|| a.gear.name.cmp(&b.gear.name))
+            .then_with(|| a.gear.id.cmp(&b.gear.id))
+    });
+    (items, ranking.unavailable)
+}
+
+fn gear_choices(s: &State) -> String {
+    let Some(slot) = s.edit_equipment else {
+        return String::new();
+    };
+    let style = comparison_style(s);
+    let p = s.plan();
+    let set = planned_style(s, &p, style);
+    let owned = s.saved.snapshot.available(false);
+    let query = s.gear_search.to_lowercase();
+    let (items, unavailable) = ranked_gear(s);
+    let items: Vec<_> = items
+        .into_iter()
+        .filter(|row| {
+            query.is_empty()
+                || planner::item_name(row.gear.id)
+                    .to_lowercase()
+                    .contains(&query)
+        })
+        .collect();
+    let mut html = format!(
+        "<p class=\"picker-note\">{} owned items · combined score / 100</p>",
+        items.len()
+    );
+    if s.ranking_draft
+        .as_ref()
+        .unwrap_or(&s.saved.options.ranking)
+        .weights
+        .values()
+        .iter()
+        .all(|v| *v == 0.0)
+    {
+        html.push_str(
+            "<p class=\"ranking-notice\">Set at least one importance above 0 to rank gear.</p>",
+        );
+    } else if !unavailable.is_empty() {
+        html.push_str(&format!("<p class=\"ranking-notice\">{} unavailable for these items; omitted from the score.</p>", esc(&unavailable.join(", "))));
+    }
+    html.push_str("<p class=\"picker-note\">Each stat is scaled across all usable owned items in this slot. Missing enabled stats rank below complete results. Defence uses bonuses, not a full fight simulation.</p>");
     if items.is_empty() {
         html.push_str("<p>No owned items match this search.</p>");
     }
-    let current_dps = comparison_monster(s)
-        .and_then(|target| {
-            combat::calculate_configured(
-                member,
-                &set,
-                style,
-                target,
-                &p.spell,
-                s.saved.options.raid_level,
-                &s.saved.options.combat,
-            )
-            .ok()
-        })
-        .map(|r| r.dps);
-    for (g, usable, dps, defence, _overall, _incoming, drain, prayer_bonus) in items {
-        let metric = match s.gear_sort.as_str() {
-            "prayer" => format!("{prayer_bonus:+} setup prayer · {drain:.1} points/min"),
-            "defence" | "magic-def" | "ranged-def" => format!("{defence:+} item defence"),
-            _ => dps
-                .map(|v| {
-                    format!(
-                        "{v:.3} DPS{}",
-                        current_dps
-                            .map(|old| format!(" · {:+.3} vs current", v - old))
-                            .unwrap_or_default()
-                    )
-                })
-                .unwrap_or_else(|| "Damage unverified".into()),
-        };
-        let state = if !usable {
-            "Skill requirements unconfirmed or unmet"
+    let metric = |value: Option<f64>, decimals: usize| {
+        value
+            .map(|n| format!("{n:.decimals$}"))
+            .unwrap_or_else(|| "?".into())
+    };
+    for row in items {
+        let g = row.gear;
+        let state = if !row.usable {
+            "Excluded or skill/ammo requirements unmet"
         } else if set[slot] == Some(g.id) {
             "Equipped"
         } else {
             ""
         };
-        html.push_str(&format!(r#"<button class="gear-pick {}" data-action="pick-gear:{style}:{slot}:{}" {}>{}<span><strong>{}</strong><small>{}</small><small>{state}</small></span><b>× {}</b></button>"#,if set[slot]==Some(g.id){"selected"}else{""},g.id,if usable{""}else{"disabled"},image(g.id),esc(&planner::item_name(g.id)),esc(&metric),owned[&g.id]));
+        let state = if state.is_empty() {
+            format!("Owned × {}", owned[&g.id])
+        } else {
+            format!("{state} · owned × {}", owned[&g.id])
+        };
+        let score = row
+            .score
+            .map(|n| format!("{n:.1}"))
+            .unwrap_or_else(|| "—".into());
+        html.push_str(&format!(r#"<button class="gear-pick {}" data-action="pick-gear:{style}:{slot}:{}" {}>{}<span><strong>{}</strong><small>{} DPS · {} defence · {} prayer · {} kg</small><small>{state}</small></span><b class="ranking-score" aria-label="Combined score {score} out of 100">{score}<small>/ 100</small></b></button>"#,
+            if set[slot] == Some(g.id) { "selected" } else { "" }, g.id, if row.usable { "" } else { "disabled" }, image(g.id), esc(&planner::item_name(g.id)),
+            metric(row.metrics.dps, 3), metric(row.metrics.defence, 0), metric(row.metrics.prayer, 0), metric(row.metrics.weight, 3)));
     }
     html
 }

@@ -6,6 +6,7 @@ use serde::{Deserialize, Serialize};
 #[serde(default, deny_unknown_fields)]
 pub struct Settings {
     pub protection: String,
+    // Retained for old backups/shared setups; automatic ranking uses Options::ranking.
     pub safety: u32,
     pub offensive: String,
     pub preserve: bool,

@@ -433,6 +433,18 @@ pub fn start() -> Result<(), JsValue> {
             update_gear_ranking(&id, &value);
             return;
         }
+        if id == "recommendation-mode" {
+            if let Some(select) = el.dyn_ref::<HtmlSelectElement>() {
+                STATE.with(|state| {
+                    let mut s = state.borrow_mut();
+                    s.saved.options.recommended = Some(select.value() == "recommended");
+                    s.ranking_draft = None;
+                    s.persist();
+                });
+                render();
+            }
+            return;
+        }
         if id == "import-file" {
             if let Ok(i) = el.dyn_into::<HtmlInputElement>() {
                 if let Some(file) = i.files().and_then(|f| f.get(0)) {
@@ -941,6 +953,7 @@ fn act(action: &str) {
                 );
             }
         } else if action == "rank-apply" {
+            s.saved.options.recommended = Some(false);
             if let Some(preferences) = s.ranking_draft.take() {
                 s.saved.options.ranking = preferences;
             }
@@ -959,6 +972,7 @@ fn act(action: &str) {
             );
         } else if let Some(preset) = action.strip_prefix("rank-preset:") {
             if let Some(weights) = crate::ranking::Weights::preset(preset) {
+                s.saved.options.recommended = Some(false);
                 s.saved.options.ranking.weights = weights;
                 s.ranking_draft = None;
             }
@@ -2398,8 +2412,29 @@ fn switch_controls(s: &State) -> String {
         ));
     }
     html.push_str("</select></label></div>");
+    html.push_str("<details><summary>Advanced · custom weights</summary>");
     html.push_str(&ranking_controls(s, "plan-rank"));
-    html.push_str("</details></section>");
+    html.push_str("</details>");
+    html.push_str("</details>");
+    let recommended = crate::recommendation::enabled(&s.saved.options);
+    html.push_str(&format!(r#"<div class="recommendation-policy"><label>Gear approach<select id="recommendation-mode"><option value="recommended" {}>Recommended</option><option value="custom" {}>Custom weights</option></select></label><details><summary>Why this gear?</summary><p>{}</p>"#,if recommended{"selected"}else{""},if recommended{""}else{"selected"},esc(crate::recommendation::summary(&s.saved.options))));
+    if recommended {
+        if let Some(profile) = crate::guidance::profile(&s.saved.options) {
+            for reason in &profile.rationale {
+                html.push_str(&format!("<p>{}</p>", esc(reason)));
+            }
+            for url in &profile.source_urls {
+                html.push_str(&format!(
+                    "<a href=\"{}\" target=\"_blank\" rel=\"noopener noreferrer\">Wiki guide ↗</a>",
+                    esc(url)
+                ));
+            }
+            html.push_str("<p>Normal attacks only at Moons; ToA specials and a full raid survival model are not simulated.</p>");
+        } else {
+            html.push_str("<p>Uses supported combat calculations. Reviewed encounter-specific gear roles are available for ToA and Moons.</p>");
+        }
+    }
+    html.push_str("</details></div></section>");
     html
 }
 

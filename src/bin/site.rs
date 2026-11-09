@@ -397,15 +397,25 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             if !git(&root, &["status", "--porcelain"])?.is_empty() {
                 return Err("Commit and merge the source before publishing".into());
             }
-            if git(&root, &["branch", "--show-current"])? != "main" {
-                return Err("Publish from main".into());
+            let branch = git(&root, &["branch", "--show-current"])?;
+            if branch != "main" && !branch.is_empty() {
+                return Err("Publish from main or its detached release revision".into());
             }
             let remote = git(&root, &["remote", "get-url", "origin"])?;
             if remote != "https://github.com/nathansbradshaw/ironbound.git" {
                 return Err("Unexpected deployment remote".into());
             }
             let source = git(&root, &["rev-parse", "HEAD"])?;
-            git(&root, &["push", "origin", "main"])?;
+            if branch == "main" {
+                git(&root, &["push", "origin", "main"])?;
+            }
+            if fs::read_to_string(root.join("dist/source-commit.txt"))?.trim() != source {
+                return Err("Rebuild this exact source revision before publishing".into());
+            }
+            let remote_main = git(&root, &["ls-remote", "origin", "refs/heads/main"])?;
+            if remote_main.split_whitespace().next() != Some(source.as_str()) {
+                return Err("Release source must exactly match remote main".into());
+            }
             let unique = std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)?
                 .as_millis();
@@ -480,6 +490,19 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     p.inventory.len(),
                     p.missing.len()
                 );
+                for phase in &p.phases {
+                    println!(
+                        "{}: {}",
+                        phase.name,
+                        phase
+                            .equipment
+                            .iter()
+                            .flatten()
+                            .map(|id| ironbound::planner::item_name(*id))
+                            .collect::<Vec<_>>()
+                            .join(", ")
+                    );
+                }
                 let budget = ironbound::planner::plan(
                     &snapshot,
                     &ironbound::planner::Options {
@@ -527,7 +550,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     "dist/pkg",
                     "--out-name",
                     "ironbound",
-                    "target/wasm32-unknown-unknown/release/ironbound.wasm",
+                    &std::env::var("CARGO_TARGET_DIR")
+                        .map(|p| format!("{p}/wasm32-unknown-unknown/release/ironbound.wasm"))
+                        .unwrap_or_else(|_| {
+                            "target/wasm32-unknown-unknown/release/ironbound.wasm".into()
+                        }),
                 ],
             )?;
             // All browser code and CSS share a content-derived cache key. A Pages
@@ -556,6 +583,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             fs::write("dist/index.html", index)?;
             fs::copy("style.css", "dist/style.css")?;
             copy_runtime_assets()?;
+            let revision = Command::new("git").args(["rev-parse", "HEAD"]).output()?;
+            if !revision.status.success() {
+                return Err("Cannot identify build source revision".into());
+            }
+            fs::write("dist/source-commit.txt", revision.stdout)?;
             println!("Built static Rust/Wasm site in dist/");
         }
         Some("serve") => {

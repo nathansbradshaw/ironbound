@@ -712,3 +712,11 @@ footer{font-size:10px;padding:9px 4px 0}footer>span:last-child{display:none}
 @media(max-width:580px){.loadout-layout{grid-template-columns:minmax(0,300px)}.planner-tabs{gap:4px;max-width:100%}.workspace-tab{font-size:19px;padding:6px}.flow-controls{max-width:100%;grid-template-columns:130px minmax(0,1fr);padding:9px}.flow-controls>details>summary{font-size:17px}.flow-controls select,.flow-controls input,.panel input:not([type=checkbox]),.panel select{font-size:20px;min-height:38px}.phase-select-label{display:block}.phase-select-label select{width:100%;margin-top:4px}.panel-heading{flex-wrap:nowrap}.export-actions .button{font-size:18px}.gear-picker .panel-heading h2{font-size:22px}.gear-pick strong{font-size:21px}.gear-pick small{font-size:17px}}
 .loadout-notes>summary{font-size:18px}.phase-select-label{white-space:nowrap}.phase-select-label select{width:145px;flex:1;min-width:0}.flow-controls>label{white-space:nowrap}
 @media(max-width:580px){.phase-select-label select{width:100%}.phase-select-label{white-space:normal}}
+
+/* The default policy stays readable; the numerical editor is advanced. */
+.recommendation-policy{display:flex;align-items:center;gap:1rem;flex-wrap:wrap;grid-column:1/-1;border-top:1px solid #817961;padding-top:.6rem}
+.recommendation-policy label{display:flex;gap:.6rem;align-items:center}
+.recommendation-policy details{max-width:38rem}
+.recommendation-policy p{font-size:.95rem;line-height:1.4;margin:.5rem 0}
+.recommendation-policy a{display:inline-block;margin:.3rem .7rem .3rem 0}
+@media(max-width:600px){.recommendation-policy{align-items:flex-start;gap:.6rem}.recommendation-policy label{width:100%;justify-content:space-between}.recommendation-policy select{max-width:62%}}

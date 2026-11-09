@@ -197,6 +197,15 @@ pub fn calculate_configured(
     }
     let toa = crate::encounters::mechanics().toa_ids.contains(&monster.id);
     let mut b = bonuses_in_context(set, toa);
+    // Self-ammunition weapons retain e.g. a blessing's prayer, but do not fire arrows/bolts.
+    if style == "Ranged" && rule.family.ammo.is_empty() {
+        if let Some(ammo) = set[13].and_then(self::stats) {
+            *b.other.entry("ranged_str".into()).or_default() -=
+                ammo.bonuses.get("ranged_str").copied().unwrap_or(0);
+            *b.offensive.entry("ranged".into()).or_default() -=
+                ammo.offensive.get("ranged").copied().unwrap_or(0);
+        }
+    }
     if style == "Magic" && rule.has(Effect::Shadow) {
         let factor = if toa { 4 } else { 3 };
         *b.offensive.entry("magic".into()).or_default() *= factor;
@@ -248,9 +257,11 @@ pub fn calculate_configured(
             )
         }
         "Ranged" => {
-            let ammo = set[13].ok_or("Choose compatible ammunition.")?;
-            if !rule.family.ammo.contains(&ammo) {
-                return Err("Weapon/ammunition combination not supported.".into());
+            if !rule.family.ammo.is_empty() {
+                let ammo = set[13].ok_or("Choose compatible ammunition.")?;
+                if !rule.family.ammo.contains(&ammo) {
+                    return Err("Weapon/ammunition combination not supported.".into());
+                }
             }
             let effective = level("Ranged")? * (100 + prayer_attack) / 100 + 8;
             let a = effective * (get(&b.offensive, "ranged") as i64 + 64);
@@ -332,8 +343,7 @@ pub fn calculate_configured(
     if toa {
         defence = defence * (250 + invocation.min(150) as i64) / 250;
     }
-    let mut attack = attack;
-    let mut max_hit = max_hit;
+    let (mut attack, mut max_hit) = rule.scale_equipment(set, attack, max_hit);
     let keris =
         rule.has(Effect::KalphiteDamage) && monster.attributes.iter().any(|a| a == "kalphite");
     if keris {
@@ -377,7 +387,7 @@ pub fn calculate_configured(
         conditional_hit(min_hit, max_hit, flat_armour, &rule.family.procs, monster);
     let mut expected = hit * mean;
     max_hit = ceiling;
-    if style == "Ranged" {
+    if style == "Ranged" && !rule.family.ammo.is_empty() {
         let zcb = rule.has(Effect::Zaryte);
         match rules::ammunition(set[13].unwrap_or(0)) {
             AmmoEffect::Ruby => {

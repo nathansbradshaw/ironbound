@@ -301,3 +301,28 @@ details.account-summary[open]>summary{margin-bottom:7px}
  .encounter-choice{gap:10px;padding:10px 8px;min-height:56px}
  .encounter-choice>small{max-width:42%;text-align:right;font-size:11px}
 }
+
+/* Raid route choices: selected rooms stay distinct from required rooms. */
+details.raid-route{margin:0 0 18px;padding:0 2px 12px;border-bottom:1px solid #94774a}
+.raid-route>summary{font:22px Scape,monospace;color:#5d3918;text-decoration:none;padding:7px 0}
+.raid-route>summary>span{font:12px Arial,Helvetica,sans-serif;color:#735530;margin-left:10px}
+.raid-route-groups{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:16px 22px;margin-top:12px}
+.raid-stage{display:flex;flex-wrap:wrap;align-content:start;gap:7px}
+.raid-stage:only-child{grid-column:1/-1}
+.raid-stage h3{flex-basis:100%;font:20px Scape,monospace;color:#6b4820;margin:0 0 2px}
+.raid-room{display:flex;align-items:center;justify-content:space-between;gap:10px;flex:1 1 140px;min-width:0;min-height:46px;padding:9px 11px;border:1px solid #a58b5f;background:#c3ab7d44;color:#5b4021;text-align:left}
+.raid-room strong{font-size:14px;line-height:1.35;font-weight:normal}
+.raid-room small{font-size:11px;line-height:1.35;color:#826642;flex-shrink:0}
+.raid-room:hover:not(:disabled){background:#b89b635c;border-color:#8f6d36}
+.raid-room.active,.raid-room[aria-pressed=true]{background:#bba16a80;border-color:#805d25;box-shadow:inset 3px 0 #7a551c;color:#38230d}
+.raid-room.active strong,.raid-room[aria-pressed=true] strong{font-weight:bold}
+.raid-room.active small,.raid-room[aria-pressed=true] small{color:#5b421e}
+.raid-room:disabled{opacity:1;cursor:default;background:#bda77c22;border-color:#aa956f;box-shadow:none;color:#624e30}
+.raid-room:disabled strong{font-weight:normal}
+.raid-room:disabled small{color:#7e694a}
+@media(max-width:480px){
+ .raid-route-groups{grid-template-columns:1fr;gap:15px}
+ .raid-route>summary{font-size:21px}
+ .raid-room{flex-basis:130px;min-height:48px;padding:9px 10px}
+}
+.phase-select-label{display:flex;align-items:center;gap:12px;width:100%;font-size:13px}.phase-select-label select{flex:1;min-width:0;max-width:100%}

@@ -17,7 +17,7 @@ Your account stays on that browser. Import it again when using a different devic
 
 ## What you can do
 
-- **Use Recommended:** reviewed ToA/Moons gear roles guide the default. Moons considers tank armour and Blood healing; ToA compares supported attack windows. Custom weights live under **Gear & switch options → Advanced**.
+- **Use Recommended:** reviewed ToA/Moons gear roles guide the default. Moons considers tank armour and Blood healing; ToA compares supported attack windows. Custom weights live under **Options → Advanced**.
 - **Plan a trip:** boss and raid templates, or your own group of monsters. Select your CoX rooms or choose each Fractured Archive fork.
 - **Switch less:** limit changed items and carried gear; favour one style or phase.
 - **Compare gear:** outgoing DPS, supported incoming damage, defence and prayer drain.

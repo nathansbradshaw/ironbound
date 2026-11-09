@@ -1,0 +1,97 @@
+{
+  "aliases": {
+    "Amulet of rancour": ["Amulet of rancour (s)"],
+    "Amulet of torture": ["Amulet of torture (or)"],
+    "Amulet of fury": ["Amulet of fury (or)"],
+    "Amulet of glory": ["Amulet of glory (t)", "Amulet of eternal glory"],
+    "Necklace of anguish": ["Necklace of anguish (or)"],
+    "Occult necklace": ["Occult necklace (or)"],
+    "Helm of Neitiznot": ["Helm of Neitiznot (or)"],
+    "Fighter torso": ["Fighter torso (or)"],
+    "Bandos tassets": ["Bandos tassets (or)"],
+    "Barrows gloves": ["Barrows gloves (wrapped)"],
+    "Rune gloves": ["Rune gloves (wrapped)"],
+    "Dragon boots": ["Dragon boots (g)", "Dragon boots (cr)"],
+    "Climbing boots": ["Climbing boots (g)"],
+    "Avernic defender": ["Ghommal's avernic defender 5", "Ghommal's avernic defender 6"],
+    "Dragon defender": ["Dragon defender (t)"],
+    "Rune defender": ["Rune defender (t)"],
+    "Book of Darkness": ["Book of Darkness (or)"],
+    "Unholy book": ["Unholy book (or)"],
+    "Ancestral hat": ["Twisted ancestral hat"],
+    "Ancestral robe top": ["Twisted ancestral robe top"],
+    "Ancestral robe bottom": ["Twisted ancestral robe bottom"],
+    "Mystic hat": ["Mystic hat (dark)", "Mystic hat (light)", "Mystic hat (dusk)", "Mystic hat (or)"],
+    "Mystic robe top": ["Mystic robe top (dark)", "Mystic robe top (light)", "Mystic robe top (dusk)", "Mystic robe top (or)"],
+    "Mystic robe bottom": ["Mystic robe bottom (dark)", "Mystic robe bottom (light)", "Mystic robe bottom (dusk)", "Mystic robe bottom (or)"],
+    "Mystic boots": ["Mystic boots (dark)", "Mystic boots (light)", "Mystic boots (dusk)", "Mystic boots (or)"],
+    "Crystal helm": ["Crystal helm (Amlodd)", "Crystal helm (Cadarn)", "Crystal helm (Crwys)", "Crystal helm (Hefin)", "Crystal helm (Iorwerth)", "Crystal helm (Ithell)", "Crystal helm (Trahaearn)"],
+    "Crystal body": ["Crystal body (Amlodd)", "Crystal body (Cadarn)", "Crystal body (Crwys)", "Crystal body (Hefin)", "Crystal body (Iorwerth)", "Crystal body (Ithell)", "Crystal body (Trahaearn)"],
+    "Crystal legs": ["Crystal legs (Amlodd)", "Crystal legs (Cadarn)", "Crystal legs (Crwys)", "Crystal legs (Hefin)", "Crystal legs (Iorwerth)", "Crystal legs (Ithell)", "Crystal legs (Trahaearn)"],
+    "Bow of Faerdhinen": ["Bow of Faerdhinen (c)", "Bow of Faerdhinen (c) (Amlodd)", "Bow of Faerdhinen (c) (Cadarn)", "Bow of Faerdhinen (c) (Crwys)", "Bow of Faerdhinen (c) (Meilyr)", "Bow of Faerdhinen (c) (Iorwerth)", "Bow of Faerdhinen (c) (Ithell)", "Bow of Faerdhinen (c) (Trahaearn)"],
+    "Ava's assembler": ["Masori assembler"],
+    "Infernal cape": ["Infernal max cape"],
+    "Dizana's quiver": ["Blessed Dizana's quiver", "Dizana's max cape"],
+    "Imbued Saradomin cape": ["Imbued Saradomin max cape"],
+    "Imbued Guthix cape": ["Imbued Guthix max cape"],
+    "Imbued Zamorak cape": ["Imbued Zamorak max cape"]
+  },
+  "profiles": [
+    {
+      "id": "toa", "name": "Tombs of Amascut",
+      "source_urls": ["https://oldschool.runescape.wiki/w/Tombs_of_Amascut/Strategies"],
+      "incoming_model": "partial",
+      "phase_weapons": [{"target":11719,"families":["partisan"]}],
+      "rationale": ["Start with combat armour and useful accessories from your bank.", "Moon and mixed-hide armour can cover multiple styles and save switches.", "Crystal armour needs a compatible bow. Invocation mechanics, special attacks and execution can change the best loadout; this is a reviewed starting point."],
+      "roles": [
+        {"style":"Melee","slots":[
+          {"slot":"head","rationale":"Strength with useful defence; avoid utility headgear.","tiers":[{"items":["Torva full helm","Oathplate helm"]},{"items":["Neitiznot faceguard"]},{"items":["Serpentine helm"]},{"items":["Helm of Neitiznot","Blood Moon helm","Blue Moon helm"]},{"items":["Berserker helm"]}]},
+          {"slot":"cape","rationale":"Melee strength, then a useful stab/prayer fallback.","tiers":[{"items":["Infernal cape"]},{"items":["Fire cape"]},{"items":["Ardougne cloak 4","Ardougne cloak 3","Ardougne cloak 2","Ardougne cloak 1"]}]},
+          {"slot":"neck","rationale":"Combat accuracy and strength; fury adds defence.","tiers":[{"items":["Amulet of rancour"]},{"items":["Amulet of torture"]},{"items":["Amulet of blood fury","Amulet of fury"]},{"items":["Amulet of glory"]},{"items":["Amulet of strength","Amulet of power"]}]},
+          {"slot":"body","rationale":"Strength armour first; hybrid Moon and mixed hide remain practical progression options.","tiers":[{"items":["Torva platebody"]},{"items":["Bandos chestplate","Oathplate chest"]},{"items":["Fighter torso","Blood Moon chestplate"]},{"items":["Eclipse Moon chestplate","Blue Moon chestplate"]},{"items":["Mixed hide top"]},{"items":["Dharok's platebody","Torag's platebody","Guthan's platebody"]},{"items":["Rune platebody"]}]},
+          {"slot":"legs","rationale":"Combat legs rather than teleport or skilling rewards.","tiers":[{"items":["Torva platelegs"]},{"items":["Bandos tassets","Oathplate legs"]},{"items":["Blood Moon tassets"]},{"items":["Eclipse Moon tassets","Blue Moon tassets"]},{"items":["Mixed hide legs"]},{"items":["Dharok's platelegs","Torag's platelegs","Verac's plateskirt","Guthan's chainskirt"]},{"items":["Rune platelegs","Rune plateskirt"]}]},
+          {"slot":"shield","rationale":"A defender supports melee accuracy and strength.","tiers":[{"items":["Avernic defender"]},{"items":["Dragon defender"]},{"items":["Rune defender"]},{"items":["Toktz-ket-xil"]}]},
+          {"slot":"hands","rationale":"Useful combat bonuses across the raid.","tiers":[{"items":["Ferocious gloves"]},{"items":["Barrows gloves"]},{"items":["Dragon gloves"]},{"items":["Rune gloves","Combat bracelet"]}]},
+          {"slot":"feet","rationale":"Strength boots that also work with fewer switches.","tiers":[{"items":["Avernic treads (max)","Avernic treads (pr)","Primordial boots"]},{"items":["Dragon boots"]},{"items":["Mixed hide boots","Climbing boots"]}]},
+          {"slot":"ring","rationale":"Strength baseline; special-attack energy utility needs separate planning.","tiers":[{"items":["Ultor ring"]},{"items":["Berserker ring (i)"]},{"items":["Brimstone ring","Berserker ring"]},{"items":["Lightbearer"]}]}
+        ]},
+        {"style":"Ranged","slots":[
+          {"slot":"head","rationale":"Crystal only with a compatible bow; hybrid helmets can reduce switches.","tiers":[{"items":["Masori mask (f)","Masori mask"]},{"items":["Crystal helm"],"required_weapon_names":["Bow of Faerdhinen","Crystal bow"]},{"items":["Armadyl helmet"]},{"items":["Eclipse Moon helm"]},{"items":["Helm of Neitiznot","Blue Moon helm"]}]},
+          {"slot":"cape","rationale":"Ranged bonuses and ammunition recovery.","tiers":[{"items":["Dizana's quiver"]},{"items":["Ava's assembler"]},{"items":["Ava's accumulator"]},{"items":["Ava's attractor"]}]},
+          {"slot":"neck","rationale":"Ranged damage and accuracy.","tiers":[{"items":["Necklace of rupture"]},{"items":["Necklace of anguish"]},{"items":["Amulet of fury","Amulet of blood fury"]},{"items":["Amulet of glory"]},{"items":["Amulet of power"]}]},
+          {"slot":"body","rationale":"Crystal is bow-dependent; Moon/mixed hide offer melee/ranged hybrid value.","tiers":[{"items":["Masori body (f)","Masori body"]},{"items":["Crystal body"],"required_weapon_names":["Bow of Faerdhinen","Crystal bow"]},{"items":["Armadyl chestplate"]},{"items":["Eclipse Moon chestplate"]},{"items":["Mixed hide top","Karil's leathertop","Armadyl d'hide body","Bandos d'hide body","Ancient d'hide body","Guthix d'hide body","Saradomin d'hide body","Zamorak d'hide body"]},{"items":["Black d'hide body"]},{"items":["Red d'hide body"]}]},
+          {"slot":"legs","rationale":"Useful ranged legs, with hybrid options for limited switches.","tiers":[{"items":["Masori chaps (f)","Masori chaps"]},{"items":["Crystal legs"],"required_weapon_names":["Bow of Faerdhinen","Crystal bow"]},{"items":["Armadyl chainskirt"]},{"items":["Eclipse Moon tassets"]},{"items":["Mixed hide legs","Karil's leatherskirt","Armadyl chaps","Bandos chaps","Ancient chaps","Guthix chaps","Saradomin chaps","Zamorak chaps"]},{"items":["Black d'hide chaps"]},{"items":["Red d'hide chaps"]}]},
+          {"slot":"hands","rationale":"Ranged gloves or a shared combat glove.","tiers":[{"items":["Zaryte vambraces"]},{"items":["Barrows gloves"]},{"items":["Black d'hide vambraces"]},{"items":["Combat bracelet"]}]},
+          {"slot":"ring","rationale":"Ranged baseline; Lightbearer utility is encounter-dependent.","tiers":[{"items":["Venator ring"]},{"items":["Archers ring (i)"]},{"items":["Brimstone ring"]},{"items":["Archers ring","Lightbearer"]}]}
+        ]},
+        {"style":"Magic","slots":[
+          {"slot":"head","rationale":"Magic damage and accuracy before low-value utility bonuses.","tiers":[{"items":["Ancestral hat"]},{"items":["Virtus mask"]},{"items":["Ahrim's hood","Blue Moon helm","Infinity hat","Dagon'hai hat","Bloodbark helm"]},{"items":["Mystic hat"]}]},
+          {"slot":"cape","rationale":"Magic damage cape, then standard mage cape.","tiers":[{"items":["Imbued Saradomin cape","Imbued Guthix cape","Imbued Zamorak cape","Imbued ancient cape"]},{"items":["Saradomin cape","Guthix cape","Zamorak cape"]}]},
+          {"slot":"neck","rationale":"Occult is a damage upgrade rather than a prayer-only choice.","tiers":[{"items":["Occult necklace"]},{"items":["Amulet of fury","Amulet of blood fury"]},{"items":["Amulet of glory"]},{"items":["Amulet of magic","Amulet of power"]}]},
+          {"slot":"body","rationale":"Magic damage armour; Blue Moon also supports melee switches.","tiers":[{"items":["Ancestral robe top"]},{"items":["Virtus robe top"]},{"items":["Ahrim's robetop","Blue Moon chestplate","Dagon'hai robe top","Infinity top","Bloodbark body"]},{"items":["Mystic robe top"]},{"items":["Xerician top"]}]},
+          {"slot":"legs","rationale":"Magic damage and useful accuracy.","tiers":[{"items":["Ancestral robe bottom"]},{"items":["Virtus robe bottom"]},{"items":["Ahrim's robeskirt","Blue Moon tassets","Dagon'hai robe bottom","Infinity bottoms","Bloodbark legs"]},{"items":["Mystic robe bottom"]},{"items":["Xerician robe"]}]},
+          {"slot":"hands","rationale":"Magic damage bracelet or shared combat gloves.","tiers":[{"items":["Tormented bracelet","Tormented bracelet (or)"]},{"items":["Barrows gloves"]},{"items":["Infinity gloves"]}]},
+          {"slot":"shield","rationale":"Magic offhand; never supplied next to a two-handed weapon.","tiers":[{"items":["Elidinis' ward (f)"]},{"items":["Elidinis' ward"]},{"items":["Arcane spirit shield"]},{"items":["Mage's book"]},{"items":["Book of Darkness"]}]},
+          {"slot":"ring","rationale":"Magic baseline; special-attack energy is separate utility.","tiers":[{"items":["Magus ring"]},{"items":["Seers ring (i)","Brimstone ring"]},{"items":["Seers ring","Lightbearer"]}]}
+        ]}
+      ]
+    },
+    {
+      "id":"moons", "name":"Moons of Peril",
+      "source_urls":["https://oldschool.runescape.wiki/w/Moons_of_Peril/Strategies"],
+      "incoming_model":"normal_attacks",
+      "rationale":["Slash defence reduces the Moons' chained hits and Blood Moon healing.","Prefer tank Barrows to low-defence obsidian; balance strength with survivability.","Protection prayers do not block these normal attacks. Special mechanics still require player execution."],
+      "roles":[{"style":"Melee","slots":[
+        {"slot":"head","rationale":"Defence and strength; tank helmets are meaningful progression gear.","tiers":[{"items":["Torva full helm","Oathplate helm"]},{"items":["Justiciar faceguard","Serpentine helm"]},{"items":["Neitiznot faceguard"]},{"items":["Dharok's helm","Torag's helm","Guthan's helm","Verac's helm"]},{"items":["Blood Moon helm"]},{"items":["Helm of Neitiznot","Berserker helm"]},{"items":["Rune full helm"]}]},
+        {"slot":"cape","rationale":"Strength and defence for sustained melee.","tiers":[{"items":["Infernal cape"]},{"items":["Fire cape"]},{"items":["Mythical cape"]},{"items":["Obsidian cape"]}]},
+        {"slot":"neck","rationale":"Fury's defence is especially useful against chained hits.","tiers":[{"items":["Amulet of rancour"]},{"items":["Amulet of torture","Amulet of blood fury","Amulet of fury"]},{"items":["Amulet of glory"]},{"items":["Amulet of power","Amulet of defence"]}]},
+        {"slot":"body","rationale":"Tank Barrows prevents damage and Blood healing; obsidian is not the fallback.","tiers":[{"items":["Torva platebody"]},{"items":["Bandos chestplate","Oathplate chest"]},{"items":["Justiciar chestguard"]},{"items":["Dharok's platebody","Torag's platebody","Guthan's platebody"]},{"items":["Verac's brassard"]},{"items":["Blood Moon chestplate","Fighter torso"]},{"items":["Dragon platebody","Dragon chainbody","Rune platebody"]}]},
+        {"slot":"legs","rationale":"Slash-defence legs ahead of low-defence strength gear.","tiers":[{"items":["Torva platelegs"]},{"items":["Bandos tassets","Oathplate legs"]},{"items":["Justiciar legguards"]},{"items":["Dharok's platelegs","Torag's platelegs","Guthan's chainskirt","Verac's plateskirt"]},{"items":["Blood Moon tassets"]},{"items":["Dragon platelegs","Dragon plateskirt","Rune platelegs","Rune plateskirt"]}]},
+        {"slot":"shield","rationale":"Defence is useful against multi-hit normal attacks; weapon choice remains separate.","tiers":[{"items":["Dragonfire shield"]},{"items":["Avernic defender"]},{"items":["Dragon defender"]},{"items":["Rune defender","Toktz-ket-xil"]},{"items":["Rune kiteshield"]}]},
+        {"slot":"hands","rationale":"Melee strength plus useful slash defence.","tiers":[{"items":["Ferocious gloves"]},{"items":["Barrows gloves"]},{"items":["Dragon gloves"]},{"items":["Rune gloves","Regen bracelet","Combat bracelet"]}]},
+        {"slot":"feet","rationale":"Strength and slash defence, rather than utility boots.","tiers":[{"items":["Avernic treads (max)","Primordial boots"]},{"items":["Guardian boots","Echo boots"]},{"items":["Dragon boots"]},{"items":["Bandos boots"]},{"items":["Rune boots"]},{"items":["Mixed hide boots","Climbing boots"]}]},
+        {"slot":"ring","rationale":"Useful strength before miscellaneous utility rings.","tiers":[{"items":["Ultor ring"]},{"items":["Berserker ring (i)"]},{"items":["Berserker ring","Brimstone ring"]},{"items":["Warrior ring (i)","Warrior ring"]}]}
+      ]}]
+    }
+  ]
+}

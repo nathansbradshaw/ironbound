@@ -16,6 +16,8 @@ pub struct Switch {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Setup {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub recommended: Option<bool>,
     #[serde(default)]
     pub ranking: crate::ranking::Preferences,
     #[serde(default)]
@@ -42,6 +44,7 @@ pub struct Constraints {
 impl Setup {
     pub fn from_plan(p: &Plan, o: &Options) -> Self {
         Self {
+            recommended: o.recommended,
             ranking: o.ranking.clone(),
             combat: o.combat.clone(),
             constraints: o.max_switches.map(|max_switches| Constraints {
@@ -259,6 +262,7 @@ impl Setup {
     }
     pub fn options(&self) -> Options {
         Options {
+            recommended: self.recommended,
             ranking: self.ranking.clone(),
             combat: self.combat.clone(),
             boss: self.boss,

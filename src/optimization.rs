@@ -61,6 +61,7 @@ fn targets(o: &Options) -> Vec<(i32, &str)> {
             (1675, "Magic"),
             (1672, "Ranged"),
         ],
+        Boss::Toa if crate::recommendation::enabled(o) => crate::recommendation::targets(o),
         Boss::Toa => vec![
             (11778, "Melee"),
             (11719, "Melee"),
@@ -81,6 +82,9 @@ fn value(
     o: &Options,
     owned: &BTreeMap<i32, u32>,
 ) -> Option<f64> {
+    if crate::recommendation::enabled(o) {
+        return crate::recommendation::cost(m, set, reference, style, o, owned);
+    }
     let relevant: Vec<_> = targets(o)
         .into_iter()
         .filter(|(_, s)| *s == style)
@@ -221,7 +225,22 @@ fn evaluate(
         if i == anchor {
             choices.push(vec![Candidate {
                 set: base.clone(),
-                cost: value(m, base, &ideal.equipment, &ideal.style, o, owned).unwrap_or(0.0),
+                cost: match value(m, base, &ideal.equipment, &ideal.style, o, owned) {
+                    Some(cost) => cost,
+                    None if value(
+                        m,
+                        &ideal.equipment,
+                        &ideal.equipment,
+                        &ideal.style,
+                        o,
+                        owned,
+                    )
+                    .is_none() =>
+                    {
+                        0.0
+                    }
+                    None => return None,
+                },
             }]);
         } else {
             choices.push(candidates(m, base, ideal, o, owned, limit));
@@ -289,6 +308,8 @@ pub fn solve(
     ideals: Vec<StyleSet>,
     o: &Options,
 ) -> Result<(Vec<StyleSet>, Report), String> {
+    let effective = planner::effective_options(o, m, owned);
+    let o = &effective;
     let limit = o.max_switches.unwrap_or(11).min(11);
     let bag = o.switch_slots.min(20);
     let anchor = ideals
@@ -439,7 +460,9 @@ pub fn solve(
             comparisons,
             note: format!(
                 "Best found in a bounded search over owned sets and hybrid anchor pieces. {} {}",
-                if o.focus_style == "Balanced" {
+                if crate::recommendation::enabled(o) {
+                    "Recommended uses reviewed encounter gear roles and supported attack windows. Moons includes normal-attack damage and Blood healing, with a 15% time tolerance; other encounters compare supported damage only."
+                } else if o.focus_style == "Balanced" {
                     "Balanced mode uses your DPS, defence-bonus, prayer and equipment-mass priorities. Full loadouts are compared relative to each style’s ideal set; this is a utility score, not a kill-time simulation."
                 } else {
                     "The focused style’s starting set is held fixed; other styles absorb the trade-off."

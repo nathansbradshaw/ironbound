@@ -17,7 +17,7 @@ Your account stays on that browser. Import it again when using a different devic
 
 ## What you can do
 
-- **Set gear priorities:** beside the encounter, choose **DPS first**, **DPS + prayer**, **DPS + defence**, or **All three equal**. Or enter your own fractional weights for DPS, defence, prayer and lighter gear, then **Apply priorities**. Defaults are 99 DPS, 1 defence and 0.01 prayer. The automatic planner and gear picker use these priorities; **Equip top result** selects the picker's top choice.
+- **Use Recommended:** reviewed ToA/Moons gear roles guide the default. Moons considers tank armour and Blood healing; ToA compares supported attack windows. Custom weights live under **Gear & switch options → Advanced**.
 - **Plan a trip:** boss and raid templates, or your own group of monsters. Select your CoX rooms or choose each Fractured Archive fork.
 - **Switch less:** limit changed items and carried gear; favour one style or phase.
 - **Compare gear:** outgoing DPS, supported incoming damage, defence and prayer drain.
@@ -54,7 +54,7 @@ Incoming values describe an explicitly selected attack scenario, not a full-figh
 
 Prayer duration assumes full starting prayer, continuous use and carried ordinary prayer/restore doses. It excludes flicking, regeneration, restoration modifiers and encounter-imposed drains. It is not a whole-trip or kills-per-trip prediction.
 
-The optimizer uses your DPS, selected defence-bonus, prayer and equipment-mass priorities, while checking pairwise switches, shared stock and the 28-slot inventory. Incoming scenarios and boss healing remain advisory estimates. Monster groups support up to 64 attack windows, including Stab, Slash and Crush. Supplies and special encounter requirements may still need manual review.
+Recommended starts from owned, level-usable encounter gear. It compares supported attack windows and keeps your switch, stock and inventory limits. At Moons it includes normal chained attacks and Blood healing; special phases and full raid survival remain partial. Custom weights are optional. Monster groups support up to 64 attack windows.
 
 No quest checks are used. Equipment and spell skill requirements still apply. Reference tiers are reviewed examples, not an exhaustive universal BIS list.
 
@@ -88,7 +88,7 @@ Private native testing uses ignored `.local/` storage and makes no bank upload:
 cargo run --locked --bin site -- private-check /path/to/bank.tsv /path/to/hiscores.json
 ```
 
-Publish from a clean, verified `main`:
+Publish from a clean, verified `main` (or a detached revision exactly matching remote `main`), after building that same revision:
 
 ```sh
 cargo run --locked --bin site -- publish-pages

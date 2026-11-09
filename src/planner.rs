@@ -202,6 +202,7 @@ impl Target {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(default)]
 pub struct Options {
+    pub recommended: Option<bool>,
     pub ranking: crate::ranking::Preferences,
     pub combat: crate::defence::Settings,
     pub boss: Boss,
@@ -226,6 +227,7 @@ pub struct Options {
 impl Default for Options {
     fn default() -> Self {
         Self {
+            recommended: None,
             ranking: Default::default(),
             combat: Default::default(),
             boss: Boss::Barrows,
@@ -373,6 +375,11 @@ impl Plan {
 }
 
 pub fn can_use(id: i32, m: &Member) -> bool {
+    if let Some(requirements) = crate::rules::equipment_requirements(id) {
+        return requirements
+            .iter()
+            .all(|(skill, level)| m.level(skill).is_some_and(|n| n >= *level));
+    }
     if let Some(rule) = crate::rules::weapon(id) {
         return rule
             .weapon
@@ -577,6 +584,24 @@ pub fn primary_style(options: &Options) -> &str {
     }
 }
 
+pub(crate) fn effective_options(o: &Options, m: &Member, owned: &BTreeMap<i32, u32>) -> Options {
+    let mut options = o.clone();
+    options.gear_overrides.retain(|key, id| {
+        let Some((style, slot)) = key.split_once(':') else {
+            return false;
+        };
+        let Some(slot) = slot.parse::<usize>().ok().filter(|n| *n < 14) else {
+            return false;
+        };
+        crate::rules::STYLES.contains(&style)
+            && (*id == 0
+                || owned.get(id).copied().unwrap_or(0) > 0
+                    && !o.excluded.contains(id)
+                    && can_use(*id, m)
+                    && gear(*id).is_some_and(|g| g.slot == SLOT_KEYS[slot]))
+    });
+    options
+}
 fn style_set(
     style: &str,
     boss: Boss,
@@ -585,6 +610,8 @@ fn style_set(
     catalog: &[Gear],
     options: &Options,
 ) -> Vec<Option<i32>> {
+    let effective = effective_options(options, m, owned);
+    let options = &effective;
     let mut set = vec![None; 14];
     let slot_keys = [
         "head", "cape", "neck", "weapon", "body", "shield", "", "legs", "", "hands", "feet", "",
@@ -614,6 +641,9 @@ fn style_set(
                 set[slot] = Some(id);
             }
         }
+    }
+    if crate::recommendation::enabled(options) {
+        crate::guidance::seed(&mut set, style, m, owned, options);
     }
     for (slot, value) in set.iter_mut().enumerate() {
         if let Some(id) = options.gear_overrides.get(&format!("{style}:{slot}")) {
@@ -754,11 +784,15 @@ fn refine_dps(
                         vec![set[13]]
                     } else {
                         let allowed = crate::rules::ammo_ids(id);
-                        allowed
-                            .iter()
-                            .filter(|id| owned.get(id).copied().unwrap_or(0) >= 100)
-                            .map(|id| Some(*id))
-                            .collect()
+                        if allowed.is_empty() {
+                            vec![None]
+                        } else {
+                            allowed
+                                .iter()
+                                .filter(|id| owned.get(id).copied().unwrap_or(0) >= 100)
+                                .map(|id| Some(*id))
+                                .collect()
+                        }
                     }
                 } else {
                     vec![trial[13]]
@@ -773,8 +807,42 @@ fn refine_dps(
                     ) {
                         continue;
                     }
+                    if slot == 3 && crate::recommendation::enabled(options) {
+                        let mut guided = trial.clone();
+                        crate::guidance::seed(&mut guided, style, m, owned, options);
+                        for (key, id) in &options.gear_overrides {
+                            if let Some(slot) = key
+                                .strip_prefix(&format!("{style}:"))
+                                .and_then(|s| s.parse::<usize>().ok())
+                                .filter(|slot| *slot < 14)
+                            {
+                                if *id == 0 {
+                                    guided[slot] = None;
+                                } else if owned.get(id).copied().unwrap_or(0) > 0
+                                    && can_use(*id, m)
+                                    && catalog
+                                        .iter()
+                                        .any(|g| g.id == *id && g.slot == SLOT_KEYS[slot])
+                                {
+                                    guided[slot] = Some(*id);
+                                }
+                            }
+                        }
+                        if guided[3].is_some_and(|id| gear(id).is_some_and(|g| g.two_handed)) {
+                            guided[5] = None;
+                        }
+                        trials.push(guided);
+                    }
                     trials.push(trial.clone());
                 }
+            }
+            if crate::recommendation::enabled(options) {
+                let chosen = crate::recommendation::choose(&trials, style, m, options, owned);
+                if trials[chosen] != *set {
+                    *set = trials[chosen].clone();
+                    changed = true;
+                }
+                continue;
             }
             let metrics = trials.iter().map(metric).collect::<Vec<_>>();
             // Preserve the offensive seed when DPS cannot be calculated. A DPS

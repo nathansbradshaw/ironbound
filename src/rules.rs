@@ -88,6 +88,13 @@ pub struct Multiplier {
     #[serde(default)]
     pub damage: bool,
 }
+/// Add equipped-piece weights before applying a single floored multiplier.
+#[derive(Debug, Deserialize)]
+pub struct EquipmentScaling {
+    pub effect: String,
+    pub accuracy_denominator: i64,
+    pub damage_denominator: i64,
+}
 #[derive(Debug, Deserialize)]
 pub struct Family {
     pub style: String,
@@ -99,6 +106,8 @@ pub struct Family {
     pub formula: Formula,
     #[serde(default)]
     pub effects: Vec<Effect>,
+    #[serde(default)]
+    pub equipment_scaling: Vec<EquipmentScaling>,
     #[serde(default)]
     pub ammo: Vec<i32>,
     #[serde(default)]
@@ -139,6 +148,15 @@ pub struct EquipmentEffect {
     pub effect: String,
     #[serde(default)]
     pub reason: String,
+    #[serde(default)]
+    pub weight: i64,
+    #[serde(default)]
+    pub slot: Option<usize>,
+}
+#[derive(Debug, Deserialize)]
+pub struct EquipmentRequirements {
+    pub ids: Vec<i32>,
+    pub requirements: BTreeMap<String, u32>,
 }
 #[derive(Clone, Copy, Debug, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
@@ -159,6 +177,8 @@ pub struct Registry {
     pub ammunition: Vec<Ammunition>,
     #[serde(default)]
     pub equipment_effects: Vec<EquipmentEffect>,
+    #[serde(default)]
+    pub equipment_requirements: Vec<EquipmentRequirements>,
 }
 impl Registry {
     pub fn validate(&self) -> Result<(), String> {
@@ -174,6 +194,18 @@ impl Registry {
             for kind in family.stances.keys() {
                 if !family.attack_types.contains(kind) {
                     return Err(format!("Unknown stance attack type in {name}"));
+                }
+            }
+            for scaling in &family.equipment_scaling {
+                if scaling.effect.is_empty()
+                    || scaling.accuracy_denominator <= 0
+                    || scaling.damage_denominator <= 0
+                    || !self
+                        .equipment_effects
+                        .iter()
+                        .any(|e| e.effect == scaling.effect)
+                {
+                    return Err(format!("Invalid equipment scaling in {name}"));
                 }
             }
             if family.procs.len() > 8
@@ -220,6 +252,27 @@ impl Registry {
                 return Err("Missing ammunition effect definition".into());
             }
         }
+        for effect in &self.equipment_effects {
+            if effect.weight < 0 || effect.slot.is_some_and(|slot| slot >= 14) {
+                return Err("Invalid equipment effect weight or slot".into());
+            }
+        }
+        let mut equipment_ids = std::collections::BTreeSet::new();
+        for group in &self.equipment_requirements {
+            if group.ids.is_empty()
+                || group
+                    .ids
+                    .iter()
+                    .any(|id| *id <= 0 || !equipment_ids.insert(*id))
+                || group.requirements.is_empty()
+                || group
+                    .requirements
+                    .values()
+                    .any(|level| !(1..=99).contains(level))
+            {
+                return Err("Invalid equipment requirements".into());
+            }
+        }
         Ok(())
     }
 }
@@ -237,6 +290,34 @@ pub struct Rule {
     pub weapon: &'static Weapon,
 }
 impl Rule {
+    pub fn scale_equipment(
+        &self,
+        set: &[Option<i32>],
+        mut attack: i64,
+        mut max_hit: i32,
+    ) -> (i64, i32) {
+        for scaling in &self.family.equipment_scaling {
+            let weight: i64 = registry()
+                .equipment_effects
+                .iter()
+                .filter(|e| e.effect == scaling.effect)
+                .filter(|e| match e.slot {
+                    Some(slot) => set
+                        .get(slot)
+                        .copied()
+                        .flatten()
+                        .is_some_and(|id| e.ids.contains(&id)),
+                    None => set.iter().flatten().any(|id| e.ids.contains(id)),
+                })
+                .map(|e| e.weight)
+                .sum();
+            attack =
+                attack * (scaling.accuracy_denominator + weight) / scaling.accuracy_denominator;
+            max_hit = (i64::from(max_hit) * (scaling.damage_denominator + weight)
+                / scaling.damage_denominator) as i32;
+        }
+        (attack, max_hit)
+    }
     pub fn has(&self, effect: Effect) -> bool {
         self.family.effects.contains(&effect) || self.weapon.effects.contains(&effect)
     }
@@ -262,6 +343,15 @@ pub fn equipment_effect(id: i32, effect: &str) -> bool {
         .equipment_effects
         .iter()
         .any(|r| r.effect == effect && r.ids.contains(&id))
+}
+/// Reviewed requirements supplement missing or incomplete public item metadata.
+/// Cosmetic/charge variants share data without implying ownership of another ID.
+pub fn equipment_requirements(id: i32) -> Option<&'static BTreeMap<String, u32>> {
+    registry()
+        .equipment_requirements
+        .iter()
+        .find(|group| group.ids.contains(&id))
+        .map(|group| &group.requirements)
 }
 pub fn unsupported_equipment(id: i32) -> Option<&'static str> {
     registry()

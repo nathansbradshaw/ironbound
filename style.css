@@ -540,3 +540,112 @@ footer{font-size:11px;padding-top:10px}
 .ranking-help>summary{cursor:pointer}
 .ranking-help p{line-height:1.4;margin:6px 0}
 .picker-priorities[open]{max-height:52dvh;overflow:auto}
+
+/* 2007 web layout: the supplied scroll artwork is 765 px wide. */
+body{font:12px/1.4 Arial,Helvetica,sans-serif;padding:12px 0 28px;background:#050503 url('./assets/stone.jpg') repeat-y center top;color:#211a0e}
+.app-shell{width:765px;max-width:100%;margin:0 auto}
+.sidebar{display:block;text-align:center;padding:8px 0 5px}
+.brand{font:60px/1 Kingthings,Georgia,serif;gap:10px;letter-spacing:0}
+.brand-mark{width:40px;height:49px;border:2px ridge #8e784b;background:#31291a}
+.brand-mark img{width:32px;height:32px}
+.brand small{font:16px/1.2 Scape,monospace;letter-spacing:0;color:#e8d7af;margin-top:4px}
+.sidebar nav{margin:12px auto 0;justify-content:center;gap:0}
+.nav-item{font:18px Scape,monospace;min-height:31px;padding:4px 25px;border:2px outset #776749;background:#17150e;color:#ffcf00}
+.nav-item img{display:inline;width:19px;height:19px;margin-right:7px}
+.nav-item.active{border-style:inset;background:#4f4126;color:#fff}
+.main{display:block;position:relative;background:url('./assets/parchment.gif') repeat-y center top;background-size:745px auto;padding:44px 30px 48px}
+.main:before,.main:after{height:50px;background-size:765px 50px;background-position:center}
+.topbar{padding:0;min-height:20px;font-size:11px;justify-content:flex-end}
+.account-pill{gap:5px}.account-pill img{width:19px;height:19px}.account-pill small{font-size:10px;margin-left:5px}
+.demo-banner{padding:0;min-height:20px;font-size:11px}.demo-banner .text-button{font-size:11px}
+.page-content{padding:5px 0 10px}
+.planner-summary{display:block;text-align:center;margin:0;padding:5px 0 8px;border:0}
+.planner-summary h1{font:32px/1.15 Kingthings,Georgia,serif;color:#4b240d}
+.detail-facts{justify-content:center;font-size:11px;margin-top:6px;gap:6px 15px}
+.plan-coverage{font:11px/1.4 Arial,Helvetica,sans-serif;margin-top:6px;color:#674724}
+.encounter-actions{justify-content:center;margin:0 0 9px;gap:18px;text-align:center}
+.encounter-actions>.encounter-picker,.encounter-actions>.raid-route{flex:0 1 auto}
+.encounter-actions:has(details[open]){text-align:left}
+.encounter-actions>details>summary{font:17px Scape,monospace;min-height:25px;padding:3px 0;color:#583211}
+.flow-controls{grid-template-columns:145px minmax(0,1fr);gap:15px;padding:8px 0;margin-bottom:0;border:0;border-top:1px solid #94774a;border-bottom:1px solid #94774a;background:transparent}
+.flow-controls label{font-size:11px;gap:3px}
+.flow-controls select,.flow-controls input{font:12px Arial,Helvetica,sans-serif;min-height:27px;padding:3px}
+.flow-controls>details>summary{font:12px Arial,Helvetica,sans-serif;min-height:27px;padding:5px 0}
+.gear-priorities{margin:0 0 10px;border:0;border-bottom:1px solid #94774a;background:transparent}
+.gear-priorities>summary{font:11px Arial,Helvetica,sans-serif;color:#61431e;min-height:27px;padding:6px 0}
+.planner-tabs{justify-content:center;gap:0;padding:0;margin-bottom:12px;border:0;border-bottom:2px groove #94774a}
+.workspace-tab{flex:0 1 auto;font:18px Scape,monospace;min-height:32px;padding:5px 19px;border:2px outset #8c754c;background:#57452a;color:#ead7a4}
+.workspace-tab.active{background:#352d20;border-style:inset;color:#ffdc36}
+.loadout-layout,.analysis-layout,.prepare-layout{gap:12px;grid-template-columns:repeat(2,minmax(0,1fr))}
+.panel{border:3px ridge #8c7952;border-radius:0;background:#4d4534;color:#e9dbb9}
+.panel-heading{padding:4px 8px;min-height:31px;background:#352e21;border-bottom:2px groove #86724e}
+.panel-heading h2{font:21px Scape,monospace;color:#ffcf00;text-shadow:1px 1px #000}
+.panel-heading h2 img{width:20px;height:20px}
+.panel-heading .badge{font:11px Arial,Helvetica,sans-serif;letter-spacing:0}
+.loadout-content,.packing-body{display:flex;flex-direction:column;align-items:center;gap:7px;padding:10px 9px 6px}
+.equipment-paper{width:156px;border:0;background:none;padding:0}
+.paper-header{display:none}
+.equipment-grid{grid-template-columns:repeat(3,40px);grid-template-rows:repeat(5,36px);gap:3px}
+.item-slot{border:2px inset #86754f;border-radius:0;background:#403b2c;min-height:32px}
+.item-slot img{width:32px;height:32px}
+.equipment-paper>small{font-size:10px;margin-top:8px}
+.inventory-grid{width:168px;border:0;padding:0;gap:3px;background:transparent;align-self:center}
+.inventory-item{height:36px}
+.slot-count{font:11px Arial,Helvetica,sans-serif}
+.loadout-notes,.supply-settings{border-top:1px solid #786746;padding-top:3px;margin-top:2px}
+.loadout-notes>summary,.supply-settings>summary{font:16px Scape,monospace;min-height:26px;padding:4px 0;color:#dfc17f}
+.phase-tabs{padding:5px 7px;gap:4px;border-bottom:1px solid #756342}
+.phase{font:16px Scape,monospace;padding:3px 7px;min-height:27px}
+.phase.active{box-shadow:none;border-style:inset;background:#30291c;border-color:#c4a356;color:#fff3bd}
+.phase-note,.packing-label{font-size:11px;padding:6px 8px}
+.secondary-section{margin:6px 0 10px}.secondary-section>summary{font:17px Scape,monospace;min-height:28px;padding:5px 0}
+.plan-actions{margin-top:8px}.plan-actions .export-card{padding:8px 10px;gap:7px 12px;border:2px ridge #8b754b;background:#242015}
+.export-card h2{font:23px Scape,monospace;color:#ffcf00;text-shadow:1px 1px #000}
+.export-heading p{font-size:11px;max-width:36ch}
+.button{font:17px Scape,monospace;padding:4px 9px;min-height:29px;border:2px outset #b59a62;border-radius:0}
+.export-actions .button,.export-secondary .button{min-height:31px}
+.export-actions .button.ghost{font-size:17px}
+.export-card>details>summary{font-size:10px;padding:4px 0}
+.account-grid{gap:12px}.account-form{padding:4px 12px 12px}.account-form h2{font:24px Scape;color:#ffcf00;margin:6px 0}.account-form>p,.account-form label{font-size:12px}.account-form small{font-size:11px}.account-form input:not([type=checkbox]),.account-form select{min-height:30px;font-size:12px}.account-form .skills-grid{grid-template-columns:repeat(4,minmax(0,1fr));gap:6px}
+.page-heading{text-align:center;margin:5px 0 16px}.page-heading p{font-size:12px;margin-top:5px}
+.combat-body{padding:10px}.combat-body>label{font-size:12px}.combat-body>p{font-size:11px}.combat-values{gap:6px;margin:10px 0}.combat-values>div{padding:6px;border:2px inset #89744b}.combat-values dd{font:25px Scape}.combat-values dt{font-size:10px}.bonus-table th,.bonus-table td{font-size:11px;padding:4px 6px}
+.gear-picker{width:640px;max-height:calc(100dvh - 24px);border:4px ridge #a28c5c;border-radius:0;box-shadow:4px 5px #0008}
+.gear-picker .panel-heading h2{font:24px Scape,monospace}.picker-controls{padding:10px 12px 0;gap:12px}.picker-controls label{font-size:12px}.picker-controls input,.picker-controls select{min-height:32px;font-size:13px}.picker-note{font-size:11px;padding:8px 12px}.gear-pick{padding:8px 10px;margin:4px 0;border:2px outset #88734b}.gear-pick strong{font:19px Scape;color:#ffcf00}.gear-pick small{font:11px Arial,Helvetica,sans-serif}.gear-pick.selected{box-shadow:none;border-style:inset}.gear-pick>b{font-size:12px}.owned-heading{font:22px Scape}.picker-priorities>summary{font-size:11px}.ranking-controls p,.ranking-notice{font-size:11px}.ranking-weights label{font-size:11px}.ranking-weights input{min-height:30px;font-size:13px}
+footer{font-size:10px;padding:9px 4px 0}footer>span:last-child{display:none}
+@media(max-width:765px){
+ .main{background-size:calc(100% - 20px) auto;padding:44px 25px 48px}
+ .main:before,.main:after{background-size:100% 50px}
+ .brand{font-size:54px}.brand small{font-size:16px}
+ .loadout-layout{grid-template-columns:repeat(2,minmax(0,1fr))}
+}
+@media(max-width:580px){
+ .brand{font-size:48px}.brand small{font-size:15px}.brand-mark{width:34px;height:43px}
+ .main{padding-left:22px;padding-right:22px}
+ .workspace-tab{font-size:16px;padding:6px 10px;min-height:38px}
+ .panel-heading{flex-wrap:wrap;gap:3px}.panel-heading h2{font-size:20px}.panel-heading h2 img{display:none}
+ .loadout-layout,.analysis-layout,.prepare-layout,.account-grid{grid-template-columns:1fr}
+ .loadout-content,.packing-body{padding:12px;gap:8px}
+ .equipment-grid{grid-template-columns:repeat(3,44px);grid-template-rows:repeat(5,40px)}
+ .equipment-paper{width:164px}.inventory-grid{width:184px}.inventory-item{height:40px}
+ .flow-controls{grid-template-columns:130px 1fr;gap:10px}.flow-controls select,.flow-controls input{min-height:38px;font-size:16px}
+ .flow-controls:has(details[open]){grid-template-columns:1fr}
+ .planner-summary h1{font-size:29px}.plan-coverage{font-size:11px}
+ .encounter-actions>details>summary{min-height:36px;padding:7px 0}
+ .gear-priorities>summary{font-size:10px;min-height:34px}
+ .panel-heading .badge{font-size:10px}.export-actions .button{min-height:38px}
+ .picker-controls{grid-template-columns:1fr}.picker-controls input,.picker-controls select{font-size:16px;min-height:40px}
+ .gear-pick strong{font-size:18px}.gear-pick small{font-size:11px}
+ .account-form input:not([type=checkbox]),.account-form select{min-height:38px;font-size:16px}
+}
+/* Let the game grids determine panel widths, rather than filling a card grid. */
+.detail-facts a{margin-left:0}
+.loadout-panel>.panel-heading>.badge{display:none}
+.loadout-layout{grid-template-columns:240px 210px;justify-content:center;gap:14px}
+.flow-controls,.gear-priorities,.planner-tabs{max-width:464px;margin-left:auto;margin-right:auto}
+.panel-heading h2{font-size:20px}
+@media(max-width:580px){.loadout-layout{grid-template-columns:minmax(0,280px)}.panel-heading h2{font-size:22px}.planner-tabs{max-width:100%}.flow-controls,.gear-priorities{max-width:100%}}
+.loadout-layout{grid-template-columns:260px 220px}
+.flow-controls,.gear-priorities,.planner-tabs{max-width:494px}
+.workspace-tab{flex:1;white-space:nowrap;padding:5px 9px}
+.phase-tabs{gap:3px}.phase{font-size:15px;padding:3px 5px}
+@media(max-width:580px){.loadout-layout{grid-template-columns:minmax(0,280px)}.workspace-tab{font-size:17px;padding:6px 8px}}

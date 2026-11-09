@@ -1370,7 +1370,7 @@ fn render() {
         if s.shared_setup.is_some(){html.push_str(&format!("<p class=\"notice\">Viewing a shared setup. Your saved bank is unchanged. {}</p>",button("use-bank","Rebuild using my items","text-button")));}
         if s.shared_setup.is_none(){html.push_str(&switch_controls(&s));html.push_str(&format!("<details class=\"gear-priorities\"><summary>Gear priorities · DPS {} · defence {} · prayer {} · weight {}</summary>{}</details>",s.saved.options.ranking.weights.values()[0],s.saved.options.ranking.weights.values()[1],s.saved.options.ranking.weights.values()[2],s.saved.options.ranking.weights.values()[3],ranking_controls(&s,"plan-rank")));}
         html.push_str("<nav class=\"planner-tabs\" aria-label=\"Planner sections\">");
-        for (view,label) in [("loadout","Gear & inventory"),("combat","Combat & switches"),("prepare","Preparation")] {let disabled=if view=="combat"&&s.shared_setup.is_some(){"disabled title=\"Rebuild using your items to calculate combat stats\""}else{""};html.push_str(&format!("<button class=\"workspace-tab {}\" data-action=\"view:{view}\" aria-pressed=\"{}\" {disabled}>{label}{}</button>",if s.view==view{"active"}else{""},s.view==view,if view=="prepare"&&!plan.missing.is_empty(){format!(" <span class=\"issue-count\">{}</span>",plan.missing.len())}else{String::new()}));}
+        for (view,label) in [("loadout","Gear"),("combat","Combat"),("prepare","Preparation")] {let disabled=if view=="combat"&&s.shared_setup.is_some(){"disabled title=\"Rebuild using your items to calculate combat stats\""}else{""};html.push_str(&format!("<button class=\"workspace-tab {}\" data-action=\"view:{view}\" aria-pressed=\"{}\" {disabled}>{label}{}</button>",if s.view==view{"active"}else{""},s.view==view,if view=="prepare"&&!plan.missing.is_empty(){format!(" <span class=\"issue-count\">{}</span>",plan.missing.len())}else{String::new()}));}
         html.push_str("</nav><section class=\"workspace-view\">");
         match s.view.as_str(){
             "combat"=>{html.push_str("<div class=\"analysis-layout\">");html.push_str(&combat_panel(&s,&plan));html.push_str(&switch_panel(&s,&plan));html.push_str("</div>");},
@@ -1501,7 +1501,7 @@ fn loadout_panel(s: &State, p: &Plan) -> String {
         if current.is_some() {
             "Phase preview"
         } else {
-            "Starting gear"
+            "Equipment"
         },
         badge(
             if s.shared_setup.is_some() {
@@ -1513,7 +1513,7 @@ fn loadout_panel(s: &State, p: &Plan) -> String {
         ),
         current
             .map(|p| esc(&p.name))
-            .unwrap_or("Starting equipment".into())
+            .unwrap_or("Equipment".into())
     );
     for (slot_index, class) in [
         (0, "eq-head"),
@@ -1624,7 +1624,7 @@ fn loadout_panel(s: &State, p: &Plan) -> String {
 }
 fn inventory_panel(s: &State, p: &Plan) -> String {
     let mut html = format!(
-        "<section class=\"panel packing-panel\"><div class=\"panel-heading\"><h2>{} Packing list</h2><span class=\"slot-count {}\">{} / 28 slots</span></div><div class=\"packing-body\"><div class=\"inventory-grid\">",
+        "<section class=\"panel packing-panel\"><div class=\"panel-heading\"><h2>{} Inventory</h2><span class=\"slot-count {}\">{} / 28 slots</span></div><div class=\"packing-body\"><div class=\"inventory-grid\">",
         image(385),
         if p.inventory.len() > 28 { "over" } else { "" },
         p.inventory_slots()

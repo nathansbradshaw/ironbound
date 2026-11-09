@@ -11,7 +11,7 @@ pub fn bank_tags(plan: &Plan, options: &Options) -> Result<String, String> {
         .iter()
         .flatten()
         .copied()
-        .chain(plan.inventory.iter().map(|p| p.id))
+        .chain(plan.inventory.iter().filter(|p| p.id > 0).map(|p| p.id))
         .collect();
     let mut fields = vec![
         "banktags".into(),
@@ -35,7 +35,13 @@ pub fn inventory_setup(plan: &Plan, options: &Options, _account: &str) -> Result
     let mut inv: Vec<Value> = plan
         .inventory
         .iter()
-        .map(|p| item(p.id, p.quantity))
+        .map(|p| {
+            if p.id > 0 && p.quantity > 0 {
+                item(p.id, p.quantity)
+            } else {
+                Value::Null
+            }
+        })
         .collect();
     inv.resize(28, Value::Null);
     let eq: Vec<Value> = plan
@@ -48,7 +54,7 @@ pub fn inventory_setup(plan: &Plan, options: &Options, _account: &str) -> Result
         })
         .collect();
     let mut layout: Vec<i32> = plan.equipment.iter().flatten().copied().collect();
-    layout.extend(plan.inventory.iter().map(|p| p.id));
+    layout.extend(plan.inventory.iter().filter(|p| p.id > 0).map(|p| p.id));
     let notes = format!(
         "Ironbound / {}. {}. {}. Room plan: {}. Starter catalog; verify charges and supplies. No automatic game actions.",
         options.boss.name(),

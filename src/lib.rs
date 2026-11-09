@@ -5,6 +5,7 @@ pub mod combat;
 pub mod defence;
 pub mod encounters;
 pub mod export;
+pub mod inventory;
 pub mod optimization;
 pub mod planner;
 pub mod prayer;

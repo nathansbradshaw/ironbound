@@ -1539,7 +1539,7 @@ fn loadout_panel(s: &State, p: &Plan) -> String {
         );
         html.push_str(&format!(r#"<button class="equipment-edit {class}" data-action="edit-equipment:{slot_index}" data-tooltip="{}" aria-label="Change {}">{}</button>"#,esc(&tooltip),esc(&tooltip),slot(set[slot_index],planner::SLOTS[slot_index],"",None)));
     }
-    html.push_str("</div></div><details class=\"loadout-notes\"><summary>Spell & excluded gear</summary>");
+    html.push_str("</div></div><details class=\"loadout-notes\"><summary>Spell & exclusions</summary>");
     if let Some((_, effect)) = set[3].and_then(|id| {
         reference::KERIS_VARIANTS
             .iter()
@@ -1576,7 +1576,7 @@ fn loadout_panel(s: &State, p: &Plan) -> String {
     html.push_str("</div></details>");
     html.push_str("</details></div><div class=\"phase-tabs\">");
     if !p.phases.is_empty() {
-        html.push_str("<label class=\"phase-select-label\">View equipment<select id=\"phase-select\"><option value=\"start\">Start gear</option>");
+        html.push_str("<label class=\"phase-select-label\">Preview<select id=\"phase-select\"><option value=\"start\">Start gear</option>");
         for (i, phase) in p.phases.iter().enumerate() {
             html.push_str(&format!(
                 "<option value=\"{i}\" {}>{}</option>",
@@ -2346,7 +2346,7 @@ fn switch_controls(s: &State) -> String {
         return String::new();
     }
     let mut html = String::from(
-        r#"<section class="flow-controls" aria-label="Switching preferences"><label>Items per switch<select id="max-switches"><option value="unlimited">No limit</option>"#,
+        r#"<section class="flow-controls" aria-label="Switching preferences"><label>Switch limit<select id="max-switches"><option value="unlimited">No limit</option>"#,
     );
     for n in 0..=11 {
         html.push_str(&format!(

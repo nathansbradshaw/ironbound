@@ -664,3 +664,51 @@ footer{font-size:10px;padding:9px 4px 0}footer>span:last-child{display:none}
 @media(max-width:580px){.demo-banner{max-width:100%}.phase-select-label select{font-size:16px;min-height:38px}.plan-actions .export-card{grid-template-columns:1fr}.export-actions{justify-content:flex-start}}
 
 .flow-controls .ranking-controls{background:#4d4534;color:#e9dbb9;border:3px ridge #8c7952;padding:10px}.flow-controls .ranking-controls legend{background:#4d4534;color:#ffcf00;padding:2px 6px;border:1px solid #8c7952}.flow-controls .ranking-controls label{color:#e9dbb9}.ranking-controls p:empty{display:none}.loadout-panel>.packing-label{order:4;border-top:1px solid #786746}.packing-label .text-button{color:#ffcf00}
+
+/* Website frame, game-client workspace: parchment outside, OSRS panes inside. */
+:root{--game-pane:#4b4639;--game-dark:#353126;--game-edge:#777666;--game-white:#f0eee7;--game-orange:#ff981f;--game-yellow:#ffff00}
+.panel,.gear-picker,.flow-controls,.export-card{font-family:Scape,monospace;color:var(--game-white);text-shadow:1px 1px #16140f;background:var(--game-pane);border:3px solid var(--game-edge);border-radius:2px;box-shadow:inset 1px 1px #a8a38b,inset -1px -1px #29271f,0 0 0 1px #19170f}
+.panel-heading{background:#423d31;border-bottom:2px solid #25231d;box-shadow:inset 0 -1px #77705c;padding:6px 10px;min-height:36px}
+.panel-heading h2,.account-form h2,.owned-heading,.export-card h2{font:24px/1.15 Scape,monospace;color:var(--game-yellow);text-shadow:1px 1px #16140f}
+.panel-heading .badge,.slot-count{font:16px/1.2 Scape,monospace;color:var(--game-white);letter-spacing:0}
+.loadout-layout{grid-template-columns:280px 240px;gap:12px}
+.loadout-content,.packing-body{padding:12px 10px 8px;gap:10px}
+.equipment-paper{width:174px}
+.equipment-grid{grid-template-columns:repeat(3,46px);grid-template-rows:repeat(5,40px);gap:3px}
+.item-slot{background:#3c392f;border:2px solid #686451;box-shadow:inset 1px 1px #2c2a22,inset -1px -1px #837b63}
+.item-slot.empty{background:#433f33;border-color:#605c49}.item-slot img{width:32px;height:32px}
+.inventory-grid{width:184px;gap:3px}.inventory-item{height:40px}
+.phase-tabs{padding:7px 9px;background:#413c30;border-bottom:2px solid #28261e}
+.phase-select-label{font:17px/1.2 Scape,monospace;gap:7px}.phase-select-label select{min-height:31px;font:18px Scape,monospace}
+.panel p,.panel label,.panel small,.panel summary,.panel .small-note,.panel .phase-note,.panel .packing-label,.panel-footnote,.panel-footnote .text-button,.gear-list>div,.gear-list .text-button{font-family:Scape,monospace;font-size:18px;line-height:1.2;color:var(--game-white)}
+.panel .small-note,.panel small{color:#d3ccb9}.panel summary,.panel .text-button{color:var(--game-orange)}
+.loadout-notes,.supply-settings,.panel-footnote,.assumptions{border-color:#726b56}
+.loadout-notes>summary,.supply-settings>summary{font:20px/1.25 Scape,monospace;min-height:31px;padding:5px 0;color:var(--game-orange)}
+.nav-item,.workspace-tab,.phase,.button,.encounter-filter,.raid-room{font:20px/1.1 Scape,monospace;color:var(--game-orange);text-shadow:1px 1px #15140f;background:#4b4639;border:2px solid;border-color:#aaa58e #292a25 #292a25 #aaa58e;box-shadow:inset 1px 1px #666353,inset -1px -1px #64604f,0 0 0 1px #1e1d17;border-radius:3px;padding:6px 12px;min-height:35px}
+.nav-item:hover,.workspace-tab:hover,.phase:hover,.button:hover,.encounter-filter:hover,.raid-room:hover{background:#5c5544;color:#ffb84c}
+.nav-item.active,.workspace-tab.active,.phase.active,.encounter-filter.active,.raid-room.active{color:#fff;border-color:#34352d #aaa58e #aaa58e #34352d;background:#3c382e;box-shadow:inset 1px 1px #23231b,inset -1px -1px #676450}
+.button.gold,.export-actions .button.gold{background:#554a32;color:var(--game-orange)}.button.ghost,.export-actions .button.ghost{background:#433e31;color:var(--game-orange);font-size:20px}
+.planner-tabs{max-width:532px;gap:5px;border:0;margin-bottom:12px}.workspace-tab{flex:1;min-height:39px;white-space:nowrap}
+.flow-controls{max-width:532px;padding:10px 12px;gap:14px;grid-template-columns:145px minmax(0,1fr);margin-bottom:12px}
+.flow-controls label,.flow-controls>details>summary,.switch-preferences-fields label{font:18px/1.2 Scape,monospace;color:var(--game-white)}
+.flow-controls label{gap:4px}.flow-controls>details>summary{color:var(--game-orange);padding:6px 0}
+.flow-controls input,.flow-controls select,.panel input:not([type=checkbox]),.panel select,.panel textarea,.gear-picker input,.gear-picker select{background:#383326;color:var(--game-white);border:2px solid;border-color:#24231b #938974 #938974 #24231b;border-radius:1px;font:19px/1.2 Scape,monospace;text-shadow:1px 1px #16140f;min-height:32px;padding:4px 7px}
+.flow-controls select,.panel select,.gear-picker select{color:var(--game-orange)}
+.panel input::placeholder,.panel textarea::placeholder,.gear-picker input::placeholder{color:#bcb39b}
+.flow-controls .ranking-controls{box-shadow:none;border:2px groove #817961;background:#423d31;padding:10px}
+.flow-controls .ranking-controls legend,.ranking-controls legend{font:20px Scape,monospace;color:var(--game-yellow);background:#423d31;border:0}
+.ranking-weights label,.ranking-defence,.ranking-controls p,.ranking-notice{font:18px/1.2 Scape,monospace;color:var(--game-white)}
+.ranking-presets .phase{font:17px Scape,monospace;min-height:32px;padding:5px 8px}
+.plan-actions .export-card{background:var(--game-pane);padding:10px 12px;gap:10px;border:3px solid var(--game-edge)}
+.export-heading p,.export-card>details,.export-card>details>summary,.export-label{font:18px/1.2 Scape,monospace;color:var(--game-white)}
+.export-card>details>summary{color:var(--game-orange)}.export-actions .button,.export-secondary .button{font-size:20px;min-height:36px}
+.account-form>p,.account-form label,.account-form small{font:18px/1.25 Scape,monospace}.account-form h2{font-size:25px}.account-form textarea{font-size:17px}.account-form .skills-grid{gap:8px}
+.gear-picker .panel-heading h2{font:25px Scape,monospace;color:var(--game-yellow)}
+.picker-controls label,.picker-note,.picker-priorities>summary,.gear-pick small,.ranking-help,.gear-pick>b,.inventory-stack-label{font:18px/1.2 Scape,monospace;color:var(--game-white)}
+.picker-priorities>summary,.ranking-help>summary{color:var(--game-orange)}.gear-pick{background:#484134;border:2px solid;border-color:#8f856a #29261e #29261e #8f856a;box-shadow:inset 1px 1px #5a5341;border-radius:1px;padding:9px 11px}
+.gear-pick strong{font:23px/1.1 Scape,monospace;color:var(--game-yellow)}.gear-pick.selected{background:#5d5137;border-color:#c5ad6c}.gear-pick small{color:var(--game-white);font-size:17px}.gear-pick .ranking-score{font:24px Scape,monospace;color:var(--game-yellow)}.gear-pick .ranking-score small{font-size:15px}
+.combat-values dt,.bonus-table th,.bonus-table td{font:18px Scape,monospace;color:var(--game-white)}.combat-values dd{font:28px Scape,monospace;color:var(--game-yellow)}.combat-values>div{background:#3b362a;border:2px inset #817961}
+.tier-item{background:#433d30;color:var(--game-white);font:18px Scape,monospace}.wiki-table{background:#4b4639;color:var(--game-white)}.wiki-table th,.wiki-table td{font:18px Scape,monospace;border-color:#817961}.wiki-table thead,.wiki-table tbody>tr>th{background:#3b3529}
+@media(max-width:580px){.loadout-layout{grid-template-columns:minmax(0,300px)}.planner-tabs{gap:4px;max-width:100%}.workspace-tab{font-size:19px;padding:6px}.flow-controls{max-width:100%;grid-template-columns:130px minmax(0,1fr);padding:9px}.flow-controls>details>summary{font-size:17px}.flow-controls select,.flow-controls input,.panel input:not([type=checkbox]),.panel select{font-size:20px;min-height:38px}.phase-select-label{display:block}.phase-select-label select{width:100%;margin-top:4px}.panel-heading{flex-wrap:nowrap}.export-actions .button{font-size:18px}.gear-picker .panel-heading h2{font-size:22px}.gear-pick strong{font-size:21px}.gear-pick small{font-size:17px}}
+.loadout-notes>summary{font-size:18px}.phase-select-label{white-space:nowrap}.phase-select-label select{width:145px;flex:1;min-width:0}.flow-controls>label{white-space:nowrap}
+@media(max-width:580px){.phase-select-label select{width:100%}.phase-select-label{white-space:normal}}

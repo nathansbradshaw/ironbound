@@ -407,7 +407,30 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     "target/wasm32-unknown-unknown/release/ironbound.wasm",
                 ],
             )?;
-            fs::copy("index.html", "dist/index.html")?;
+            // All browser code and CSS share a content-derived cache key. A Pages
+            // deployment must not combine a fresh page with cached older Wasm.
+            let mut version = 0xcbf29ce484222325u64;
+            for file in [
+                "dist/pkg/ironbound_bg.wasm",
+                "dist/pkg/ironbound.js",
+                "style.css",
+            ] {
+                for byte in fs::read(file)? {
+                    version = (version ^ byte as u64).wrapping_mul(0x100000001b3);
+                }
+            }
+            let version = format!("{version:016x}");
+            let index=fs::read_to_string("index.html")?
+                .replace("./style.css",&format!("./style.css?v={version}"))
+                .replace("./pkg/ironbound.js",&format!("./pkg/ironbound.js?v={version}"))
+                .replace("init().catch",&format!("init({{module_or_path: new URL('./pkg/ironbound_bg.wasm?v={version}', location.href)}}).catch"));
+            if !index.contains("module_or_path") {
+                return Err(
+                    "The module bootstrap changed; update asset versioning before publishing"
+                        .into(),
+                );
+            }
+            fs::write("dist/index.html", index)?;
             fs::copy("style.css", "dist/style.css")?;
             copy_tree(Path::new("assets"), Path::new("dist/assets"))?;
             println!("Built static Rust/Wasm site in dist/");

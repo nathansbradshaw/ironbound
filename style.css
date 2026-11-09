@@ -713,3 +713,16 @@ footer{font-size:10px;padding:9px 4px 0}footer>span:last-child{display:none}
 .combat-values dt,.bonus-table th,.bonus-table td{font:18px Scape,monospace;color:#fff}.combat-values dd{font:28px Scape,monospace;color:#ff0}.combat-values>div{background:#372e22;border:0;box-shadow:inset 2px 2px #261d11}
 .tier-item{background:#433728;color:#fff;font:18px Scape,monospace}.wiki-table{background:#4d4336;color:#fff}.wiki-table th,.wiki-table td{font:18px Scape,monospace;border-color:#30271c}.wiki-table thead,.wiki-table tbody>tr>th{background:#372e22}
 @media(max-width:580px){.loadout-layout{grid-template-columns:minmax(0,280px)}.planner-tabs{gap:5px;max-width:100%}.workspace-tab{font-size:18px;padding:6px}.flow-controls{max-width:100%;grid-template-columns:120px minmax(0,1fr);padding:9px}.flow-controls>details{grid-column:1/-1}.flow-controls>details>summary{font-size:18px}.flow-controls select,.flow-controls input,.panel input:not([type=checkbox]),.panel select{font-size:20px;min-height:38px}.phase-tabs .phase{min-height:40px}.phase-select-label{display:block}.phase-select-label select{width:100%;margin-top:4px}.panel-heading{flex-wrap:nowrap}.export-actions .button{font-size:18px}.gear-picker .panel-heading h2{font-size:22px}}
+
+/* Encounter policy: one quiet row; custom numbers stay in Advanced. */
+.flow-controls:not(:has(>details[open])){grid-template-columns:120px minmax(0,1fr)}
+.flow-controls>details:not([open]){grid-column:auto}
+.recommendation-policy{display:flex;align-items:center;gap:.6rem 1rem;flex-wrap:wrap;grid-column:1/-1;border-top:1px solid #30271c;padding-top:.6rem}
+.recommendation-policy label{display:flex;flex-direction:row;gap:.6rem;align-items:center;justify-content:space-between;flex:1}
+.recommendation-policy select{width:auto;max-width:65%}
+.recommendation-policy details{max-width:38rem}
+.recommendation-policy>details>summary{font:18px/1.2 Scape,monospace;color:#ff981f;cursor:pointer}
+.recommendation-policy p{font:18px/1.3 Scape,monospace;margin:.5rem 0}
+.recommendation-policy a{display:inline-block;margin:.3rem .7rem .3rem 0;color:#ff981f}
+@media(max-width:600px){.recommendation-policy{align-items:flex-start}.recommendation-policy label{flex-basis:100%}.recommendation-policy select{min-height:38px}}
+.flow-controls>label:last-of-type{grid-column:auto}

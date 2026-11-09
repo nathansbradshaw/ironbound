@@ -1,5 +1,0 @@
-[
-  {"name":"Wind Wave","family":"wind","level":62,"runes":{"565":1},"tiers":[[62,17],[65,18],[70,19],[75,20]]},
-  {"name":"Wind Blast","family":"wind","level":41,"runes":{"560":1},"tiers":[[41,13],[47,14],[53,15],[59,16]]},
-  {"name":"Iban Blast","family":"iban","level":50,"runes":{"560":1,"554":5},"tiers":[[50,25]]}
-]

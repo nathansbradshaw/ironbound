@@ -1,9 +1,0 @@
-[
- {"name":"None","drain":0,"level":1,"defence_level":1,"style":"","attack":0,"strength":0,"defence":0,"magic_defence":0,"magic_damage":0},
- {"name":"Chivalry","drain":20,"level":60,"defence_level":65,"style":"Melee","attack":15,"strength":18,"defence":20,"magic_defence":0,"magic_damage":0},
- {"name":"Deadeye","drain":20,"level":62,"defence_level":1,"style":"Ranged","attack":18,"strength":18,"defence":5,"magic_defence":0,"magic_damage":0},
- {"name":"Mystic Vigour","drain":20,"level":63,"defence_level":1,"style":"Magic","attack":18,"strength":0,"defence":5,"magic_defence":18,"magic_damage":3},
- {"name":"Piety","drain":40,"level":70,"defence_level":70,"style":"Melee","attack":20,"strength":23,"defence":25,"magic_defence":0,"magic_damage":0},
- {"name":"Rigour","drain":40,"level":74,"defence_level":70,"style":"Ranged","attack":20,"strength":23,"defence":25,"magic_defence":0,"magic_damage":0},
- {"name":"Augury","drain":40,"level":77,"defence_level":70,"style":"Magic","attack":25,"strength":0,"defence":25,"magic_defence":25,"magic_damage":4}
-]

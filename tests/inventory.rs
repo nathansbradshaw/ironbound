@@ -71,3 +71,123 @@ fn removing_a_slot_does_not_shift_required_items() {
         "Removing required switch gear must block export"
     );
 }
+
+#[test]
+fn boss_previews_conserve_carried_items_and_leave_starting_exports_unchanged() {
+    use std::collections::BTreeMap;
+    fn carried(equipment: &[Option<i32>], inventory: &[planner::Packed]) -> BTreeMap<i32, u32> {
+        let mut counts = BTreeMap::new();
+        for (slot, id) in equipment.iter().enumerate() {
+            if let Some(id) = id {
+                *counts.entry(*id).or_default() += if slot == 13 { 100 } else { 1 };
+            }
+        }
+        for item in inventory
+            .iter()
+            .filter(|item| item.id > 0 && item.quantity > 0)
+        {
+            *counts.entry(item.id).or_default() += item.quantity;
+        }
+        counts
+    }
+    let options = Options {
+        boss: planner::Boss::Toa,
+        ..Default::default()
+    };
+    let plan = planner::plan(&account::demo(), &options);
+    let export_before = export::inventory_setup(&plan, &options, "test").unwrap();
+    let expected = carried(&plan.equipment, &plan.inventory);
+    let mut changed = false;
+    for (index, phase) in plan.phases.iter().enumerate() {
+        let preview = plan.preview_inventory(Some(index));
+        assert_eq!(
+            carried(&phase.equipment, &preview),
+            expected,
+            "{}",
+            phase.name
+        );
+        changed |= preview != plan.inventory;
+        for (slot, item) in plan.inventory.iter().enumerate() {
+            if category(item.id, &planner::item_name(item.id)) == Category::Food {
+                assert_eq!(preview[slot], *item, "Food must stay in place");
+            }
+        }
+    }
+    assert!(changed, "At least one boss should swap inventory gear");
+    assert_eq!(plan.preview_inventory(None), plan.inventory);
+    assert_eq!(plan.preview_inventory(Some(usize::MAX)), plan.inventory);
+    assert_eq!(
+        export::inventory_setup(&plan, &options, "test").unwrap(),
+        export_before
+    );
+}
+
+#[test]
+fn two_handed_preview_returns_weapon_and_shield_without_shifting_supplies() {
+    use planner::{Packed, Phase};
+    let mut plan = planner::plan(&account::demo(), &Options::default());
+    plan.equipment = vec![None; 14];
+    plan.equipment[3] = Some(4587);
+    plan.equipment[5] = Some(12954);
+    plan.inventory = vec![
+        Packed {
+            id: 861,
+            quantity: 1,
+            purpose: "Switch".into(),
+        },
+        Packed {
+            id: 385,
+            quantity: 1,
+            purpose: "Food".into(),
+        },
+        Packed {
+            id: 0,
+            quantity: 0,
+            purpose: String::new(),
+        },
+        Packed {
+            id: 560,
+            quantity: 200,
+            purpose: "Runes".into(),
+        },
+    ];
+    let mut equipment = vec![None; 14];
+    equipment[3] = Some(861);
+    plan.phases = vec![Phase {
+        name: "Ranged".into(),
+        style: "Ranged".into(),
+        equipment,
+        note: String::new(),
+    }];
+    let inventory = plan.preview_inventory(Some(0));
+    assert_eq!(inventory[0].id, 4587);
+    assert_eq!(inventory[2].id, 12954);
+    assert_eq!(inventory[1], plan.inventory[1]);
+    assert_eq!(inventory[3], plan.inventory[3]);
+    assert_eq!(plan.preview_inventory(None)[0].id, 861);
+    // Ammunition uses the same 100-projectile allocation as planning/export.
+    plan.equipment[13] = Some(892);
+    plan.phases[0].equipment[13] = Some(9242);
+    plan.inventory.push(Packed {
+        id: 9242,
+        quantity: 200,
+        purpose: "Ammo".into(),
+    });
+    let inventory = plan.preview_inventory(Some(0));
+    assert_eq!(
+        inventory
+            .iter()
+            .find(|item| item.id == 9242)
+            .unwrap()
+            .quantity,
+        100
+    );
+    assert_eq!(
+        inventory
+            .iter()
+            .find(|item| item.id == 892)
+            .unwrap()
+            .quantity,
+        100
+    );
+}

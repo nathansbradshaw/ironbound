@@ -1539,7 +1539,9 @@ fn loadout_panel(s: &State, p: &Plan) -> String {
         );
         html.push_str(&format!(r#"<button class="equipment-edit {class}" data-action="edit-equipment:{slot_index}" data-tooltip="{}" aria-label="Change {}">{}</button>"#,esc(&tooltip),esc(&tooltip),slot(set[slot_index],planner::SLOTS[slot_index],"",None)));
     }
-    html.push_str("</div></div><details class=\"loadout-notes\"><summary>Spell & exclusions</summary>");
+    html.push_str(
+        "</div></div><details class=\"loadout-notes\"><summary>Spell & exclusions</summary>",
+    );
     if let Some((_, effect)) = set[3].and_then(|id| {
         reference::KERIS_VARIANTS
             .iter()
@@ -1581,7 +1583,11 @@ fn loadout_panel(s: &State, p: &Plan) -> String {
             html.push_str(&format!(
                 "<option value=\"{i}\" {}>{}</option>",
                 if s.phase == Some(i) { "selected" } else { "" },
-                esc(if s.saved.options.boss == Boss::Barrows { if i == 0 { "Five brothers" } else { "Ahrim" } } else { &phase.name })
+                esc(if s.saved.options.boss == Boss::Barrows {
+                    if i == 0 { "Five brothers" } else { "Ahrim" }
+                } else {
+                    &phase.name
+                })
             ));
         }
         html.push_str("</select></label>");
@@ -1598,15 +1604,21 @@ fn loadout_panel(s: &State, p: &Plan) -> String {
     html
 }
 fn inventory_panel(s: &State, p: &Plan) -> String {
+    let phase = s.phase.and_then(|index| p.phases.get(index));
+    let inventory = p.preview_inventory(s.phase);
+    let occupied = inventory
+        .iter()
+        .filter(|item| item.id > 0 && item.quantity > 0)
+        .count();
     let mut html = format!(
         "<section class=\"panel packing-panel\"><div class=\"panel-heading\"><h2>{} Inventory</h2><span class=\"slot-count {}\">{} / 28 slots</span></div><div class=\"packing-body\"><div class=\"inventory-grid\">",
         image(385),
-        if p.inventory.len() > 28 { "over" } else { "" },
-        p.inventory_slots()
+        if inventory.len() > 28 { "over" } else { "" },
+        occupied
     );
     for i in 0..28 {
-        let item = p.inventory.get(i).filter(|p| p.id > 0 && p.quantity > 0);
-        html.push_str(&format!("<button class=\"inventory-edit\" data-action=\"edit-inventory:{i}\" aria-label=\"Change inventory slot {}\">",i+1));
+        let item = inventory.get(i).filter(|p| p.id > 0 && p.quantity > 0);
+        html.push_str(&format!("<button class=\"inventory-edit\" data-action=\"edit-inventory:{i}\" aria-label=\"Inventory slot {}\" {}>",i+1,if phase.is_some() { "disabled" } else { "" }));
         html.push_str(&slot(
             item.map(|p| p.id),
             &format!(
@@ -1621,7 +1633,11 @@ fn inventory_panel(s: &State, p: &Plan) -> String {
         ));
         html.push_str("</button>");
     }
-    html.push_str(&format!("</div><details class=\"supply-settings\"><summary>Adjust supplies</summary><label>Food<input id=\"food\" type=\"number\" min=\"0\" max=\"20\" value=\"{}\"></label><label>Prayer / restores<input id=\"potions\" type=\"number\" min=\"0\" max=\"12\" value=\"{}\"></label><div class=\"small-note\">{} slots free</div></details></div>",s.saved.options.food,s.saved.options.prayer_potions,28usize.saturating_sub(p.inventory_slots())));
+    html.push_str("</div>");
+    if let Some(phase) = phase {
+        html.push_str(&format!("<p class=\"phase-note\">{} inventory preview. {} to edit the packing list. Exports use Start gear.</p>",esc(&phase.name),button("phase:start","Back to Start","text-button")));
+    }
+    html.push_str(&format!("<details class=\"supply-settings\"><summary>Adjust supplies</summary><label>Food<input id=\"food\" type=\"number\" min=\"0\" max=\"20\" value=\"{}\"></label><label>Prayer / restores<input id=\"potions\" type=\"number\" min=\"0\" max=\"12\" value=\"{}\"></label><div class=\"small-note\">{} slots free</div></details></div>",s.saved.options.food,s.saved.options.prayer_potions,28usize.saturating_sub(occupied)));
     if !p.missing.is_empty() {
         html.push_str("<div class=\"missing-list\"><strong>Before you set out</strong><ul>");
         for missing in &p.missing {
@@ -1659,7 +1675,11 @@ fn export_panel(s: &State, p: &Plan) -> String {
     let mut html = format!(
         "<section class=\"export-card\"><div class=\"export-heading\"><h2>RuneLite</h2><p>{}</p></div><div class=\"export-actions\"><button data-action=\"copy\" class=\"button gold\" {disabled}>Copy Inventory Setup</button><button data-action=\"share\" class=\"button ghost\">Copy setup link</button></div><details><summary>Other formats & help</summary><div class=\"export-secondary\"><button data-action=\"download-setup\" class=\"button ghost\" {disabled}>Download setup JSON</button><button data-action=\"bank-tags\" class=\"button ghost\">Copy Bank Tags</button></div><ol><li>Enable Inventory Setups and Bank Tags in RuneLite.</li><li>Choose Import setup in Inventory Setups.</li><li>Paste the copied text.</li></ol><p>Check staff charges before your trip.</p></details>",
         if p.exportable() {
-            if s.phase.is_some() { "Exports Start gear." } else { "" }
+            if s.phase.is_some() {
+                "Exports Start gear."
+            } else {
+                ""
+            }
         } else {
             "Review missing items in Preparation."
         }
@@ -2515,9 +2535,7 @@ fn update_gear_ranking(id: &str, value: &str) {
         }
         for prefix in ["rank", "plan-rank"] {
             if let Some(note) = document().get_element_by_id(&format!("{prefix}-status")) {
-                note.set_text_content(Some(
-                    "Apply to update gear.",
-                ));
+                note.set_text_content(Some("Apply to update gear."));
             }
         }
     });

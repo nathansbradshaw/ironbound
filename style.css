@@ -503,6 +503,10 @@ footer{font-size:11px;padding-top:10px}
 @media(max-width:760px){.encounter-actions>details>summary{min-height:44px}.encounter-actions{gap:8px}.topbar{min-height:23px}.planner-summary{padding-top:3px}.demo-banner{min-height:25px}}
 .flow-controls{grid-template-columns:minmax(150px,220px) minmax(0,1fr);align-items:end}
 .flow-controls>details{margin:0;min-width:0;padding:0;border:0;background:none}
+.inventory-picker .picker-scroll{padding:0 10px 10px}.inventory-picker .owned-heading{position:sticky;top:0;background:#393225;padding:10px 4px 6px;margin:0;z-index:1}
+.inventory-stack-label{font:12px Arial,Helvetica,sans-serif;display:flex;align-items:center;gap:8px;color:#e8d7b0}.inventory-stack-label input{width:105px;min-height:40px;font-size:14px}
+.inventory-picker .picker-actions{padding-top:9px}
+@media(max-width:760px){.inventory-stack-label{flex-basis:100%}.inventory-stack-label input{min-height:44px;font-size:16px}.inventory-picker .picker-actions .phase{min-height:44px}}
 .flow-controls>details>summary{min-height:40px;padding:10px 4px;font:14px Arial,Helvetica,sans-serif;color:#593a18}
 .switch-preferences-fields{display:grid;grid-template-columns:minmax(100px,1fr) minmax(0,2fr);gap:12px;padding-top:7px}
 .switch-preferences-fields label{font:12px Arial,Helvetica,sans-serif;color:#543a21;min-width:0}

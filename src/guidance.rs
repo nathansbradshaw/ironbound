@@ -63,12 +63,11 @@ pub fn profile(options: &Options) -> Option<&'static Profile> {
     let id = match options.boss {
         Boss::Toa => "toa",
         Boss::Custom
-            if options
-                .targets
-                .iter()
-                .map(|t| t.id)
-                .collect::<BTreeSet<_>>()
-                == BTreeSet::from([13011, 13012, 13013]) =>
+            if !options.targets.is_empty()
+                && options
+                    .targets
+                    .iter()
+                    .all(|t| matches!(t.id, 13011 | 13012 | 13013)) =>
         {
             "moons"
         }
@@ -264,6 +263,17 @@ mod tests {
         assert!(profile(&options).is_none());
         options.targets.clear();
         assert!(profile(&options).is_none());
+    }
+    #[test]
+    fn an_individual_moon_keeps_its_defensive_guidance() {
+        for target in moons().targets {
+            let options = Options {
+                boss: Boss::Custom,
+                targets: vec![target],
+                ..Default::default()
+            };
+            assert_eq!(profile(&options).unwrap().id, "moons");
+        }
     }
     #[test]
     fn tank_barrows_wins_over_torso_and_utility_at_moons() {

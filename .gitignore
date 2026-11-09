@@ -1,0 +1,7 @@
+/target/
+/dist/
+/.sites-runtime/
+/.sites-checkout/
+/.local/
+*.tar.gz
+.DS_Store

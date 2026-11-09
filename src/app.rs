@@ -23,6 +23,7 @@ struct Saved {
 struct State {
     saved: Saved,
     tab: String,
+    view: String,
     phase: Option<usize>,
     message: String,
     error: bool,
@@ -104,6 +105,7 @@ impl State {
             incoming_attack: None,
             saved,
             tab: "bossing".into(),
+            view: "loadout".into(),
             phase: None,
             message: String::new(),
             error: false,
@@ -551,6 +553,11 @@ fn act(action: &str) {
         if let Some(tab) = action.strip_prefix("tab:") {
             s.tab = tab.into();
             s.edit_equipment = None;
+        } else if let Some(view) = action.strip_prefix("view:") {
+            if ["loadout", "combat", "prepare"].contains(&view) {
+                s.view = view.into();
+                s.edit_equipment = None;
+            }
         } else if let Some(boss) = action.strip_prefix("boss:") {
             s.saved.options.boss = if boss == "toa" {
                 Boss::Toa
@@ -925,7 +932,7 @@ fn download(name: &str, text: &str) {
 }
 
 fn render() {
-    STATE.with(|state|{let s=state.borrow();let snapshot=&s.saved.snapshot;let options=&s.saved.options;let plan=s.plan();let m=snapshot.selected();
+    STATE.with(|state|{let s=state.borrow();let snapshot=&s.saved.snapshot;let options=&s.saved.options;let plan=s.plan();
     let demo=snapshot.source=="Demo";
     let nav=|(key,label,icon):(&str,&str,i32)|format!("<button class=\"nav-item {}\" data-action=\"tab:{key}\">{}<span>{label}</span>{}</button>",if s.tab==key{"active"}else{""},image(icon),if key=="goals"{format!("<span class=\"nav-count\">{}</span>",s.pins().len())}else{String::new()});
     let mut html=format!("<div class=\"app-shell\"><aside class=\"sidebar\"><a class=\"brand\" href=\"#\" aria-label=\"Ironbound home\"><span class=\"brand-mark\">{}</span><span>IRONBOUND<small>IRONMAN BOSSING & GEAR</small></span></a><div class=\"sidebar-rule\"></div><div class=\"nav-label\">YOUR ADVENTURE</div><nav aria-label=\"Main navigation\">{}{}</nav><div class=\"sidebar-note\"><span class=\"tiny-rune\">✦</span><p>Ironman bossing planner</p></div><div class=\"sidebar-bottom\"><div class=\"local-indicator\"><span></span>Saved on this device</div><small>Independent OSRS fan project.<br>Game assets © Jagex.</small></div></aside><main class=\"main\"><header class=\"topbar\"><span class=\"breadcrumb\">Your journal <span>/</span> {}</span><div class=\"account-pill\">{}<span>{}<small>{}</small></span></div></header>",image(2347),nav(("bossing","Bossing",4151)),nav(("account","Your account",1712)),match s.tab.as_str(){"goals"=>"Progression goals","account"=>"Your account",_=>"Bossing"},image(10828),esc(&snapshot.selected),if demo{"Example Ironman"}else{"Imported account"});
@@ -934,18 +941,25 @@ fn render() {
     html.push_str("<div class=\"page-content\">");
     if s.tab=="account"{html.push_str(&account_page(&s));}
     else{
-        html.push_str("<div class=\"page-heading\"><div><div class=\"eyebrow\">PREPARE FOR YOUR NEXT CHALLENGE</div><h1>Ironman Bossing</h1><p>Choose a boss to find a setup from your own bank.</p></div><span class=\"journal-stamp\">IRONMAN<br><b>FIELD NOTES</b></span></div>");
-        if let Some(m)=m{html.push_str("<div class=\"skill-strip\">");for (skill,icon) in [("Attack",1215),("Strength",4587),("Defence",12954),("Ranged",9185),("Magic",1381),("Prayer",2434)]{html.push_str(&format!("<div class=\"skill-stat\">{}<span><small>{skill}</small><b>{}</b></span></div>",image(icon),m.level(skill).map(|l|l.to_string()).unwrap_or("?".into())));}html.push_str("</div>");}
+        html.push_str(&format!("<details class=\"encounter-picker\" {}><summary>Change encounter <span>{}</span></summary>",if options.boss==Boss::Custom&&options.targets.is_empty(){"open"}else{""},esc(encounter_label(options))));
         html.push_str("<div class=\"section-line\"><h2>Choose your encounter</h2><span>Presets or your own group</span></div><div class=\"encounter-grid\">");
         for (boss,icon,kicker,description) in [(Boss::Barrows,4708,"BOSS ENCOUNTER","Equipment and supplies for the six brothers."),(Boss::Toa,25979,"RAID · STARTER PLAN","Starter equipment for raid levels 0–150.")]{let mut opt=options.clone();opt.boss=boss;if boss!=options.boss{opt.access_override=None;opt.started_barrows=None;}let p=planner::plan(snapshot,&opt);html.push_str(&format!("<button class=\"encounter {}\" data-action=\"boss:{}\"><div class=\"encounter-icon\">{}</div><div><small>{kicker}</small><h3>{}</h3><p>{description}</p>{}</div><span class=\"select-dot\"></span></button>",if boss==options.boss{"selected"}else{""},boss.key(),image(icon),boss.name(),badge(p.status(),if p.status()=="Meets starter guidelines"{"green"}else{"amber"})));}
         html.push_str("</div>");
         html.push_str(&encounter_catalog());
         html.push_str(&button("boss:custom","Build a custom encounter group","button ghost"));
         if options.boss==Boss::Custom {html.push_str(&custom_group(&s));}
+        html.push_str("</details>");
         if s.shared_setup.is_some(){html.push_str(&format!("<p class=\"notice\">Viewing a shared setup. Your saved bank is unchanged. {}</p>",button("use-bank","Rebuild using my items","text-button")));}
-        html.push_str("<div class=\"workspace-grid\"><div class=\"primary-column\">");
-        html.push_str(&encounter_detail(&s,&plan));html.push_str(&combat_panel(&s,&plan));html.push_str(&switch_panel(&s,&plan));html.push_str(&loadout_panel(&s,&plan));html.push_str(&inventory_panel(&s,&plan));
-        html.push_str("</div><aside class=\"right-column\">");html.push_str(&checks_panel(&plan));html.push_str(&export_panel(&s,&plan));if s.shared_setup.is_none(){html.push_str(&next_goal(&s));}html.push_str("</aside></div>");if s.shared_setup.is_none(){html.push_str(&tier_table(&s));}
+        html.push_str(&encounter_detail(&s,&plan));
+        html.push_str("<nav class=\"planner-tabs\" aria-label=\"Planner sections\">");
+        for (view,label) in [("loadout","Gear & inventory"),("combat","Combat & switches"),("prepare","Preparation")] {let disabled=if view=="combat"&&s.shared_setup.is_some(){"disabled title=\"Rebuild using your items to calculate combat stats\""}else{""};html.push_str(&format!("<button class=\"workspace-tab {}\" data-action=\"view:{view}\" aria-pressed=\"{}\" {disabled}>{label}{}</button>",if s.view==view{"active"}else{""},s.view==view,if view=="prepare"&&!plan.missing.is_empty(){format!(" <span class=\"issue-count\">{}</span>",plan.missing.len())}else{String::new()}));}
+        html.push_str("</nav><section class=\"workspace-view\">");
+        match s.view.as_str(){
+            "combat"=>{html.push_str("<div class=\"analysis-layout\">");html.push_str(&combat_panel(&s,&plan));html.push_str(&switch_panel(&s,&plan));html.push_str("</div>");},
+            "prepare"=>{html.push_str("<div class=\"prepare-layout\">");html.push_str(&checks_panel(&plan));if !plan.missing.is_empty(){html.push_str("<section class=\"panel\"><div class=\"panel-heading\"><h2>Missing trip items</h2></div><ul class=\"missing-list\">");for missing in &plan.missing{html.push_str(&format!("<li>{}</li>",esc(missing)));}html.push_str("</ul></section>");}if s.shared_setup.is_none(){html.push_str(&next_goal(&s));}html.push_str("</div>");},
+            _=>{html.push_str("<div class=\"loadout-layout\">");html.push_str(&loadout_panel(&s,&plan));html.push_str(&inventory_panel(&s,&plan));html.push_str("</div>");if s.shared_setup.is_none(){html.push_str("<details class=\"secondary-section\"><summary>Compare all owned equipment</summary>");html.push_str(&tier_table(&s));html.push_str("</details>");}}
+        }
+        html.push_str("</section><div class=\"plan-actions\">");html.push_str(&export_panel(&s,&plan));html.push_str("</div>");
     }
     html.push_str("</div><footer><span>Ironbound — an unofficial OSRS fan site.</span><a href=\"https://oldschool.runescape.wiki/\" target=\"_blank\" rel=\"noreferrer\">OSRS Wiki ↗</a><span>Starter catalog · 9 Nov 2026</span></footer></main></div>");
     if s.edit_equipment.is_some(){html.push_str(&gear_picker(&s));}
@@ -968,7 +982,7 @@ fn encounter_detail(s: &State, p: &Plan) -> String {
             .collect::<String>()
     };
     let mut html = format!(
-        "<section class=\"encounter-detail\"><div class=\"encounter-detail-top\"><div><div class=\"eyebrow\">YOUR ENCOUNTER PLAN</div><h2>{}</h2><p>{}</p></div><div class=\"brothers\">{helmets}</div></div><div class=\"detail-facts\"><span>✦ {} gear items matched</span><span>◈ {} carried switches</span><a href=\"{}\" target=\"_blank\" rel=\"noreferrer\">Strategy guide ↗</a></div>",
+        "<section class=\"encounter-detail\"><div class=\"encounter-detail-top\"><div><div class=\"eyebrow\">YOUR ENCOUNTER PLAN</div><h1>{}</h1><p>{}</p></div><div class=\"brothers\">{helmets}</div></div><div class=\"detail-facts\"><span>✦ {} gear items matched</span><span>◈ {} carried switches</span><a href=\"{}\" target=\"_blank\" rel=\"noreferrer\">Strategy guide ↗</a></div>",
         encounter_label(&s.saved.options),
         if boss == Boss::Barrows {
             "A magic-first setup, with a ranged switch for Ahrim."
@@ -1052,7 +1066,7 @@ fn loadout_panel(s: &State, p: &Plan) -> String {
         );
         html.push_str(&format!(r#"<button class="equipment-edit {class}" data-action="edit-equipment:{slot_index}" data-tooltip="{}" aria-label="Change {}">{}</button>"#,esc(&tooltip),esc(&tooltip),slot(set[slot_index],planner::SLOTS[slot_index],"",None)));
     }
-    html.push_str("</div><small>Hover over an item for its name</small></div><div class=\"loadout-notes\"><h3>Suggested equipment</h3><p>Reviewed starter gear priorities, matched against your bank and levels. Compare owned alternatives in the equipment tiers below.</p>");
+    html.push_str("</div><small>Click a slot to compare your items</small></div><div class=\"loadout-notes\"><p>Choose a phase, then click a slot to change its gear.</p>");
     if let Some((_, effect)) = set[3].and_then(|id| {
         reference::KERIS_VARIANTS
             .iter()
@@ -1155,7 +1169,7 @@ fn inventory_panel(s: &State, p: &Plan) -> String {
         ));
         html.push_str("</button>");
     }
-    html.push_str(&format!("</div><div class=\"supply-settings\"><h3>Supplies</h3><p>Adjust your starting supplies. Quantities are a trip template, not a prediction of what you'll consume.</p><label>Food slots<input id=\"food\" type=\"number\" min=\"0\" max=\"20\" value=\"{}\"></label><label>Prayer / restore bottles<input id=\"potions\" type=\"number\" min=\"0\" max=\"12\" value=\"{}\"></label><div class=\"small-note\">◈ {} slots free at the start</div></div></div>",s.saved.options.food,s.saved.options.prayer_potions,28usize.saturating_sub(p.inventory.len())));
+    html.push_str(&format!("</div><details class=\"supply-settings\"><summary>Adjust supplies</summary><p>Starting quantities, not a prediction of consumption.</p><label>Food slots<input id=\"food\" type=\"number\" min=\"0\" max=\"20\" value=\"{}\"></label><label>Prayer / restore bottles<input id=\"potions\" type=\"number\" min=\"0\" max=\"12\" value=\"{}\"></label><div class=\"small-note\">◈ {} slots free at the start</div></details></div>",s.saved.options.food,s.saved.options.prayer_potions,28usize.saturating_sub(p.inventory.len())));
     if let Some(i) = s.edit_inventory {
         if s.shared_setup.is_none() {
             html.push_str(&inventory_editor(s, i));
@@ -1198,15 +1212,13 @@ fn checks_panel(p: &Plan) -> String {
 fn export_panel(s: &State, p: &Plan) -> String {
     let disabled = if p.exportable() { "" } else { "disabled" };
     let mut html = format!(
-        "<section class=\"export-card\"><div class=\"eyebrow\">READY WHEN YOU ARE</div><h2>RuneLite export</h2><p>Import your equipment and packing list into Inventory Setups.</p><button data-action=\"copy\" class=\"button gold full\" {disabled}>Copy Inventory Setup <span>↗</span></button><button data-action=\"download-setup\" class=\"button ghost full\" {disabled}>Download setup JSON</button><small>{}</small><details><summary>How to import</summary><ol><li>Enable Inventory Setups and Bank Tags in RuneLite.</li><li>Choose the green import button → Import setup.</li><li>Paste the copied text and confirm.</li></ol><p>You withdraw and equip items yourself.</p></details>",
+        "<section class=\"export-card\"><div class=\"export-heading\"><h2>Take this setup with you</h2><p>{}</p></div><div class=\"export-actions\"><button data-action=\"copy\" class=\"button gold\" {disabled}>Copy Inventory Setup <span>↗</span></button><button data-action=\"share\" class=\"button ghost\">Copy setup link</button></div><details><summary>More export options & import help</summary><div class=\"export-secondary\"><button data-action=\"download-setup\" class=\"button ghost\" {disabled}>Download setup JSON</button><button data-action=\"bank-tags\" class=\"button ghost\">Copy Bank Tags</button></div><ol><li>Enable Inventory Setups and Bank Tags in RuneLite.</li><li>Choose Import setup in Inventory Setups.</li><li>Paste the copied text.</li></ol></details>",
         if p.exportable() {
             "Check staff charges and supplies before your trip."
         } else {
             "Resolve missing items or preparation blockers to export."
         }
     );
-    html.push_str(&button("bank-tags", "Copy Bank Tags", "button ghost full"));
-    html.push_str(&button("share", "Copy setup link", "button ghost full"));
     if let Some(text) = &s.export_text {
         html.push_str(&format!("<label class=\"export-label\">Setup text<textarea readonly rows=\"5\">{}</textarea></label>",esc(text)));
     }
@@ -1829,7 +1841,7 @@ fn gear_picker(s: &State) -> String {
     })
     .collect::<String>();
     format!(
-        r#"<div class="picker-backdrop"><section class="gear-picker" role="dialog" aria-modal="true" aria-labelledby="gear-picker-title"><div class="panel-heading"><h2 id="gear-picker-title">{} · owned equipment</h2>{}</div><div class="picker-controls"><label>Search your items<input id="gear-search" type="search" value="{}" placeholder="Search owned items…" autocomplete="off"></label><label>Order by<select id="gear-sort">{sort_options}</select></label></div><p class="picker-note">{style} against {}. Comparisons hold your other equipment fixed. Encounter balance uses your defence and prayer weights; incoming values cover the selected attack scenario.</p><div class="picker-actions">{} {}</div><div class="picker-scroll"><div class="bis-scale">{}</div><h3 class="owned-heading">Your owned items</h3><div id="gear-pick-results" class="gear-pick-results">{}</div></div></section></div>"#,
+        r#"<div class="picker-backdrop"><section class="gear-picker" role="dialog" aria-modal="true" aria-labelledby="gear-picker-title"><div class="panel-heading"><h2 id="gear-picker-title">{} · owned equipment</h2>{}</div><div class="picker-controls"><label>Search your items<input id="gear-search" type="search" value="{}" placeholder="Search owned items…" autocomplete="off"></label><label>Order by<select id="gear-sort">{sort_options}</select></label></div><p class="picker-note">{style} against {}. Compare one slot; your other equipment stays fixed.</p><div class="picker-actions">{} {}</div><div class="picker-scroll"><h3 class="owned-heading">Your owned items</h3><div id="gear-pick-results" class="gear-pick-results">{}</div><details class="secondary-section"><summary>BIS & upgrade reference</summary><div class="bis-scale">{}</div></details></div></section></div>"#,
         planner::SLOTS[slot],
         button("close-picker", "Close ×", "phase"),
         esc(&s.gear_search),
@@ -1842,8 +1854,8 @@ fn gear_picker(s: &State) -> String {
             "Leave empty",
             "phase"
         ),
-        bis_scale(s),
-        gear_choices(s)
+        gear_choices(s),
+        bis_scale(s)
     )
 }
 fn gear_choices(s: &State) -> String {

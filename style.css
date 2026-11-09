@@ -29,3 +29,238 @@ footer{text-align:center;border-top:1px solid #8b6c3b;padding:10px 7px 0;font-si
 @media(max-width:600px){.workspace-grid{grid-template-columns:1fr}.right-column{display:grid;grid-template-columns:1fr 1fr;gap:9px}.goal-teaser{grid-column:1/-1}.loadout-content{grid-template-columns:185px 1fr;gap:12px;padding:10px}.packing-body{grid-template-columns:190px 1fr;gap:12px;padding:10px}.equipment-grid{grid-template-columns:repeat(3,46px);grid-template-rows:repeat(5,40px)}.skill-total{display:none}.skill-stat{flex:1;justify-content:center}.topbar{font-size:10px}.encounter h3{font-size:23px}.encounter p{font-size:9px}.account-grid{grid-template-columns:1fr}.skills-grid{grid-template-columns:repeat(4,1fr)}.demo-banner strong{display:none}}
 @media(max-width:400px){.brand{font-size:46px;gap:9px}.brand small{font-size:14px}.brand-mark{width:38px;height:48px}.nav-item{padding:5px 13px}.nav-item img{display:none}.page-content{padding-left:3px;padding-right:3px}.skill-stat{flex-direction:column;gap:2px}.skill-stat img{width:17px;height:17px}.skill-stat b{font-size:19px}.skill-stat small{font-size:8px}.encounter{padding:6px;gap:4px}.encounter-icon{width:26px}.encounter-icon img{width:25px;height:25px}.encounter h3{font-size:21px}.encounter .badge{font-size:12px}.loadout-content{grid-template-columns:155px 1fr;gap:8px;padding:7px}.equipment-grid{grid-template-columns:repeat(3,38px);grid-template-rows:repeat(5,37px)}.equipment-paper{padding:3px}.loadout-notes h3{font-size:19px}.packing-body{grid-template-columns:160px 1fr;gap:8px;padding:7px}.inventory-item{height:38px}.panel-heading h2{font-size:21px}.right-column{grid-template-columns:1fr}.brothers{grid-template-columns:repeat(3,20px)}.brothers img{width:20px;height:20px}.access-grid{grid-template-columns:1fr}.demo-banner{font-size:9px}.snapshot-fields{grid-template-columns:1fr}}
 .sustain-panel{border-top:1px solid #716447;margin-top:16px;padding-top:10px}.sustain-controls{display:flex;flex-wrap:wrap;gap:10px}.sustain-controls label{flex:1 1 180px}.sustain-panel .combat-values{grid-template-columns:repeat(auto-fit,minmax(130px,1fr))}.comparison-scroll{max-width:100%;overflow-x:auto}.comparison-scroll table{min-width:510px}.sustain-panel select{max-width:100%}
+
+/* Planner workspace: parchment, stone, and native inventory proportions. */
+body{font-size:14px;line-height:1.5;padding:18px 18px 36px}
+.app-shell{width:1100px}
+.main{background-size:100% auto;padding:44px 26px 48px}
+.page-content{padding:20px 12px 24px}
+.sidebar{padding:8px 0 16px}
+.brand{font-size:58px}
+.sidebar-rule{margin:12px auto 10px}
+h1{font-size:32px}h2{font-size:26px}h3{font-size:23px}
+small{font-size:12px}
+.topbar{font-size:13px;padding:8px}
+.account-pill small{font-size:12px}
+.demo-banner{font-size:13px;padding:10px 8px;gap:12px}
+.demo-banner .text-button,.text-button{font-size:13px}
+.page-heading{text-align:left;margin-bottom:16px}
+.page-heading p{font-size:14px;margin-top:6px;max-width:70ch}
+.page-heading>.button{margin-top:12px}
+.button{font-size:20px;padding:7px 13px}
+.button.ghost{color:#e8d7a5}
+.encounter-picker,.secondary-section,details.account-summary{margin:0 0 18px;padding:0;border:0;border-bottom:1px solid #94774a;background:transparent}
+.encounter-picker>summary,.secondary-section>summary,details.account-summary>summary{color:#583211;font:22px Scape,monospace;padding:10px 3px;text-decoration:none}
+.encounter-picker[open]>summary,.secondary-section[open]>summary,details.account-summary[open]>summary{margin-bottom:10px}
+.encounter-grid{gap:10px;margin-bottom:16px}
+.encounter{padding:10px 12px}
+.encounter h3{font-size:26px}
+.encounter p{font-size:13px}
+.section-line{margin-bottom:10px;padding-bottom:7px}
+.section-line>span{font-size:12px}
+.encounter-detail{padding:15px 16px;border:0;border-top:1px solid #94774a;border-bottom:1px solid #94774a;background:#b99d6920;margin-bottom:18px}
+.encounter-detail h2{font-size:30px}
+.encounter-detail p{font-size:14px;margin-top:7px;max-width:78ch}
+.detail-facts{font-size:12px;gap:6px 16px;padding-top:9px;margin-top:11px}
+.planner-tabs{display:flex;gap:5px;border-bottom:2px groove #94774a;margin:0 0 18px;padding:0 0 7px}
+.workspace-tab{flex:1;border:2px outset #8c754c;background:#57452a;color:#ead7a4;padding:10px 12px;font:22px Scape,monospace;text-shadow:1px 1px #000}
+.workspace-tab:hover{background:#6c522b;color:#fff0c6}
+.workspace-tab.active{border-style:inset;background:#352d20;color:#ffdc36}
+.workspace-view{min-width:0;margin-bottom:20px}
+.loadout-layout,.analysis-layout,.prepare-layout{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:18px;align-items:start}
+.loadout-layout>*,.analysis-layout>*,.prepare-layout>*{min-width:0}
+.panel{border-width:2px}
+.panel-heading{padding:10px 12px;gap:10px}
+.panel-heading h2{font-size:25px}
+.panel-heading .badge{font-size:14px;text-align:right}
+.loadout-content{grid-template-columns:174px minmax(0,1fr);gap:14px;padding:14px}
+.equipment-paper{padding:9px 5px}
+.equipment-grid{grid-template-columns:repeat(3,44px);grid-template-rows:repeat(5,42px);gap:4px}
+.item-slot img{width:32px;height:32px}
+.equipment-paper>small{font-size:11px;margin-top:9px}
+.paper-header{font-size:20px;margin-bottom:9px}
+.loadout-notes h3{font-size:23px}
+.loadout-notes>p{font-size:13px;margin:8px 0 14px}
+.loadout-notes label{font-size:13px;margin:12px 0}
+.loadout-notes select{font-size:13px;margin-top:5px}
+.spell-line{font-size:12px;padding:9px 0;margin-bottom:12px}
+.toggle-row{font-size:13px;gap:8px;margin:12px 0}
+.toggle-row input{width:16px;height:16px;flex-shrink:0}
+.toggle-row small{font-size:12px}
+details{font-size:13px;margin-top:12px}
+summary{font-size:13px;line-height:1.5;text-underline-offset:3px}
+details ul,details ol{padding-left:20px;margin:10px 0}
+details li{margin-bottom:8px}
+.gear-list>div,.gear-list .text-button{font-size:12px}
+.phase-tabs{padding:10px;gap:6px;border-top-width:1px}
+.phase{font-size:18px;padding:6px 10px}
+.phase-note{font-size:13px;padding:4px 12px 12px}
+.packing-body{grid-template-columns:188px minmax(0,1fr);gap:14px;padding:14px}
+.inventory-grid{width:188px;padding:6px;gap:4px;grid-template-columns:repeat(4,minmax(0,1fr))!important}
+.inventory-item{height:42px}
+.slot-count{font-size:12px;white-space:nowrap}
+.supply-settings h3{font-size:23px}
+.supply-settings p{font-size:13px;margin:8px 0 14px}
+.supply-settings>label{font-size:13px;align-items:flex-start;margin:12px 0;gap:10px}
+.supply-settings input{width:48px;flex-shrink:0}
+.small-note{font-size:12px;margin-top:14px}
+.missing-list{font-size:13px;padding:12px 14px;border-top-width:1px}
+.assumptions{padding:12px 14px;border-top-width:1px}
+.combat-body{padding:14px}
+.combat-body>label{font-size:14px;margin:0 0 14px}
+.combat-body select{margin-top:6px}
+.combat-body>p{font-size:13px;margin-top:10px}
+.combat-values{gap:10px;margin:14px 0}
+.combat-values>div{padding:10px;border-width:1px}
+.combat-values dt{font-size:12px}
+.combat-values dd{font-size:28px;margin-top:3px}
+.bonus-table th,.bonus-table td{font-size:13px;padding:6px 8px;border-width:0 0 1px}
+.readiness-status{padding:14px 14px 0}
+.check-list{padding:4px 14px 10px}
+.check{gap:10px;margin:13px 0}
+.check strong{font-size:14px}
+.check small{font-size:12px;margin-top:4px}
+.check-mark{width:18px;height:18px;font-size:20px}
+.panel-footnote,.panel-footnote .text-button{font-size:12px}
+.panel-footnote{padding:12px 14px}
+.goal-teaser{padding:16px}
+.goal-teaser p{font-size:14px;margin-top:10px}
+.goal-teaser>small,.goal-teaser .text-button{font-size:12px}
+.plan-actions{margin:20px 0}
+.plan-actions .export-card{padding:16px;text-align:left;border-width:2px;background:#3b3324}
+.plan-actions .export-card h2{font-size:27px}
+.plan-actions .export-card>p{font-size:14px;margin:6px 0 12px}
+.plan-actions .export-card>.button{width:auto;margin:4px 8px 4px 0}
+.plan-actions .export-card>.button.gold{background:#765522;color:#ffe05a}
+.plan-actions .export-card>small{font-size:12px;margin-top:10px}
+.plan-actions .export-card>details{border-top:1px solid #756342;padding-top:10px}
+.secondary-section .owned-tiers{margin:0 0 18px}
+.owned-tiers>p{font-size:13px;margin:10px 0}
+.wiki-table{font-size:13px}
+.wiki-table th,.wiki-table td{padding:9px}
+.tier-item{font-size:12px;padding:5px 7px;margin:3px}
+.tier-item small,.tier-empty{font-size:11px}
+.skill-strip{margin-bottom:16px;padding:8px;flex-wrap:wrap;gap:5px}
+.skill-stat{padding:3px 10px}
+.skill-stat small,.skill-total small{font-size:11px}
+.skill-total{display:block}
+.notice{font-size:13px;padding:10px 12px}
+footer{font-size:12px;line-height:1.7;padding-top:14px}
+
+/* The item picker uses the same hierarchy as the workspace. */
+.gear-picker{width:760px;max-height:90vh;border-width:3px}
+.picker-controls{padding:14px 16px 0;gap:16px}
+.picker-controls label,.picker-note{font-size:13px}
+.picker-note{padding:10px 16px}
+.picker-actions{padding:0 16px 12px}
+.gear-pick-results{padding:0 12px 14px}
+.gear-pick{padding:10px 12px;margin:6px 0;gap:12px}
+.gear-pick strong{font-size:21px}
+.gear-pick small{font-size:12px;margin-top:4px}
+.gear-pick>b{font-size:18px}
+.owned-heading{padding:12px 16px 4px;font-size:25px}
+.bis-scale{border-width:1px;padding:12px 16px}
+.bis-items{gap:9px;padding:8px 0}
+.bis-item{min-width:140px;max-width:160px;padding:9px;gap:6px;border-width:1px}
+.bis-item>strong{font-size:20px;min-height:40px}
+.bis-item>small,.bis-item>span{font-size:12px}
+.bis-item .phase{font-size:17px}
+.keris-family p,.keris-family td{font-size:12px}
+
+@media(max-width:1000px){
+ .loadout-layout{grid-template-columns:1fr}
+ .loadout-content{grid-template-columns:190px minmax(0,1fr);gap:20px}
+ .packing-body{grid-template-columns:188px minmax(0,1fr);gap:20px}
+ .loadout-notes>p,.supply-settings p{max-width:65ch}
+ .analysis-layout{grid-template-columns:1fr}
+}
+@media(max-width:700px){
+ body{padding:8px 0 24px}
+ .main{padding:40px 12px 46px}
+ .page-content{padding:16px 8px 20px}
+ .brand{font-size:49px}
+ .topbar{font-size:12px;gap:10px;flex-wrap:wrap}
+ .demo-banner{align-items:flex-start;flex-wrap:wrap;gap:7px}
+ .demo-banner p{flex-basis:100%}
+ .page-heading h1{font-size:29px}
+ .planner-tabs{gap:4px;margin-bottom:14px}
+ .workspace-tab{font-size:20px;padding:9px 6px}
+ .prepare-layout{grid-template-columns:1fr}
+ .loadout-content,.packing-body{gap:16px;padding:12px}
+ .encounter-grid{grid-template-columns:1fr}
+ .encounter h3{font-size:25px}
+ .encounter p{font-size:13px}
+ .detail-facts a{margin-left:0}
+ .skill-stat{flex:0 1 auto;flex-direction:row;gap:5px}
+ .skill-stat img{width:20px;height:20px}
+ .skill-stat small{font-size:11px}
+ .plan-actions .export-card>.button{display:block;width:100%;margin:8px 0}
+ .wiki-table th,.wiki-table td{padding:6px}
+}
+@media(max-width:480px){
+ .brand{font-size:44px}
+ .brand small{font-size:15px}
+ .nav-item{padding:7px 15px}
+ .loadout-content,.packing-body{grid-template-columns:1fr;gap:16px}
+ .equipment-paper{width:188px;justify-self:center}
+ .inventory-grid{justify-self:center}
+ .equipment-grid{grid-template-columns:repeat(3,44px);grid-template-rows:repeat(5,42px)}
+ .inventory-item{height:42px}
+ .loadout-notes h3,.supply-settings h3{font-size:23px}
+ .loadout-notes>p,.supply-settings p{font-size:13px}
+ .panel-heading{padding:10px;flex-wrap:wrap}
+ .panel-heading h2{font-size:24px}
+ .picker-controls{grid-template-columns:1fr;gap:10px}
+ .gear-picker h2{font-size:24px}
+ .gear-pick{padding:9px 8px;gap:8px}
+ .gear-pick>b{font-size:16px}
+ .encounter-detail-top{align-items:flex-start}
+ .encounter-detail h2{font-size:27px}
+ .combat-values{grid-template-columns:1fr 1fr}
+}
+
+/* Select a combat phase before editing its equipment. */
+.loadout-panel{display:flex;flex-direction:column}
+.loadout-panel>.panel-heading{order:0}
+.loadout-panel>.phase-tabs{order:1;border-top:0;border-bottom:1px solid #756342}
+.loadout-panel>.loadout-content{order:2}
+.loadout-panel>.phase-note{order:3}
+details.supply-settings{margin:0}
+.supply-settings>summary{font:23px Scape,monospace;text-decoration:none;color:#ffcf00}
+.gear-pick-results{min-height:0}
+.picker-scroll>.secondary-section{margin:10px 12px 14px;border-color:#86724e}
+.picker-scroll>.secondary-section>summary{color:#dfc17f;font-size:20px}
+.picker-scroll>.secondary-section .bis-scale{border:0;padding:0 4px 10px}
+
+/* One export destination, with optional formats underneath. */
+.plan-actions .export-card{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:12px 20px;align-items:center}
+.export-heading p{font-size:13px;max-width:55ch;margin-top:5px;color:#ddcda6}
+.export-actions,.export-secondary{display:flex;flex-wrap:wrap;gap:9px;align-items:center}
+.export-actions{justify-content:flex-end}
+.export-actions .button.gold{background:#765522;color:#ffe05a}
+.export-actions .button.ghost{font-size:18px}
+.plan-actions .export-card>details,.plan-actions .export-card>.export-label{grid-column:1/-1;margin-top:0}
+.export-secondary{margin:12px 0}
+.export-secondary .button{font-size:18px}
+details.account-summary{padding:0;margin:0 0 12px;border-bottom:0}
+details.account-summary>summary{font:18px Scape,monospace;color:#73522b;padding:5px 3px}
+details.account-summary[open]>summary{margin-bottom:7px}
+.account-summary .skill-strip{margin-bottom:8px}
+.encounter-picker>summary>span{float:right;font:13px/1.7 Arial,Helvetica,sans-serif;color:#73522b;margin-left:12px}
+@media(max-width:700px){
+ .plan-actions .export-card{grid-template-columns:1fr;gap:12px}
+ .export-actions{justify-content:flex-start}
+ .export-actions .button{flex:1 1 200px;text-align:center}
+ .export-secondary .button{flex:1 1 200px;text-align:center}
+ .encounter-picker>summary>span{float:none;display:block;margin-left:16px;font-size:12px}
+}
+/* Keep the equipment and carried pool together on tablet-sized workspaces. */
+@media(min-width:760px) and (max-width:1000px){
+ .loadout-layout{grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:16px}
+ .loadout-content,.packing-body{grid-template-columns:1fr;gap:14px}
+ .equipment-paper{width:188px;justify-self:center}
+ .inventory-grid{justify-self:center}
+ .loadout-notes>p{margin-top:0}
+}
+.encounter-detail h1{font-size:32px;line-height:1.2;color:#4b240d}
+@media(max-width:480px){.encounter-detail h1{font-size:27px}}

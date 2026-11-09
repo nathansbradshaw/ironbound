@@ -1355,6 +1355,7 @@ fn render() {
     if !s.message.is_empty(){html.push_str(&format!("<div role=\"status\" class=\"notice {}\">{}</div>",if s.error{"error"}else{""},esc(&s.message)));}
     html.push_str("<div class=\"page-content\">");
     if s.tab=="account"{html.push_str(&account_page(&s));}
+    else if s.shared_setup.is_none()&&!planner::missing_combat_levels(snapshot).is_empty(){html.push_str(&format!("<section class=\"page-heading level-gate\"><h1>Add your combat levels</h1><p>Your bank is loaded. Combat levels are needed before a setup can be recommended.</p>{}</section>",button("tab:account","Add levels or look up your character","button gold")));}
     else{
         html.push_str(&encounter_detail(&s,&plan));
         html.push_str("<div class=\"encounter-actions\">");
@@ -1511,9 +1512,7 @@ fn loadout_panel(s: &State, p: &Plan) -> String {
             },
             "neutral"
         ),
-        current
-            .map(|p| esc(&p.name))
-            .unwrap_or("Equipment".into())
+        current.map(|p| esc(&p.name)).unwrap_or("Equipment".into())
     );
     for (slot_index, class) in [
         (0, "eq-head"),

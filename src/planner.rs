@@ -373,6 +373,20 @@ pub fn can_use(id: i32, m: &Member) -> bool {
     };
     req.iter().all(|(s, l)| m.level(s).is_some_and(|v| v >= *l))
 }
+pub fn missing_combat_levels(snapshot: &Snapshot) -> Vec<&'static str> {
+    [
+        "Attack",
+        "Strength",
+        "Defence",
+        "Ranged",
+        "Magic",
+        "Prayer",
+        "Hitpoints",
+    ]
+    .into_iter()
+    .filter(|skill| snapshot.selected().and_then(|m| m.level(skill)).is_none())
+    .collect()
+}
 
 // Reviewed, finite item priorities. This is a starter planner, not an exact-DPS optimiser.
 fn candidates(style: &str, slot: usize, boss: Boss) -> Vec<i32> {
@@ -699,11 +713,13 @@ fn refine_dps(
                     trials.push(trial.clone());
                 }
             }
-            let scores = crate::ranking::rank(
-                &trials.iter().map(metric).collect::<Vec<_>>(),
-                &options.ranking.weights,
-            )
-            .scores;
+            let metrics = trials.iter().map(metric).collect::<Vec<_>>();
+            // Preserve the offensive seed when DPS cannot be calculated. A DPS
+            // priority must not silently become a defence/prayer-only objective.
+            if options.ranking.weights.dps > 0.0 && metrics.iter().all(|row| row.dps.is_none()) {
+                continue;
+            }
+            let scores = crate::ranking::rank(&metrics, &options.ranking.weights).scores;
             let mut best = scores[0];
             let mut chosen = trials[0].clone();
             for (trial, score) in trials.into_iter().zip(scores).skip(1) {
@@ -798,6 +814,15 @@ fn plan_uncached(snapshot: &Snapshot, options: &Options) -> Plan {
         out.missing.push("Select an account first.".into());
         return out;
     };
+    let missing_levels = missing_combat_levels(snapshot);
+    if !missing_levels.is_empty() {
+        out.label = "Combat levels required".into();
+        out.missing.push(format!(
+            "Enter your combat levels: {}",
+            missing_levels.join(", ")
+        ));
+        return out;
+    }
     let mut owned = snapshot.available(options.shared);
     for id in &options.excluded {
         owned.remove(id);

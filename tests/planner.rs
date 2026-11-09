@@ -7,6 +7,29 @@ use serde_json::{Value, json};
 use std::collections::BTreeMap;
 
 #[test]
+fn bank_without_levels_never_produces_a_recommended_loadout() {
+    let mut snapshot = account::demo();
+    snapshot.members[0].skills = None;
+    snapshot.members[0].level_overrides.clear();
+    assert_eq!(planner::missing_combat_levels(&snapshot).len(), 7);
+    let plan = planner::plan(
+        &snapshot,
+        &Options {
+            boss: Boss::Toa,
+            ..Default::default()
+        },
+    );
+    assert!(plan.equipment.iter().all(Option::is_none));
+    assert!(plan.inventory.is_empty());
+    assert!(!plan.exportable());
+    assert!(
+        plan.missing
+            .iter()
+            .any(|message| message.contains("combat levels"))
+    );
+}
+
+#[test]
 fn an_empty_checklist_does_not_claim_readiness() {
     let mut plan = planner::plan(&account::demo(), &Options::default());
     plan.checks.clear();

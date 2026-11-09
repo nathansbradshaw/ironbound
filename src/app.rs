@@ -500,7 +500,7 @@ pub fn start() -> Result<(), JsValue> {
             "preserve"=>s.saved.options.combat.preserve=el.dyn_ref::<HtmlInputElement>().is_some_and(|e|e.checked()),
             "safety"=>{if let Ok(sel)=el.dyn_into::<HtmlSelectElement>(){s.saved.options.combat.safety=sel.value().parse::<u32>().unwrap_or(1).min(3);}},
             "prayer-weight"=>{if let Ok(sel)=el.dyn_into::<HtmlSelectElement>(){s.saved.options.combat.prayer_weight=sel.value().parse::<u32>().unwrap_or(0).min(3);}},
-            "max-switches"=>{if let Ok(sel)=el.dyn_into::<HtmlSelectElement>(){s.saved.options.max_switches=sel.value().parse::<usize>().ok().map(|n|n.min(11));s.saved.options.fewer_switches=false;s.saved.options.inventory_overrides.clear();s.saved.options.inventory_quantities.clear();}},
+            "max-switches"=>{if let Ok(control)=el.dyn_into::<HtmlInputElement>(){let value=control.value();let limit=if value.trim().is_empty(){None}else if let Ok(n)=value.parse::<usize>(){Some(n.min(11))}else{return;};s.saved.options.max_switches=limit;s.saved.options.fewer_switches=false;s.saved.options.inventory_overrides.clear();s.saved.options.inventory_quantities.clear();}},
             "switch-slots"=>{s.saved.options.switch_slots=input("switch-slots").parse::<usize>().unwrap_or(12).min(20);},
             "focus-style"=>{if let Ok(sel)=el.dyn_into::<HtmlSelectElement>(){let value=sel.value();if value=="Balanced"||crate::rules::STYLES.contains(&value.as_str()){s.saved.options.focus_style=value;}}},
             "compare-target"=>{if let Ok(sel)=el.dyn_into::<HtmlSelectElement>(){s.compare_target=sel.value().parse().ok();s.incoming_attack=None;if s.saved.options.boss==Boss::Custom {if let Some(target)=s.saved.options.targets.iter().find(|t|Some(t.id)==s.compare_target){s.edit_style=Some(target.style.clone());}}}},
@@ -1381,7 +1381,7 @@ fn render() {
         html.push_str("</section><div class=\"plan-actions\">");html.push_str(&export_panel(&s,&plan));html.push_str("</div>");
         if s.view=="loadout" && s.shared_setup.is_none(){html.push_str("<details class=\"secondary-section\"><summary>All owned gear</summary>");html.push_str(&tier_table(&s));html.push_str("</details>");}
     }
-    html.push_str("</div><footer><span>Ironbound — an unofficial OSRS fan site.</span><a href=\"https://oldschool.runescape.wiki/\" target=\"_blank\" rel=\"noreferrer\">OSRS Wiki ↗</a><span>Starter catalog · 9 Nov 2026</span></footer></main></div>");
+    html.push_str("</div><footer><span>Ironbound — an unofficial OSRS fan site.</span><a href=\"https://oldschool.runescape.wiki/\" target=\"_blank\" rel=\"noreferrer\">OSRS Wiki ↗</a><a href=\"./assets/osrs/NOTICE.txt\" target=\"_blank\" rel=\"noreferrer\">Asset credits</a><span>Starter catalog · 9 Nov 2026</span></footer></main></div>");
     if s.edit_equipment.is_some(){html.push_str(&gear_picker(&s));}
     if let Some(index)=s.edit_inventory{html.push_str(&inventory_editor(&s,index));}
     if let Some(el)=document().get_element_by_id("app"){el.set_inner_html(&html);}
@@ -1577,20 +1577,18 @@ fn loadout_panel(s: &State, p: &Plan) -> String {
     }
     html.push_str("</div></details>");
     html.push_str("</details></div><div class=\"phase-tabs\">");
-    if !p.phases.is_empty() {
+    if p.phases.len() > 6 {
         html.push_str("<label class=\"phase-select-label\">Preview<select id=\"phase-select\"><option value=\"start\">Start gear</option>");
         for (i, phase) in p.phases.iter().enumerate() {
-            html.push_str(&format!(
-                "<option value=\"{i}\" {}>{}</option>",
-                if s.phase == Some(i) { "selected" } else { "" },
-                esc(if s.saved.options.boss == Boss::Barrows {
-                    if i == 0 { "Five brothers" } else { "Ahrim" }
-                } else {
-                    &phase.name
-                })
-            ));
+            html.push_str(&format!("<option value=\"{i}\" {}>{}</option>",if s.phase==Some(i){"selected"}else{""},esc(&phase.name)));
         }
         html.push_str("</select></label>");
+    } else if !p.phases.is_empty() {
+        html.push_str(&format!("<button class=\"phase {}\" data-action=\"starting\" aria-pressed=\"{}\">Start gear</button>",if s.phase.is_none(){"active"}else{""},s.phase.is_none()));
+        for (i, phase) in p.phases.iter().enumerate() {
+            let label=if s.saved.options.boss==Boss::Barrows {if i==0{"Five brothers"}else{"Ahrim"}}else{&phase.name};
+            html.push_str(&format!("<button class=\"phase {}\" data-action=\"phase:{i}\" aria-pressed=\"{}\">{}</button>",if s.phase==Some(i){"active"}else{""},s.phase==Some(i),esc(label)));
+        }
     }
     html.push_str("</div>");
     if let Some(phase) = current {
@@ -2365,20 +2363,12 @@ fn switch_controls(s: &State) -> String {
     if s.shared_setup.is_some() {
         return String::new();
     }
-    let mut html = String::from(
-        r#"<section class="flow-controls" aria-label="Switching preferences"><label>Switch limit<select id="max-switches"><option value="unlimited">No limit</option>"#,
+    let mut html = format!(
+        r#"<section class="flow-controls" aria-label="Switching preferences"><label>Switch limit<input id="max-switches" type="number" min="0" max="11" step="1" value="{}" placeholder="No limit" title="Leave empty for no limit"></label><details id="switch-preferences" {}><summary>Gear & switch options</summary><div class="switch-preferences-fields"><label>Gear slots in bag<input id="switch-slots" type="number" min="0" max="20" value="{}"></label><label>Prioritize<select id="focus-style">"#,
+        s.saved.options.max_switches.map(|v|v.to_string()).unwrap_or_default(),
+        if s.switch_preferences_open {"open"}else{""},
+        s.saved.options.switch_slots
     );
-    for n in 0..=11 {
-        html.push_str(&format!(
-            r#"<option value="{n}" {}>{n} items</option>"#,
-            if s.saved.options.max_switches == Some(n) {
-                "selected"
-            } else {
-                ""
-            }
-        ));
-    }
-    html.push_str(&format!(r#"</select></label><details id="switch-preferences" {}><summary>Gear & switch options</summary><div class="switch-preferences-fields"><label>Gear slots in bag<input id="switch-slots" type="number" min="0" max="20" value="{}"></label><label>Prioritize<select id="focus-style">"#,if s.switch_preferences_open { "open" } else { "" },s.saved.options.switch_slots));
     for (value, label) in [
         ("Balanced", "Balance the encounter"),
         ("Magic", "Keep my full magic set"),

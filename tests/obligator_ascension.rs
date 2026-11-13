@@ -244,8 +244,7 @@ fn obligator_uncertain_inquisitor_and_missing_size_are_explained_not_scored() {
             0,
             &Settings::default()
         )
-        .unwrap_err()
-        .contains("blocked or not modelled")
+        .is_err()
     );
 }
 

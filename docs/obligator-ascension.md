@@ -66,6 +66,16 @@ exports, share settings and finite-HP cooldown timing.
 Ordinary attacks retain their established probability representation, while
 exact JSON float parsing preserves new distributions in saved calibration inputs.
 
+Verification on 13 November 2026: all 645 integrated Rust tests passed, including
+14 equipment regressions, plus all 24 independent reference fixtures. Optimized
+WebAssembly, formatting and whitespace checks passed. Disposable browser checks
+against Zombie (26) showed charged accurate Thrust at 3.716 DPS / 17 max / five
+ticks and Smash at 4.874 DPS / 18 max / three ticks, preserved after reload.
+Ascension diamond bolts produced 7.973 DPS / 23 max / two ticks and exported the
+configured 37 bolts. Scorching bow accepted Seeking dragon arrows at 5.558 DPS /
+27 max / four ticks. No browser application errors were reported. These are
+synthetic-account formula/UI checks, not in-game proc or charge observations.
+
 Primary implementations: [outgoing damage stages](https://github.com/weirdgloop/osrs-dps-calc/blob/74958b18f6559cf1bf58f7ac74e7a442a7ac8e2f/src/lib/PlayerVsNPCCalc.ts),
 [bolt effects](https://github.com/weirdgloop/osrs-dps-calc/blob/74958b18f6559cf1bf58f7ac74e7a442a7ac8e2f/src/lib/dists/bolts.ts),
 [passive activation](https://github.com/weirdgloop/osrs-dps-calc/blob/74958b18f6559cf1bf58f7ac74e7a442a7ac8e2f/src/lib/BaseCalc.ts),

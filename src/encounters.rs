@@ -106,11 +106,35 @@ pub struct Window {
     #[serde(default)]
     pub defensive_override: BTreeMap<String, i32>,
     #[serde(default)]
+    pub attributes_override: Option<Vec<String>>,
+    #[serde(default)]
+    pub weakness_override: Option<crate::planner::Weakness>,
+    #[serde(default)]
+    pub clear_weakness: bool,
+    #[serde(default)]
+    pub melee_reach: Option<crate::monster_rules::Reach>,
+    #[serde(default)]
     pub guaranteed_accuracy: bool,
     #[serde(default)]
     pub demonbane_only: bool,
     #[serde(default)]
     pub counter: Counter,
+    #[serde(default)]
+    pub raid_scale: Option<crate::raid_scaling::Scale>,
+    /// A declared current-HP point, independent of unknown team HP allocation.
+    #[serde(default)]
+    pub hp_probe: Option<u32>,
+    #[serde(default)]
+    pub hp_probe_max: Option<u32>,
+    /// An explicit encounter-loaned weapon comparison, never bank ownership.
+    #[serde(default)]
+    pub comparison_weapon: Option<i32>,
+    #[serde(default)]
+    pub fixed_damage: Option<[i32;2]>,
+    #[serde(default)]
+    pub readiness_exempt: bool,
+    #[serde(default)]
+    pub ocellus_explosions: Option<bool>,
     #[serde(default)]
     pub npc_damage: Option<NpcDamage>,
     #[serde(default)]
@@ -253,36 +277,19 @@ pub fn mechanics() -> &'static Mechanics {
             serde_json::from_str(include_str!("../assets/encounter-mechanics.json"))
                 .expect("encounter mechanics");
         for w in &data.windows {
-            assert!(
-                w.skills_override
-                    .iter()
-                    .all(
-                        |(k, v)| ["atk", "str", "def", "magic", "ranged"].contains(&k.as_str())
-                            && (0..=10_000).contains(v)
-                    ),
-                "NPC skill override"
-            );
-            assert!(
-                w.defensive_override.iter().all(|(k, v)| [
-                    "stab", "slash", "crush", "light", "standard", "heavy", "magic"
-                ]
-                .contains(&k.as_str())
-                    && (-1000..=10_000).contains(v)),
-                "NPC defence override"
-            );
-            assert!(
-                w.counter == Counter::None
-                    || matches!(
-                        (w.npc_id, w.counter),
-                        (16305, Counter::AngelCleave | Counter::AngelLightning)
-                            | (15742, Counter::MaggotPunish)
-                    ),
-                "NPC counter target"
-            );
-            assert!(
-                !w.demonbane_only || w.npc_id == 14707,
-                "demonic shield target"
-            );
+            assert_eq!(data.windows.iter().filter(|other|other.id==w.id).count(),1,"duplicate attack-window ID");
+            assert!(w.raid_scale.as_ref().is_none_or(|s|s.valid()),"raid scale");
+            assert!(w.hp_probe.is_none_or(|hp|hp>0 && hp<=w.hp_probe_max.unwrap_or(30000)) && w.hp_probe_max.is_none_or(|hp|(1..=30000).contains(&hp)),"HP comparison point");
+            assert!(w.comparison_weapon.is_none_or(|id| id==22516 && [8369,10830,10847].contains(&w.npc_id) && w.comparison_probe),"encounter loan comparison");
+            assert!(w.fixed_damage.is_none_or(|b|b==[75,150]&&w.comparison_weapon==Some(22516)),"fixed encounter attack");
+            assert!(!w.readiness_exempt || [8369,10830,10847].contains(&w.npc_id),"loaned readiness stage");
+            assert!(w.ocellus_explosions.is_none() || w.npc_id==16677 && w.comparison_probe,"Ocellus explosion state");
+            assert!(w.ocellus_explosions.is_none()||!w.invulnerable,"protected explosion state");
+            assert!(w.skills_override.iter().all(|(k,v)| ["atk","str","def","magic","ranged"].contains(&k.as_str()) && (0..=10_000).contains(v)), "NPC skill override");
+            assert!(w.defensive_override.iter().all(|(k,v)| ["stab","slash","crush","light","standard","heavy","magic","flat_armour","magic_resistance"].contains(&k.as_str()) && (-1000..=10_000).contains(v)), "NPC defence override");
+            assert!(!w.clear_weakness||w.weakness_override.is_none(),"weakness override");
+            assert!(w.counter == Counter::None || matches!((w.npc_id,w.counter), (16305,Counter::AngelCleave | Counter::AngelLightning) | (15742,Counter::MaggotPunish)), "NPC counter target");
+            assert!(!w.demonbane_only || w.npc_id == 14707, "demonic shield target");
             assert!(
                 w.ranged_accuracy_factor
                     .is_none_or(|f| (1..=100).contains(&f[0]) && (1..=100).contains(&f[1])),
@@ -332,6 +339,17 @@ pub fn demonbane_vulnerability(id: i32) -> u32 {
 }
 pub fn source_npc_id(id: i32) -> i32 {
     window(id).map(|w| w.npc_id).unwrap_or(id)
+}
+/// Alternative states retain the selected raid scale. Normalised source IDs
+/// also let an internal phase (rather than a raw NPC) expose its sibling states.
+pub fn comparison_targets(base:&[i32])->Vec<i32> {
+    let mut targets=base.to_vec();
+    targets.extend(mechanics().windows.iter().filter(|w|base.iter().any(|id|{
+        let source=source_npc_id(*id);
+        let context=window(*id).and_then(|selected|selected.raid_scale.as_ref());
+        w.raid_scale.as_ref()==context && (w.comparison_alternative&&source==w.npc_id || w.comparison_sources.contains(&source))
+    })).map(|w|w.id));
+    let mut seen=std::collections::BTreeSet::new();targets.retain(|id|seen.insert(*id));targets
 }
 pub fn slayer_eligible(id: i32) -> bool {
     let source = source_npc_id(id);
@@ -386,9 +404,14 @@ impl Entry {
         let page = match self.name.as_str() {
             "Tormented Demons" => "Tormented_Demon",
             "Sliske's wights" => "Desert_Treasure_II",
+            "Chambers of Xeric (3-player)" => "Chambers_of_Xeric",
+            "Chambers of Xeric: Challenge Mode" => "Chambers_of_Xeric/Challenge_Mode",
+            "Theatre of Blood (5-player)" => "Theatre_of_Blood",
+            "Theatre of Blood: Hard Mode" => "Theatre_of_Blood/Hard_Mode",
+            "Tombs of Amascut: Expert Mode" => "Tombs_of_Amascut",
             name => name.strip_suffix(" (Quest)").unwrap_or(name),
         };
-        let suffix = if self.quest().is_some() {
+        let suffix = if self.quest().is_some() || self.name=="Theatre of Blood: Hard Mode" {
             ""
         } else {
             "/Strategies"

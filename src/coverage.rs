@@ -62,6 +62,9 @@ pub fn export_note(options: &Options) -> String {
             let target = planner::monster(id)?;
             let window = crate::encounters::window(target.id)?;
             (window.hp_scaling.is_some()
+                || window.hp_probe.is_some()
+                || window.raid_scale.is_some()
+                || window.comparison_weapon.is_some()
                 || window.min_hp.is_some()
                 || window.start_hp.is_some()
                 || window.resource != crate::encounters::Resource::Hitpoints
@@ -70,9 +73,10 @@ pub fn export_note(options: &Options) -> String {
                 match crate::combat::current_target_hp(target, options.raid_level, &options.combat)
                 {
                     Ok(hp) => format!(
-                        "{} starts this comparison at {hp} {}",
+                        "{} starts this comparison at {hp} {}{}",
                         target.name,
-                        window.resource.unit()
+                        window.resource.unit(),
+                        if window.comparison_weapon.is_some(){" using raid-loaned Dawnbringer; ownership and special energy are not assumed"}else{""}
                     ),
                     Err(reason) => format!("{}: {reason}", target.name),
                 }

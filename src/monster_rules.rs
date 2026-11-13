@@ -24,6 +24,14 @@ pub enum Kind {
     Maggot,
     Tormented,
     Leafy,
+    Tekton,
+    Crystal,
+    OlmMelee,
+    OlmMagic,
+    OlmHead,
+    IceDemon,
+    Guardian,
+    VerzikP1,
 }
 #[derive(Clone, Copy, Debug, Default, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
@@ -152,7 +160,11 @@ pub fn check_weapon(id: i32, style: &str, weapon: i32) -> Result<(), String> {
         let category = combat::stats(weapon)
             .map(|s| s.category.as_str())
             .unwrap_or("");
-        let reachable = match p.melee {
+        if p.kind == Kind::Guardian && category != "Pickaxe" {
+            return Err("Chambers Guardians can only be damaged with a melee pickaxe.".into());
+        }
+        let reach=encounters::window(id).and_then(|w|w.melee_reach).unwrap_or(p.melee);
+        let reachable = match reach {
             Reach::Any => true,
             Reach::Polearm => category == "Polearm",
             Reach::Flying => ["Polearm", "Salamander"].contains(&category),
@@ -186,6 +198,10 @@ pub enum Transform {
         damage: i32,
     },
     TormentedShield,
+    DivideMinimum { divisor: i32 },
+    SoftCap { maximum: i32, offset: i32 },
+    Armour { amount: i32 },
+    OcellusPulse { ticks: u32, accurate_zero: bool },
     Kraken,
     Corporeal,
     Immune,
@@ -226,6 +242,13 @@ impl Transform {
                 .map(|cap| (damage.min(cap), probability / 3.0))
                 .collect(),
             Self::Divide { divisor } => vec![(damage / divisor.max(1), probability)],
+            Self::DivideMinimum { divisor } => vec![((damage/divisor.max(1)).max(i32::from(damage>0)),probability)],
+            Self::SoftCap { maximum,offset } => (0..=maximum).map(|cap|(damage.min(cap+offset),probability/f64::from(maximum+1))).collect(),
+            Self::Armour { amount } => vec![((damage-amount).max(0),probability)],
+            Self::OcellusPulse{ticks,accurate_zero} if damage>0 || accurate_zero => {
+                let reduced=(i64::from(damage)*2/i64::from(ticks.max(1))) as i32;
+                vec![(reduced,probability/2.0),(reduced+1,probability/2.0)]
+            }
             Self::Add { damage: bonus } => vec![(damage + bonus, probability)],
             Self::TormentedShield => {
                 vec![((damage * 4 / 5).max(i32::from(damage > 0)), probability)]
@@ -310,6 +333,11 @@ pub fn transform_for(
     match profile(id).map(|p| p.kind) {
         Some(Kind::Zulrah) => Transform::Zulrah,
         Some(Kind::Seren) => Transform::Seren,
+        Some(Kind::Tekton) if attack_type=="magic" => Transform::DivideMinimum{divisor:5},
+        Some(Kind::Crystal | Kind::OlmMelee | Kind::OlmHead) if attack_type=="magic" => Transform::Divide{divisor:3},
+        Some(Kind::OlmMelee | Kind::OlmMagic) if ["light","standard","heavy"].contains(&attack_type) => Transform::Divide{divisor:3},
+        Some(Kind::IceDemon) if !is_demonbane(weapon,attack_type,spell) && !rules::spells().iter().any(|s|s.name==spell&&s.element.as_deref()==Some("fire")) => Transform::Divide{divisor:3},
+        Some(Kind::VerzikP1) if weapon!=22516 => Transform::SoftCap{maximum:if ["stab","slash","crush"].contains(&attack_type) {10}else{3},offset:0},
         Some(Kind::Slagilith) if combat::stats(weapon).is_none_or(|s| s.category != "Pickaxe") => {
             Transform::Divide { divisor: 3 }
         }
@@ -478,7 +506,10 @@ pub fn apply(
     });
     let mut result = compact(normal);
     if let Some(ruby) = ruby {
-        ruby.transform = transform;
+        let transform=match transform {Transform::OcellusPulse{ticks,..}=>Transform::OcellusPulse{ticks,accurate_zero:true},other=>other};
+        if transform != Transform::Identity || !matches!(ruby.transform,Transform::Armour{..}) {
+            ruby.transform = transform;
+        }
         let (damage, probability) = distribution[split];
         let outcomes = transform.outcomes(damage, probability);
         ruby.distribution_entries = outcomes.len();

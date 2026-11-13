@@ -88,7 +88,7 @@ fn an_explicit_gear_override_survives_automatic_tie_breaking() {
 fn unsupported_encounters_still_use_defensive_armour_for_offensive_ties() {
     let bank = bank(&[4151, 4087, 9676]);
     let mut o = options();
-    o.targets[0].id = 16684; // Xarth: protection/transformation states remain gated.
+    o.targets[0].id = 14015; // Unreviewed target retains equipment-only fallback.
     assert_eq!(
         planner::equipment_for_style(&bank, &o, "Slash")[7],
         Some(4087)

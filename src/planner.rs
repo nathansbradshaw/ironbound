@@ -172,6 +172,7 @@ pub fn monsters() -> &'static [Monster] {
     MONSTERS.get_or_init(|| {
         let mut monsters: Vec<Monster> =
             serde_json::from_str(include_str!("../assets/monsters.json")).expect("monster catalog");
+        let original=monsters.clone();
         for window in &crate::encounters::mechanics().windows {
             if let Some(index) = monsters.iter().position(|m| m.id == window.id) {
                 if let Some(curve) = &window.hp_scaling {
@@ -180,7 +181,8 @@ pub fn monsters() -> &'static [Monster] {
                         .extend(curve.levels(curve.hitpoints).expect("NPC full-HP stats"));
                 }
             } else {
-                let mut monster = monsters
+                let source=if window.raid_scale.is_some() {&original} else {&monsters};
+                let mut monster = source
                     .iter()
                     .find(|m| m.id == window.npc_id)
                     .expect("window source NPC")
@@ -195,8 +197,14 @@ pub fn monsters() -> &'static [Monster] {
                 .expect("window target");
             monster.skills.extend(window.skills_override.clone());
             monster.defensive.extend(window.defensive_override.clone());
+            if let Some(attributes)=&window.attributes_override {monster.attributes=attributes.clone();}
+            if window.clear_weakness {monster.weakness=None;}
+            if let Some(weakness)=&window.weakness_override {monster.weakness=Some(weakness.clone());}
             if let Some(hp) = window.hitpoints {
                 monster.skills.insert("hp".into(), hp as i32);
+            }
+            if let Some(scale)=&window.raid_scale {
+                *monster=crate::raid_scaling::apply(monster,window.npc_id,scale).expect("reviewed raid scale");
             }
             if let Some(name) = &window.display_name {
                 monster.name = name.clone();

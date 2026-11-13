@@ -308,8 +308,6 @@ fn coverage_keeps_wardens_explicit_and_only_enables_reviewed_archive_windows() {
             ..Default::default()
         })
         .iter()
-        .filter(|r| r.supported)
-        .count()
-            == 6
+        .all(|r| r.supported && !r.reason.is_empty())
     );
 }

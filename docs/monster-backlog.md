@@ -1,6 +1,13 @@
 # Monster mechanics backlog
 
-Latest outgoing batch, 13 November 2026: 38 additional reviewed states plus an
+Latest raid follow-up, 13 November 2026: 194 declared Nex/raid attack states and
+nine gear references, including normal/CM Chambers, normal/Hard Theatre,
+recorded-defence Archive and fixed solo-300 Expert ToA. [Scope, sources and
+refresh](raid-support.md). Access checks remain independent. Entry Theatre,
+arbitrary Expert/path/team settings, Archive team HP and complete raid/fight
+timing, incoming attacks and supplies remain open.
+
+Previous outgoing batch, 13 November 2026: 38 additional reviewed states plus an
 explicit unshielded Tormented Demon gate. Twelve more encounter/mob gear screens
 are available, including three new mob bestiary entries with real portraits.
 Access requirements remain independent. This is not complete coverage of the
@@ -106,8 +113,12 @@ independent references, browser verification, then gameplay verification.
   semantics, stat recovery, parasite emergence/healing, sleepwalkers, spawn counts,
   spores/flowers, movement and incoming damage. Confirm the totem accuracy model
   in gameplay; normal and solo models stay distinct.
-- [ ] Nex: phase-specific HP, immunities, blood healing, minions, team scaling
-  and attack mixtures. Existing Smoke/Ice incoming scenario is only partial.
+- [x] Nex outgoing/readiness: declared body HP points, Deflect Melee, protected
+  transitions, siphon zero-outgoing state, activated/protected mages, -2 physical
+  armour and a group ranged gear baseline.
+- [ ] Nex full fight: phase timing/overshoot, actual siphon healing, curses,
+  reaver HP transfer, team contribution, movement, attack mixtures and supplies.
+  Existing selected Smoke/Ice incoming scenarios remain partial.
 - [x] Hespori outgoing: flowers-cleared and flowers-alive body comparisons,
   fire weakness, guaranteed Farming Guild flower finishers and 12-flower attack
   budget. Quest flower rules stay separate and blocked.
@@ -153,23 +164,25 @@ independent references, browser verification, then gameplay verification.
 
 ## 3. Raids, waves and dedicated equipment
 
-- [ ] CoX: room/team/CM scaling, Tekton, Ice demon, Vespula/portal, Vanguards,
-  Vasa/crystals, Guardians/pickaxes, Muttadiles, Mystics, Shamans and Olm's
-  hands/head, transitions, healing and full raid supplies.
-- [ ] ToB: normal/entry/hard scaling; Maiden, Bloat, Nylocas, Sotetseg, Xarpus
-  and Verzik phase/immunity/damage rules, including Dawnbringer.
-- [x] Fractured Archive ordinary outgoing windows: flying Guardian with polearm
-  reach, Ezekiel, Moia, Dreadnoth body, Dagon'hai Trio and Ocellus phases 1–3.
-  Recorded stat snapshot, existing 60% Defence floors and 25%/80% Demonbane
-  effectiveness apply. Ezekiel mace/trident have independent arithmetic fixtures.
-- [ ] Fractured Archive remaining outgoing states: Bork's changing armour, Smork
-  flat-armour/ranged interactions, Xarth protections/transformation, Guardian
-  grounded/shield states and Ocellus phase 4 explosions/speed changes.
-- [ ] Fractured Archive full raid: team HP/scaling, phase uptime, damage changes
-  during specials, transformations, adds, incoming attacks and supplies.
-- [ ] ToA: path/team/Expert scaling; Akkha protections; complete Wardens cycle,
-  core transfer/downs, skulls and enrage. Reviewed outgoing Wardens windows are
-  already merged; full-fight work is tracked in the main backlog.
+- [x] CoX outgoing/readiness: declared party/CM scaling, Tekton, Ice demon,
+  Vespula/portal, Vanguards, Vasa/crystals, Guardian pickaxes/Mining, Muttadiles,
+  Mystics, Shamans and Olm hands/head. Room toggles retain their declared scale.
+- [ ] CoX full raid: room counts/timing, Vespula knockdown/portal sequence,
+  Vanguard resets, Olm turns/transitions/healing, incoming damage and supplies.
+- [x] ToB normal/Hard outgoing/readiness: declared three/five-player HP,
+  Maiden/Bloat/Sotetseg/Xarpus/Verzik bodies, Nylocas colours, phase-1 limiter,
+  separately supplied Dawnbringer normal/single-special probes.
+- [ ] ToB follow-up: Entry mode, waves/heals/exposure, special-energy transfers,
+  mazes/webs, phase uptime, incoming attacks and complete supplies.
+- [x] Archive outgoing/readiness: recorded variants for every route, explicit HP
+  points, Guardian grounding, Bork/Smorks armour/stun and Ocellus curses/explosions.
+- [ ] Archive full raid: team HP formula, route transformations, add workloads,
+  timing/uptime, incoming attacks and supplies. HP probes do not infer total HP.
+- [x] Expert ToA outgoing/readiness: fixed solo-300/path-zero scale, vulnerable
+  Akkha styles, retained Fang/Shadow and reviewed Wardens hit rules.
+- [ ] ToA follow-up: arbitrary path/team/Expert settings and invocation mechanics,
+  protection rotations, complete Wardens cycle, core transfers/downs, skulls,
+  enrage, incoming attacks and supplies.
 - [ ] Fight Caves / Inferno / Colosseum: actual wave counts, spawns, reinforcements,
   protection sequences, healing, invocations and full-trip supplies.
 - [ ] Gauntlet / Corrupted Gauntlet: encounter equipment, preparation resources,

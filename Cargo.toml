@@ -58,3 +58,10 @@ debug = 0
 
 [profile.monster-release]
 inherits = "release"
+
+[profile.raid-dev]
+inherits = "dev"
+debug = 0
+
+[profile.raid-release]
+inherits = "release"

@@ -57,6 +57,7 @@ pub fn cache_key(snapshot: &crate::account::Snapshot, options: &crate::planner::
     options.switch_tolerance = DEFAULT_TOLERANCE_PERCENT;
     options.damage_tolerance = 0;
     options.prayer_tolerance = 0;
+    options.simulation = Default::default();
     options.inventory_overrides.clear();
     options.inventory_quantities.clear();
     serde_json::to_string(&(snapshot, options)).unwrap_or_default()

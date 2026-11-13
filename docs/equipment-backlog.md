@@ -19,7 +19,8 @@ See [armour coverage](armour-sets.md) for exact support and limitations.
   amulet effects, Guthan healing potential and amulet prayer bonuses.
 - [x] Keep unsupported incoming effects, PvP drains, overhealing and reflect
   timing explicit. Potential healing is not a complete sustain simulation.
-- [ ] Model Torag's amulet Defence bonus, reflected damage and dynamic NPC drains.
+- [x] Model Torag's amulet Defence bonus using explicit current Hitpoints.
+- [ ] Reflected damage and dynamic NPC drains.
 
 ## 3. Obsidian and Berserker necklace
 
@@ -37,10 +38,16 @@ See [armour coverage](armour-sets.md) for exact support and limitations.
   Moon spear elemental casts, with requirements, ammo and damage-stat selection.
 - [x] Verify macuahuitl dependent hit rolls and per-splat armour/acid rounding.
 - [x] Model Blood Moon's expected attack timing and jointly discover owned sets.
-- [x] Pack the chosen Atlatl dart budget; retain exact active armour variants.
-- [x] Gate full Eclipse sets while their burn effect is incomplete.
-- [ ] Eclipse burn stacks, damage-over-time timing and finite-HP transitions.
-- [ ] Blue Moon melee, binding spells and spell/melee follow-up attacks.
+- [x] Pack the chosen Atlatl dart budget; retain exact armour variants, including
+  wearable broken Moon pieces with zero stats and a working set effect.
+- [x] Eclipse sustained burn DPS, five-stack blocking and strong-burn immunities.
+- [ ] Eclipse initial buildup, phase resets, target death and finite-HP transitions;
+  the finite-HP estimator remains withheld rather than crediting instant burn damage.
+- [x] Blue Moon melee, binding/Ice/Grasp spells and conditional spell/melee follow-ups.
+- [x] Explicit Blue Moon free-melee setting, reach/style immunities, per-style NPC
+  transforms, rune packing, persistence and exported assumptions.
+- [x] Supported Ice spells enable Virtus's extra 3% damage per piece and full
+  Ahrim/Amulet casting; remaining Ancient spell secondary/AoE effects stay outside scope.
 - [ ] Macuahuitl guaranteed-hit and special-phase transforms; specials remain open.
 
 ## 6. Scythe, Soulreaper and other weapons
@@ -57,9 +64,11 @@ See [armour coverage](armour-sets.md) for exact support and limitations.
 
 - [x] Elysian: proc probability and per-hit floors for ordinary unprotected hits.
 - [x] Full Justiciar: style-specific defence and per-hit reduction in that scope.
+- [x] Justiciar typed prayer-chip hits, non-increasing negative Magic bonuses,
+  typeless Moon-chain exclusion and full-set joint search in all combat styles.
 - [x] Dinh's: explicit settled Block assumption, reduction and attack lockout.
 - [x] Rondache: flat reduction; equipment penalties remain in defensive stats.
-- [ ] Extend these passives to chained hits, prayer chip, boss healing and
+- [ ] Extend the other defensive passives to chained hits, prayer chip, boss healing and
   specials only after independently verifying their ordering.
 - [ ] Dinh's activation delay and defence-based offensive scaling.
 - [ ] Spectral prayer drain, reflected damage and healing need explicit
@@ -118,3 +127,12 @@ onyx damage, Elysian incoming damage, the full Eclipse burn gate and Dinh's Bloc
 toggle/attack lockout. These are synthetic/model/browser checks; gameplay and
 the unchecked mechanics above remain open. Remote-main/publication evidence is
 recorded with the equipment follow-up pull request.
+
+Moon/Justiciar follow-up (13 November 2026): 465 integrated Rust tests and all
+24 independent reference cases pass; the optimized Wasm build passes. Synthetic
+browser checks show Blue Moon's melee setting changing Undead Grasp from 4.098
+to 5.984 DPS, surviving reload; Eclipse displays 1.023 delayed burn DPS within
+6.183 total DPS and withholds finite-HP burn timing; Bloodrager displays 3.472
+expected ticks. These values describe those synthetic fixtures, not gameplay
+measurements. See [armour coverage](armour-sets.md) for supported effects and
+remaining finite-state/special-attack limits.

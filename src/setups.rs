@@ -106,7 +106,9 @@ impl Library {
 }
 
 pub fn validate_options(o: &Options) -> Result<(), String> {
-    if !o.combat.valid()
+    if o.wilderness.as_ref().is_some_and(|kit| !kit.valid())
+        || !o.combat.valid()
+        || !o.simulation.valid()
         || !o.ranking.weights.valid()
         || o.food > 20
         || o.prayer_potions > 12

@@ -54,10 +54,15 @@ struct State {
     building_group: bool,
     raid_rooms_open: bool,
     bestiary_open: bool,
+    wilderness_location: String,
+    scaredy_cat: bool,
+    filler_cap: u32,
     switch_preferences_open: bool,
     packing_limits_open: bool,
     combat_options_open: bool,
     attack_budget_open: bool,
+    simulation_open: bool,
+    simulation_result: Option<(String, Result<crate::simulation::Report, String>)>,
     budget_comparison_open: bool,
     budget_phases_open: bool,
     budget_window: Option<String>,
@@ -158,10 +163,20 @@ impl State {
             building_group: false,
             raid_rooms_open: false,
             bestiary_open: false,
+            wilderness_location: "all".into(),
+            scaredy_cat: saved.options.wilderness.is_some(),
+            filler_cap: saved
+                .options
+                .wilderness
+                .as_ref()
+                .map(|k| k.filler_cap)
+                .unwrap_or(crate::wilderness::DEFAULT_CAP),
             switch_preferences_open: false,
             packing_limits_open: false,
             combat_options_open: false,
             attack_budget_open: false,
+            simulation_open: false,
+            simulation_result: None,
             budget_comparison_open: comparison_query.is_some(),
             budget_phases_open: false,
             budget_window: None,
@@ -345,6 +360,9 @@ thread_local! {
 }
 
 fn live_number(id: &str) -> bool {
+    if id.starts_with("sim-") {
+        return true;
+    }
     [
         "max-switches",
         "switch-tolerance",
@@ -370,6 +388,12 @@ fn live_number(id: &str) -> bool {
 fn apply_number(s: &mut State, id: &str, value: &str) -> bool {
     if s.shared_setup.is_some() && !id.starts_with("skill-") {
         return false;
+    }
+    if let Some(key) = id.strip_prefix("sim-") {
+        return value
+            .parse::<u32>()
+            .ok()
+            .is_some_and(|n| s.saved.options.simulation.set(key, n));
     }
     let target_id = comparison_monster(s).map(|m| m.id);
     let target_max = comparison_monster(s)
@@ -954,6 +978,8 @@ pub fn start() -> Result<(), JsValue> {
             } else if el.id() == "attack-budget" {
                 STATE
                     .with(|state| state.borrow_mut().attack_budget_open = el.has_attribute("open"));
+            } else if el.id() == "fight-simulation" {
+                STATE.with(|state| state.borrow_mut().simulation_open = el.has_attribute("open"));
             } else if el.id() == "budget-phases" {
                 STATE
                     .with(|state| state.borrow_mut().budget_phases_open = el.has_attribute("open"));
@@ -1132,6 +1158,7 @@ pub fn start() -> Result<(), JsValue> {
             "budget-incoming",
             "mark-darkness",
             "loaded-dart",
+            "blue-moon-melee",
             "loaded-ammo-confirmed",
             "boost-melee",
             "boost-ranged",
@@ -1175,6 +1202,14 @@ pub fn start() -> Result<(), JsValue> {
                 return;
             }
             match id.as_str() {
+                "blue-moon-melee" => {
+                    if let Some(sel) = el.dyn_ref::<HtmlSelectElement>() {
+                        let value = sel.value();
+                        if ["Off", "Stab", "Slash", "Crush"].contains(&value.as_str()) {
+                            s.saved.options.combat.blue_moon_melee = value;
+                        }
+                    }
+                }
                 "budget-window" => {
                     if let Some(sel) = el.dyn_ref::<HtmlSelectElement>() {
                         s.budget_window = Some(sel.value());
@@ -1429,6 +1464,35 @@ fn focus_inventory(slot: usize) {
     }
 }
 fn act(action: &str) {
+    if action == "wilderness-mode"
+        || action.starts_with("wilderness-location:")
+        || action.starts_with("wilderness-cap:")
+    {
+        STATE.with(|state| {
+            let mut s = state.borrow_mut();
+            if action == "wilderness-mode" {
+                s.scaredy_cat = !s.scaredy_cat;
+                if s.scaredy_cat {
+                    s.wilderness_location = "wild".into();
+                }
+            } else if let Some(location) = action.strip_prefix("wilderness-location:") {
+                if ["all", "safe", "wild"].contains(&location) {
+                    s.wilderness_location = location.into();
+                }
+            } else if let Some(cap) = action
+                .strip_prefix("wilderness-cap:")
+                .and_then(|v| v.parse::<u32>().ok())
+            {
+                if crate::wilderness::CAPS.contains(&cap) {
+                    s.filler_cap = cap;
+                }
+            }
+            s.bestiary_open = true;
+        });
+        render();
+        return;
+    }
+
     if let Some(filter) = action.strip_prefix("encounter-filter:") {
         if crate::bestiary::FILTERS.contains(&filter) {
             STATE.with(|state| {
@@ -1452,6 +1516,7 @@ fn act(action: &str) {
                 let mut s = state.borrow_mut();
                 s.encounter_query.clear();
                 s.encounter_filter = "For you".into();
+                s.wilderness_location = "all".into();
                 if let Some(input) = document()
                     .get_element_by_id("encounter-search")
                     .and_then(|e| e.dyn_into::<HtmlInputElement>().ok())
@@ -1460,6 +1525,7 @@ fn act(action: &str) {
                 }
                 refresh_encounter_browser(&s);
             });
+            render();
             return;
         }
         "load-levels" => {
@@ -1656,7 +1722,10 @@ fn act(action: &str) {
         let mut s = state.borrow_mut();
         s.message.clear();
         s.export_text = None;
-        if action == "save-named" {
+        if action == "wilderness-off" {
+            s.saved.options.wilderness=None; s.saved.options.gear_overrides.clear();
+            s.notice("Returned to unrestricted gear planning.",false);
+        } else if action == "save-named" {
             let options = s.saved.options.clone();
             let result = s.saved.setups.save(&input("setup-name"), &options);
             s.setups_open = true;
@@ -1709,6 +1778,20 @@ fn act(action: &str) {
                     s.saved.options.confirmations.insert(id.into(), token);
                 }
             }
+        } else if let Some(value)=action.strip_prefix("simulation-warden:").and_then(|v|v.parse::<u32>().ok()) {
+            s.saved.options.simulation.warden=value.min(1);
+        } else if action == "simulate-fight" {
+            let plan=s.plan();
+            let key=simulation_key(&s,&plan);
+            let report=crate::simulation::Model::from_plan(&s.saved.snapshot,&s.saved.options,&plan).and_then(|m|crate::simulation::simulate(&m));
+            s.simulation_result=Some((key,report));s.simulation_open=true;
+        } else if action == "download-simulation" {
+            let plan=s.plan();
+            if let Some((key,Ok(report)))=&s.simulation_result {
+                if *key==simulation_key(&s,&plan) {if let Ok(raw)=serde_json::to_string_pretty(report) {download("ironbound-fight-scenario.json",&raw);}}
+            }
+        } else if action == "reset-simulation" {
+            s.saved.options.simulation=Default::default();s.simulation_result=None;
         } else if action == "reset-target-hp" {
             if let Some(target) = comparison_monster(&s).map(|m| m.id) {
                 s.saved.options.combat.target_hp.remove(&target);
@@ -1803,6 +1886,7 @@ fn act(action: &str) {
         } else if action == "custom-done" {
             s.building_group = false;
         } else if let Some(boss) = action.strip_prefix("boss:") {
+            s.saved.options.wilderness=None;
             s.saved.options.boss = if boss == "toa" {
                 Boss::Toa
             } else if boss == "custom" {
@@ -1833,6 +1917,12 @@ fn act(action: &str) {
                 if entry.targets.is_empty() {
                     s.notice(&entry.note, true);
                 } else {
+                    let restricted_preview = if s.scaredy_cat && crate::wilderness::exposure(&entry.name) != crate::wilderness::Exposure::None {
+                        let index=crate::encounters::catalog().iter().position(|e|e.name==entry.name).unwrap();
+                        let Some(preview)=bestiary_assessments(&s)[index].preview.clone() else { s.notice("No supported three-item kit is available for this encounter.",true); return; };
+                        Some(preview)
+                    } else { None };
+                    s.saved.options.wilderness=None;
                     s.saved.options.boss = match entry.name.as_str() {
                         "Barrows Chests" => Boss::Barrows,
                         "Tombs of Amascut" => Boss::Toa,
@@ -1866,6 +1956,7 @@ fn act(action: &str) {
                     s.building_group = false;
                     s.raid_rooms_open = false;
                     s.bestiary_open = false;
+                    if let Some(preview) = restricted_preview { crate::wilderness::apply(&mut s.saved.options,entry,&preview); }
                 }
             } else {
                 s.notice("Choose a listed boss, raid or encounter.", true);
@@ -2592,13 +2683,14 @@ fn render_with_edit(edit: Option<&str>) {
         html.push_str("</details>");
         html.push_str(&raid_rooms(&s));
         html.push_str("</div></div>");
+        html.push_str(&wilderness_banner(&s));
         if s.shared_setup.is_some(){html.push_str(&format!("<p class=\"notice\">Viewing a shared setup. Your saved bank is unchanged. {}</p>",button("use-bank","Rebuild using my items","text-button")));}
         if s.shared_setup.is_none(){html.push_str(&switch_controls(&s,&plan));}
         html.push_str("<nav class=\"planner-tabs\" aria-label=\"Planner sections\">");
         for (view,label) in [("loadout","Gear"),("combat","Combat"),("prepare","Preparation")] {let disabled=if view=="combat"&&s.shared_setup.is_some(){"disabled title=\"Rebuild using your items to calculate combat stats\""}else{""};html.push_str(&format!("<button class=\"workspace-tab {}\" data-action=\"view:{view}\" aria-pressed=\"{}\" {disabled}>{label}{}</button>",if s.view==view{"active"}else{""},s.view==view,if view=="prepare"&&!plan.missing.is_empty(){format!(" <span class=\"issue-count\">{}</span>",plan.missing.len())}else{String::new()}));}
         html.push_str("</nav><section class=\"workspace-view\">");
         match s.view.as_str(){
-            "combat"=>{html.push_str("<div class=\"analysis-layout\">");html.push_str(&combat_panel(&s,&plan));html.push_str(&switch_panel(&s,&plan));html.push_str("</div>");},
+            "combat"=>{html.push_str("<div class=\"analysis-layout\">");html.push_str(&combat_panel(&s,&plan));html.push_str(&simulation_panel(&s,&plan));html.push_str(&switch_panel(&s,&plan));html.push_str("</div>");},
             "prepare"=>{html.push_str("<div class=\"prepare-layout\">");html.push_str(&checks_panel(&s,&plan));if s.shared_setup.is_none(){html.push_str(&manual_checks(&s));html.push_str(&coverage_panel(&s.saved.options));}if !plan.missing.is_empty(){html.push_str("<section class=\"panel\"><div class=\"panel-heading\"><h2>Missing trip items</h2></div><ul class=\"missing-list\">");for missing in &plan.missing{html.push_str(&format!("<li>{}</li>",esc(missing)));}html.push_str("</ul></section>");}if s.shared_setup.is_none(){html.push_str(&next_goal(&s));}html.push_str("</div>");},
             _=>{html.push_str("<div class=\"loadout-layout\">");html.push_str(&loadout_panel(&s,&plan));html.push_str(&inventory_panel(&s,&plan));html.push_str("</div>");}
         }
@@ -3199,6 +3291,8 @@ fn bestiary_assessments(s: &State) -> Vec<crate::bestiary::Assessment> {
         s.saved.options.shared,
         &s.saved.options.excluded,
         s.saved.options.exclude_void,
+        s.scaredy_cat,
+        s.filler_cap,
     ))
     .unwrap_or_default();
     CACHE.with(|cache| {
@@ -3206,7 +3300,15 @@ fn bestiary_assessments(s: &State) -> Vec<crate::bestiary::Assessment> {
         if cache.as_ref().is_none_or(|(old, _)| *old != key) {
             *cache = Some((
                 key,
-                crate::bestiary::assess_catalog(&s.saved.snapshot, &s.saved.options),
+                if s.scaredy_cat {
+                    crate::bestiary::assess_wilderness(
+                        &s.saved.snapshot,
+                        &s.saved.options,
+                        s.filler_cap,
+                    )
+                } else {
+                    crate::bestiary::assess_catalog(&s.saved.snapshot, &s.saved.options)
+                },
             ));
         }
         cache.as_ref().unwrap().1.clone()
@@ -3220,7 +3322,9 @@ fn encounter_catalog(s: &State) -> String {
     for filter in crate::bestiary::FILTERS {
         html.push_str(&format!(r#"<button id="enc-filter-{}" class="encounter-filter {}" data-action="encounter-filter:{filter}" aria-pressed="{}">{filter}</button>"#,filter.replace(' ', "-"),if s.encounter_filter==filter{"active"}else{""},s.encounter_filter==filter));
     }
-    html.push_str("</nav><p class=\"bestiary-disclaimer\">Gear readiness only. Check access, supplies and mechanics in each card.</p><div id=\"encounter-results\">");
+    html.push_str("</nav>");
+    html.push_str(&wilderness_controls(s));
+    html.push_str("<p class=\"bestiary-disclaimer\">Gear readiness only. Check access, supplies and mechanics in each card.</p><div id=\"encounter-results\">");
     html.push_str(&encounter_results(s));
     html.push_str("</div></section>");
     html
@@ -3233,6 +3337,12 @@ fn encounter_results(s: &State) -> String {
         .iter()
         .enumerate()
         .filter(|(index, e)| {
+            let exposed = crate::wilderness::exposure(&e.name) != crate::wilderness::Exposure::None;
+            if s.wilderness_location == "safe" && exposed
+                || s.wilderness_location == "wild" && !exposed
+            {
+                return false;
+            }
             if crate::encounters::groups()
                 .iter()
                 .any(|g| g.aliases.contains(&e.name))
@@ -3277,6 +3387,8 @@ fn encounter_results(s: &State) -> String {
                 readiness: crate::bestiary::Readiness::Unknown,
                 reason: "Shared setups do not include the sender's bank or levels.".into(),
                 detail: String::new(),
+                wilderness: false,
+                preview: None,
             }
         } else {
             assessments[index].clone()
@@ -3633,8 +3745,25 @@ fn combat_assumptions(
         }
         html.push_str("</select></label>");
     }
-    html.push_str(&format!("<label>Current Hitpoints (Dharok's)<input id=\"current-hitpoints\" type=\"number\" min=\"1\" max=\"255\" placeholder=\"Full health\" value=\"{}\"></label>",
+    html.push_str(&format!("<label>Current Hitpoints (Dharok / Torag)<input id=\"current-hitpoints\" type=\"number\" min=\"1\" max=\"255\" placeholder=\"Full health\" value=\"{}\"></label>",
         settings.current_hitpoints.map(|hp|hp.to_string()).unwrap_or_default()));
+    if set[3]
+        .and_then(crate::rules::weapon)
+        .is_some_and(|r| r.weapon.family == "blue_moon")
+    {
+        html.push_str("<label>Blue Moon free melee<select id=\"blue-moon-melee\">");
+        for value in ["Off", "Stab", "Slash", "Crush"] {
+            html.push_str(&format!(
+                "<option {}>{value}</option>",
+                if settings.blue_moon_melee == value {
+                    "selected"
+                } else {
+                    ""
+                }
+            ));
+        }
+        html.push_str("</select></label><p class=\"small-note\">Enable Blue Moon's automatic melee in game and stay in melee range to count Frostweaver strikes. Off counts spell damage only.</p>");
+    }
     let owned = s.saved.snapshot.available(s.saved.options.shared);
     if owned.keys().any(|id| {
         crate::rules::weapon(*id).is_some_and(|r| r.has(crate::rules::Effect::Soulreaper))
@@ -4012,7 +4141,7 @@ fn magic_spell_book(s: &State, set: &[Option<i32>]) -> String {
         .iter()
         .filter(|recipe| {
             rule.as_ref()
-                .is_some_and(|r| recipe.family == r.weapon.family)
+                .is_some_and(|r| crate::rules::spell_compatible(r, recipe, set))
                 && (!elemental || filter.is_none_or(|e| recipe.element.as_deref() == Some(e)))
         })
         .collect();
@@ -4176,7 +4305,11 @@ fn ranged_ammunition_card(s: &State, set: &[Option<i32>]) -> String {
 }
 fn combat_style_controls(s: &State, set: &[Option<i32>], style: &str) -> String {
     let main_style = crate::rules::base_style(style);
-    let rule = set.get(3).copied().flatten().and_then(crate::rules::weapon);
+    let rule = set
+        .get(3)
+        .copied()
+        .flatten()
+        .and_then(|id| crate::rules::weapon_for_style(id, style));
     let mut html = String::from("<nav class=\"combat-style-tabs\" aria-label=\"Combat style\">");
     for candidate in ["Melee", "Ranged", "Magic"] {
         html.push_str(&format!("<button class=\"phase {}\" data-action=\"edit-style:{candidate}\" aria-pressed=\"{}\">{candidate}</button>",if candidate==main_style{"active"}else{""},candidate==main_style));
@@ -4342,6 +4475,15 @@ fn combat_panel(s: &State, p: &Plan) -> String {
                     r.expected_attack_ticks * 0.6
                 );
                 html.push_str(&attack_window_budget(s, target, &set, &r));
+                if r.burn_dps > 0.0 {
+                    html.push_str(&format!("<p>Eclipse burn: {:.3} of the DPS above is delayed steady-state damage (1 every 4 ticks, 10 per stack, at most 5 stacks). Short fights, phase resets and target death reduce this contribution; no finite-HP attack-time estimate is credited.</p>", r.burn_dps));
+                }
+                if r.expected_attack_ticks != f64::from(r.attack_ticks) {
+                    html.push_str(&format!("<p>Bloodrager average delay: {:.3} ticks ({:.3}s), including the 33% chance per accurate splat to attack one tick sooner.</p>",r.expected_attack_ticks,r.expected_attack_ticks*0.6));
+                }
+                if crate::rules::set_effect(&set, "blue_moon") {
+                    html.push_str(&format!("<p>Blue Moon free melee: {}. Only accurate binding, Ice and Grasp spells can trigger Frostweaver.</p>", esc(&s.saved.options.combat.blue_moon_melee)));
+                }
                 html.push_str(&combat_breakdown(s, m, &set, target, &r));
                 if r.potential_healing_per_second > 0.0 {
                     html.push_str(&format!("<p>Guthan's potential healing: {:.3} HP/s before overheal and remaining-target-HP limits. This is not subtracted from damage taken.</p>", r.potential_healing_per_second));
@@ -4444,6 +4586,115 @@ fn attack_window_budget(
         Err(reason) => html.push_str(&format!("<p class=\"small-note\">{}</p>", esc(&reason))),
     }
     html.push_str("</details>");
+    html
+}
+fn simulation_key(s: &State, p: &Plan) -> String {
+    let phases: Vec<_> = p.phases.iter().map(|v| (&v.style, &v.equipment)).collect();
+    serde_json::to_string(&(
+        &s.saved.snapshot,
+        &s.saved.options,
+        &p.equipment,
+        &p.inventory,
+        phases,
+        &p.loaded_ammo,
+    ))
+    .unwrap_or_default()
+}
+fn simulation_panel(s: &State, p: &Plan) -> String {
+    use crate::simulation::Encounter;
+    let Some(encounter) = Encounter::selected(&s.saved.options) else {
+        return String::new();
+    };
+    let mut html = format!(
+        "<section class=\"panel fight-simulation-panel\"><details id=\"fight-simulation\" {}><summary>Full-fight & consumption simulation · {}</summary><p>Seeded encounter scenarios using the gear actually packed. Each run carries HP, Prayer, attack cooldowns and supplies through every phase. A trip reuses the remaining supplies and HP; it does not bank or receive drops.</p><p class=\"notice\">Execution assumptions: incoming damage, timing and mistakes are editable. Defaults illustrate a scenario; they are not measured performance or a guarantee of survival.</p>",
+        if s.simulation_open { "open" } else { "" },
+        encounter.name()
+    );
+    html.push_str("<div class=\"simulation-inputs\">");
+    for (key, label, value, min, max) in s.saved.options.simulation.fields() {
+        let relevant = if ["acid_ticks", "freeze_ticks", "acid_uptime"].contains(&key) {
+            encounter == Encounter::Vorkath
+        } else if [
+            "judge_travel",
+            "flare_interval",
+            "flare_charge",
+            "flare_heal",
+            "flare_regen",
+            "glyph_hp",
+            "glyph_prayer",
+            "melee_autos",
+        ]
+        .contains(&key)
+        {
+            encounter == Encounter::Yama
+        } else if ["warden", "prayer_rotation", "skull_ticks", "skull_damage"].contains(&key) {
+            encounter == Encounter::Wardens
+        } else {
+            true
+        };
+        if relevant && key == "warden" {
+            html.push_str("<div role=\"group\" aria-label=\"P2 Warden\"><span>Fight in P2</span><div class=\"combat-subtype-options\">");
+            for (n, label) in [(0, "Elidinis"), (1, "Tumeken")] {
+                html.push_str(&format!("<button class=\"phase {}\" data-action=\"simulation-warden:{n}\" aria-pressed=\"{}\">{label}</button>",if value==n {"active"}else{""},value==n));
+            }
+            html.push_str("</div></div>");
+        } else if relevant {
+            html.push_str(&format!("<label>{}<input id=\"sim-{key}\" type=\"number\" min=\"{min}\" max=\"{max}\" value=\"{value}\"></label>",esc(label)));
+        }
+    }
+    html.push_str("</div><p class=\"small-note\">A tick is 0.6 seconds. Residual incoming HP/min is after protection and excludes failed mechanics added separately. Recovery and loaded charges are assumptions you must verify. Wardens uses supplies at room entry, excludes the earlier raid rooms and mechanic-changing invocations, and supports solo raid levels 0–150.</p>");
+    html.push_str(&button(
+        "simulate-fight",
+        "Run fight & trip simulation",
+        "button gold",
+    ));
+    html.push_str(&button("reset-simulation", "Reset scenario", "text-button"));
+    if let Some((key, result)) = &s.simulation_result {
+        if *key != simulation_key(s, p) {
+            html.push_str("<p role=\"status\">Setup or assumptions changed. Run again for current results.</p>");
+        } else {
+            match result {
+            Err(reason)=>html.push_str(&format!("<p class=\"combat-unavailable\" role=\"status\">Simulation unavailable: {}</p>",esc(reason))),
+            Ok(report)=>{
+                let total=report.runs.len();let complete=report.completed();
+                html.push_str(&format!("<div aria-live=\"polite\"><h3>Scenario results</h3><p>{complete} / {total} first fights completed in the model; {} / {total} completed with the packed supply budget. Failures and timeouts are retained; percentiles below include completed first fights only.</p>",report.covered()));
+                let mut failures=BTreeMap::new();for run in report.runs.iter().filter(|r|!r.completed){*failures.entry(run.reason.as_str()).or_insert(0usize)+=1;}
+                if !failures.is_empty(){html.push_str("<p>Unfinished first fights: ");for (reason,n) in failures {html.push_str(&format!("{}: {n}. ",esc(reason)));}html.push_str("</p>");}
+                html.push_str("<table class=\"wiki-table\"><thead><tr><th>First-fight demand</th><th>Median</th><th>90th percentile</th></tr></thead><tbody>");
+                let rows:[(&str,fn(&crate::simulation::Usage)->f64);15]=[
+                    ("Duration (seconds)",|u|u.ticks as f64*0.6),("Attacks",|u|u.attacks as f64),
+                    ("Rune casts",|u|u.casts as f64),("Projectiles fired",|u|u.shots as f64),
+                    ("Weapon charges",|u|u.charges.values().sum::<u32>() as f64),("Blowpipe scales",|u|u.scales as f64),
+                    ("Food bites",|u|u.food_bites as f64),("Extra shark-equivalent food",|u|u.extra_food as f64),
+                    ("Prayer points drained",|u|u.prayer_points),("Prayer doses",|u|u.prayer_doses as f64),
+                    ("Extra prayer-potion doses",|u|u.extra_doses as f64),("Ruby self-damage (HP)",|u|u.ruby_damage),
+                    ("Crumble Undead casts",|u|u.crumble as f64),("Mark of Darkness casts",|u|u.mark as f64),
+                    ("Boss healing (HP)",|u|u.healing as f64),
+                ];
+                for (label,metric) in rows {let a=report.quantile(metric,0.5);let b=report.quantile(metric,0.9);
+                    html.push_str(&format!("<tr><th>{label}</th><td>{}</td><td>{}</td></tr>",a.map(|v|format!("{v:.1}")).unwrap_or_else(||"—".into()),b.map(|v|format!("{v:.1}")).unwrap_or_else(||"—".into())));}
+                html.push_str("</tbody></table><h4>Carried rune and projectile demand</h4><table class=\"wiki-table\"><thead><tr><th>Item</th><th>90th percentile</th><th>Carried</th></tr></thead><tbody>");
+                let ids:std::collections::BTreeSet<_>=report.runs.iter().flat_map(|r|r.usage.resources.keys().copied()).collect();
+                let model=crate::simulation::Model::from_plan(&s.saved.snapshot,&s.saved.options,p).ok();
+                for id in ids {let q=report.quantile(|u|u.resources.get(&id).copied().unwrap_or(0) as f64,0.9);
+                    html.push_str(&format!("<tr><th>{}</th><td>{}</td><td>{}</td></tr>",esc(&planner::item_name(id)),q.map(|n|format!("{n:.0}")).unwrap_or_else(||"—".into()),model.as_ref().and_then(|m|m.available.get(&id)).copied().unwrap_or(0)));}
+                html.push_str("</tbody></table><h4>Phase time (median seconds)</h4><table class=\"wiki-table\"><tbody>");
+                let phases:std::collections::BTreeSet<_>=report.runs.iter().flat_map(|r|r.usage.phase_ticks.keys().cloned()).collect();
+                for phase in phases {let q=report.quantile(|u|u.phase_ticks.get(&phase).copied().unwrap_or(0) as f64*0.6,0.5);html.push_str(&format!("<tr><th>{}</th><td>{}</td></tr>",esc(&phase),q.map(|n|format!("{n:.1}")).unwrap_or_else(||"—".into())));}
+                html.push_str("</tbody></table><h4>Mechanics observed (median, all first attempts)</h4><table class=\"wiki-table\"><tbody>");
+                let mechanics:[(&str,fn(&crate::simulation::Usage)->u32);8]=[("Acid specials",|u|u.acid),("Freeze specials",|u|u.freeze),("Judges",|u|u.judges),("Flares spawned",|u|u.flares),("Flares exploded",|u|u.exploded),("Core exposures",|u|u.core_downs),("Skull sets",|u|u.skulls),("Enrage transitions",|u|u.enrage)];
+                for (label,metric) in mechanics {let mut values=report.runs.iter().map(|r|metric(&r.usage)).collect::<Vec<_>>();values.sort();if let Some(n)=values.get(values.len()/2){html.push_str(&format!("<tr><th>{label}</th><td>{n}</td></tr>"));}}
+                html.push_str("</tbody></table><h4>Fights covered per trip</h4><p>");
+                let mut counts=BTreeMap::new();for run in &report.runs {*counts.entry(run.trip_kills).or_insert(0usize)+=1;}
+                for (kills,n) in counts {html.push_str(&format!("{kills} fight(s): {n} / {total} trials. "));}
+                html.push_str("The configured trip cap is a censoring limit, not proof that another fight is impossible. Additional food uses 20-HP shark equivalents; extra prayer doses use ordinary prayer-potion restoration. These extras are demand forecasts and are never added to your bag.</p><details><summary>Model assumptions & exclusions</summary><ul>");
+                for note in &report.notes {html.push_str(&format!("<li>{}</li>",esc(note)));}
+                html.push_str("</ul></details></div>");html.push_str(&button("download-simulation","Download scenario results","text-button"));
+            }
+        }
+        }
+    }
+    html.push_str("</details></section>");
     html
 }
 fn tier_table(s: &State) -> String {
@@ -5747,4 +5998,38 @@ fn keris_family(s: &State, set: &Vec<Option<i32>>) -> String {
     }
     html.push_str("</tbody></table></section>");
     html
+}
+
+fn wilderness_controls(s: &State) -> String {
+    let mut html = String::from(
+        "<section class=\"wilderness-controls\" aria-label=\"Wilderness filters\"><div class=\"wilderness-location\" role=\"group\" aria-label=\"Boss location\">",
+    );
+    for (key, label) in [
+        ("all", "All locations"),
+        ("safe", "Avoid Wilderness"),
+        ("wild", "Wilderness only"),
+    ] {
+        html.push_str(&format!("<button class=\"encounter-filter {}\" data-action=\"wilderness-location:{key}\" aria-pressed=\"{}\">{label}</button>",if s.wilderness_location==key{"active"}else{""},s.wilderness_location==key));
+    }
+    html.push_str(&format!("</div><button class=\"encounter-filter scaredy-toggle {}\" data-action=\"wilderness-mode\" aria-pressed=\"{}\">Scaredy cat · 3 valuable items</button>",if s.scaredy_cat{"active"}else{""},s.scaredy_cat));
+    if s.scaredy_cat {
+        html.push_str("<div class=\"wilderness-cap\" role=\"group\" aria-label=\"Disposable gear price ceiling\"><span>Cheap gear per piece / ammo stack:</span>");
+        for cap in crate::wilderness::CAPS {
+            html.push_str(&format!("<button class=\"encounter-filter {}\" data-action=\"wilderness-cap:{cap}\" aria-pressed=\"{}\">≤{}k GP</button>",if s.filler_cap==cap{"active"}else{""},s.filler_cap==cap,cap/1000));
+        }
+        html.push_str("</div><p>Wilderness cards recalculate with up to 3 valuable gear pieces plus owned cheap fillers. Open a card to see the exact kit and full-gear comparison. Selecting it keeps that kit in the planner.</p><small>Unskulled + PK Skull Prevention assumed. Confirm Items Kept on Death; supplies, charges and loot add risk.</small>");
+    }
+    html.push_str("</section>");
+    html
+}
+fn wilderness_banner(s: &State) -> String {
+    let Some(kit) = &s.saved.options.wilderness else {
+        return String::new();
+    };
+    format!(
+        "<section class=\"wilderness-plan-banner\"><strong>Scaredy cat kit active · up to 3 valuable gear pieces</strong><p>Gear is locked to your screened kit; cheap fillers ≤{} GP per piece/stack. Changing quantities rechecks the carried gear limit.</p><details><summary>Protection assumptions</summary><p>{}</p></details>{}</section>",
+        kit.filler_cap,
+        esc(crate::wilderness::CAUTION),
+        button("wilderness-off", "Return to full gear", "text-button")
+    )
 }

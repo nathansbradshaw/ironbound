@@ -1,5 +1,6 @@
 pub mod account;
 pub mod bestiary;
+pub mod wilderness;
 
 pub mod alternatives;
 #[cfg(target_arch = "wasm32")]
@@ -19,6 +20,7 @@ pub mod guidance;
 pub mod inventory;
 pub mod modifiers;
 pub mod monster_rules;
+pub mod moon;
 pub mod optimization;
 pub mod planner;
 pub mod prayer;
@@ -31,6 +33,7 @@ pub mod rules;
 mod set_search;
 pub mod setups;
 pub mod share;
+pub mod simulation;
 pub mod slayer;
 pub mod supplies;
 pub mod tooltip;

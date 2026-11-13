@@ -138,13 +138,7 @@ pub fn measure(
             "Base equipment requirements are unmet for {}.",
             planner::item_name(*id)
         ))
-    } else if !rules::casting_supported_configured(
-        &member,
-        set,
-        &owned,
-        o.combat.spell_casts,
-        &o.combat,
-    ) {
+    } else if !rules::casting_supported_for_style(&member, set, &owned, &o.combat, style) {
         Err("This set needs a usable casting weapon and sufficient spell runes.".into())
     } else {
         combat::calculate_configured(

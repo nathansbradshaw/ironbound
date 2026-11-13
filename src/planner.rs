@@ -202,6 +202,7 @@ impl Target {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(default)]
 pub struct Options {
+    pub simulation: crate::simulation::Settings,
     pub confirmations: BTreeMap<String, String>,
     pub recommended: Option<bool>,
     pub ranking: crate::ranking::Preferences,
@@ -213,6 +214,8 @@ pub struct Options {
     pub prayer_potions: usize,
     pub excluded: BTreeSet<i32>,
     pub exclude_void: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub wilderness: Option<crate::wilderness::Kit>,
     pub access_override: Option<bool>,
     pub started_barrows: Option<bool>,
     pub prayer_unlocks: bool,
@@ -235,6 +238,7 @@ pub struct Options {
 impl Default for Options {
     fn default() -> Self {
         Self {
+            simulation: Default::default(),
             confirmations: BTreeMap::new(),
             recommended: None,
             ranking: Default::default(),
@@ -246,6 +250,7 @@ impl Default for Options {
             prayer_potions: 3,
             excluded: BTreeSet::new(),
             exclude_void: false,
+            wilderness: None,
             access_override: None,
             started_barrows: None,
             prayer_unlocks: false,
@@ -266,7 +271,9 @@ impl Default for Options {
 }
 impl Options {
     pub fn item_excluded(&self, id: i32) -> bool {
-        self.excluded.contains(&id) || self.exclude_void && crate::rules::void_piece(id)
+        self.excluded.contains(&id)
+            || self.exclude_void && crate::rules::void_piece(id)
+            || self.wilderness.as_ref().is_some_and(|kit| !kit.permits(id))
     }
 }
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
@@ -1202,12 +1209,12 @@ fn refine_dps_seed(
                 };
                 for a in ammo {
                     trial[13] = a;
-                    if !crate::rules::casting_supported_configured(
+                    if !crate::rules::casting_supported_for_style(
                         m,
                         &trial,
                         owned,
-                        options.combat.spell_casts,
                         &options.combat,
+                        style,
                     ) {
                         continue;
                     }
@@ -1302,6 +1309,7 @@ pub fn plan(snapshot: &Snapshot, options: &Options) -> Plan {
     options.switch_tolerance = crate::efficient::DEFAULT_TOLERANCE_PERCENT;
     options.damage_tolerance = 0;
     options.prayer_tolerance = 0;
+    options.simulation = Default::default();
     let key = serde_json::to_string(&(snapshot, &options)).unwrap_or_default();
     thread_local! {static CACHE:std::cell::RefCell<std::collections::VecDeque<(String,Plan)>>=const{std::cell::RefCell::new(std::collections::VecDeque::new())};}
     if let Some(p) = CACHE.with(|c| {
@@ -1739,11 +1747,10 @@ fn plan_uncached(snapshot: &Snapshot, options: &Options) -> Plan {
     let mut spell_runes = BTreeMap::<i32, u32>::new();
     let mut trip_spells = std::collections::BTreeSet::new();
     let mut mark_applies = false;
-    for set in std::iter::once(&out.equipment).chain(out.phases.iter().map(|p| &p.equipment)) {
-        if !set[3]
-            .and_then(crate::rules::weapon)
-            .is_some_and(|r| r.family.style == "Magic")
-        {
+    for (set, style) in std::iter::once((&out.equipment, primary_style(options)))
+        .chain(out.phases.iter().map(|p| (&p.equipment, p.style.as_str())))
+    {
+        if crate::rules::base_style(style) != "Magic" {
             continue;
         }
         let mut selected_spells = std::collections::BTreeSet::new();
@@ -2149,6 +2156,10 @@ fn plan_uncached(snapshot: &Snapshot, options: &Options) -> Plan {
     out.warnings.push("Charged item IDs do not reveal remaining charges. Check staff charges, teleport destination and supplies before leaving.".into());
     if m.potion_storage.as_ref().is_some_and(|p| !p.is_empty()) {
         out.warnings.push("Potion storage is imported as doses, not bottles. Withdraw/decant potions into your bank and refresh before packing them.".into());
+    }
+    if let Some(kit) = &options.wilderness {
+        out.missing.extend(crate::wilderness::violations(&out, kit));
+        out.warnings.push(crate::wilderness::CAUTION.into());
     }
     out.warnings.push("Armour and accessories use owned equipment stats. Weapon behaviours are reviewed separately. Combat calculations and switch-budget search have the coverage described above.".into());
     out

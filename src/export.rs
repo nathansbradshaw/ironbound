@@ -12,6 +12,11 @@ fn encounter_name(options: &Options) -> &str {
 
 /// RuneLite Bank Tags v1 CSV. Filtering only; quantities belong in Inventory Setups.
 pub fn bank_tags(plan: &Plan, options: &Options) -> Result<String, String> {
+    if let Some(kit) = &options.wilderness {
+        if !kit.valid() || !crate::wilderness::violations(plan, kit).is_empty() {
+            return Err("Resolve the wilderness gear limit before exporting.".into());
+        }
+    }
     if !plan.exportable() {
         return Err("Resolve setup blockers before exporting.".into());
     }
@@ -35,6 +40,11 @@ pub fn bank_tags(plan: &Plan, options: &Options) -> Result<String, String> {
 
 /// InventorySetupPortable -> InventorySetupSerializable, as used by the plugin's Import setup button.
 pub fn inventory_setup(plan: &Plan, options: &Options, _account: &str) -> Result<String, String> {
+    if let Some(kit) = &options.wilderness {
+        if !kit.valid() || !crate::wilderness::violations(plan, kit).is_empty() {
+            return Err("Resolve the wilderness gear limit before exporting.".into());
+        }
+    }
     if !plan.exportable() {
         return Err(
             "Resolve missing equipment, skill checks and inventory capacity before exporting."
@@ -106,6 +116,9 @@ pub fn inventory_setup(plan: &Plan, options: &Options, _account: &str) -> Result
         " Ranged ammunition type: {}.",
         options.combat.ranged_type.label()
     ));
+    if let Some(kit) = &options.wilderness {
+        notes.push_str(&format!(" Scaredy cat kit: up to 3 valuable gear pieces; disposable fillers <= {} GP per piece/stack (public snapshot {}). {}",kit.filler_cap,crate::wilderness::prices().captured_at,crate::wilderness::CAUTION));
+    }
     if options.exclude_void {
         notes.push_str(" Void armour excluded by preference.");
     }
@@ -123,12 +136,22 @@ pub fn inventory_setup(plan: &Plan, options: &Options, _account: &str) -> Result
     if std::iter::once(&plan.equipment)
         .chain(plan.phases.iter().map(|p| &p.equipment))
         .any(|set| {
-            ["dharok", "guthan", "verac", "torag", "karil", "ahrim"]
-                .iter()
-                .any(|effect| crate::rules::set_effect(set, effect))
+            [
+                "dharok",
+                "guthan",
+                "verac",
+                "torag",
+                "karil",
+                "ahrim",
+                "blood_moon",
+                "blue_moon",
+                "eclipse_moon",
+            ]
+            .iter()
+            .any(|effect| crate::rules::set_effect(set, effect))
         })
     {
-        notes.push_str(&format!(" Dharok's current Hitpoints assumption: {}. Guthan's healing potential excludes overheal and is not credited as damage reduction; recoil and NPC stat-drain effects are not included.", options.combat.current_hitpoints.map(|hp|hp.to_string()).unwrap_or_else(||"full health".into())));
+        notes.push_str(&format!(" Dharok's current Hitpoints assumption: {} (also used for Torag's amulet defence). Blue Moon free melee: {} (requires the in-game option and melee range). Eclipse burn uses delayed steady-state damage with five-stack limits, not instant hit damage or finite-HP timing. Guthan's healing potential excludes overheal and is not credited as damage reduction; recoil and NPC stat-drain effects are not included.", options.combat.current_hitpoints.map(|hp|hp.to_string()).unwrap_or_else(||"full health".into()),options.combat.blue_moon_melee));
     }
     notes.push_str(&format!(" Spell budget: {} casts total across selected attack spells; rune stacks cover the worst-case mix. Ammunition budget: {} projectiles per ranged weapon. These are packing counts, not a duration or kill-count prediction; recovered projectiles and remaining charges need manual verification. {} User confirmations stay private and must be repeated by the recipient.", options.combat.spell_casts, plan.ammo_shots, crate::coverage::export_note(options)));
     let equipment_notes: std::collections::BTreeSet<_> = std::iter::once(&plan.equipment)

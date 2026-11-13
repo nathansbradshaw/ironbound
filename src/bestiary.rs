@@ -360,7 +360,7 @@ pub fn card(entry: &Entry, index: usize, a: &Assessment) -> String {
         html.push_str("</ul><p>All other equipment slots are empty. Food, runes, charged contents and other supplies need a separate risk check.</p></div>");html
     }).unwrap_or_default();
     format!(
-        r#"<article class="bestiary-card"><button class="encounter-choice bestiary-open" data-action="choose-encounter:{index}" {} aria-label="Plan {}"><span class="boss-portrait">{}</span><span class="boss-entry"><span class="boss-entry-heading"><strong>{}</strong><span class="boss-readiness readiness-{}">{}</span></span>{location}<span class="boss-stats">{stats}</span><small>{context}</small><span class="boss-reason">{}</span></span><span class="boss-open-arrow" aria-hidden="true">→</span></button><details class="bestiary-notes"><summary>Readiness & encounter notes</summary>{kit}<p>{}</p><p>{}</p><small>{}</small></details></article>"#,
+        r#"<article class="bestiary-card"><button class="encounter-choice bestiary-open" data-action="choose-encounter:{index}" {} aria-label="Plan {}"><span class="boss-portrait">{}</span><span class="boss-entry"><span class="boss-entry-heading"><strong>{}</strong><span class="boss-readiness readiness-{}">{}</span></span>{location}<span class="boss-reason">{}</span></span><span class="boss-open-arrow" aria-hidden="true">→</span></button><details class="bestiary-notes"><summary>Details & readiness</summary><div class="boss-entry"><span class="boss-stats">{stats}</span><small>{context}</small></div>{kit}<p>{}</p><p>{}</p><small>{}</small></details></article>"#,
         if entry.targets.is_empty() || a.wilderness && a.preview.is_none() {
             "disabled"
         } else {

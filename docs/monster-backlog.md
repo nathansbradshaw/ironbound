@@ -174,3 +174,17 @@ and a 127-HP final allocation. No browser console errors were observed.
 Integrated with the merged armour, fight-simulator and wilderness work: 504 Rust
 tests pass, alongside all 24 standalone reference cases and the release Wasm
 build. Deployment verification is recorded in the release PR.
+
+Third batch, 13 November 2026: nine reviewed outgoing states for Skotizo,
+its active altar, Hespori and Farming Guild flowers, plus an explicit quest-flower
+gate. Eleven new regressions check the 15%/25% altar reductions, per-splat and
+bolt ordering, named sword exceptions, flower invulnerability, one-hit finishers,
+burn exclusion, 12-flower workloads and unchanged default boss HP allocations.
+All 515 integrated Rust tests, 24 standalone reference cases and the release
+Wasm build pass, with the latest OSRS skin retained.
+
+Browser preview: ordinary Skotizo damage drops to zero with four active altars;
+the altar is a separate comparison. Hespori's living flowers block direct body
+damage; its flower target guarantees a 10-damage hit and shows exactly 12 attack
+commitments (28.8 seconds for the example four-tick weapon). No console errors.
+This excludes travel, flower thresholds, activation sequences and incoming attacks.

@@ -1,5 +1,5 @@
 //! Reviewed outgoing NPC rules, applied to rolled hits after equipment/bolt effects.
-//! Source: Wiki calculator 74958b1, PlayerVsNPCCalc, BaseCalc and HitDist.
+//! Sources: SOURCES.md (pinned Wiki calculator and encounter mechanics pages).
 use crate::{combat, encounters, planner, rules};
 use serde::Deserialize;
 use std::collections::{BTreeMap, BTreeSet};

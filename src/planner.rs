@@ -189,6 +189,16 @@ pub fn monsters() -> &'static [Monster] {
                 monster.name = format!("{} · {}", monster.name, window.label);
                 monsters.push(monster);
             }
+            let monster = monsters
+                .iter_mut()
+                .find(|m| m.id == window.id)
+                .expect("window target");
+            if let Some(hp) = window.hitpoints {
+                monster.skills.insert("hp".into(), hp as i32);
+            }
+            if let Some(name) = &window.display_name {
+                monster.name = name.clone();
+            }
         }
         monsters.sort_by_key(|m| m.id);
         monsters

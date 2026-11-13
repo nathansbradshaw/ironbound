@@ -61,10 +61,19 @@ pub fn export_note(options: &Options) -> String {
         .filter_map(|id| {
             let target = planner::monster(id)?;
             let window = crate::encounters::window(target.id)?;
-            (window.hp_scaling.is_some() || window.min_hp.is_some()).then(|| {
+            (window.hp_scaling.is_some()
+                || window.min_hp.is_some()
+                || window.start_hp.is_some()
+                || window.resource != crate::encounters::Resource::Hitpoints
+                || options.combat.target_hp.contains_key(&target.id))
+            .then(|| {
                 match crate::combat::current_target_hp(target, options.raid_level, &options.combat)
                 {
-                    Ok(hp) => format!("{} starts this comparison at {hp} HP", target.name),
+                    Ok(hp) => format!(
+                        "{} starts this comparison at {hp} {}",
+                        target.name,
+                        window.resource.unit()
+                    ),
                     Err(reason) => format!("{}: {reason}", target.name),
                 }
             })

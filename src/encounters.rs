@@ -97,6 +97,15 @@ pub struct Window {
     #[serde(default)]
     pub invulnerable: bool,
     #[serde(default)]
+    pub npc_damage: Option<NpcDamage>,
+    #[serde(default)]
+    pub resource: Resource,
+    /// Contextual variants can share a game NPC ID but have different counters.
+    #[serde(default)]
+    pub hitpoints: Option<u32>,
+    #[serde(default)]
+    pub display_name: Option<String>,
+    #[serde(default)]
     pub min_hp: Option<u32>,
     #[serde(default)]
     pub hp_scaling: Option<HpScaling>,
@@ -121,6 +130,44 @@ pub enum DamageModel {
     WardenCore,
     HalfDamage,
     QuarterDamage,
+}
+#[derive(Clone, Copy, Debug, Default, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum Resource {
+    #[default]
+    Hitpoints,
+    Shield,
+    Charge,
+}
+impl Resource {
+    pub fn window_label(self) -> &'static str {
+        match self {
+            Self::Hitpoints => "HP window",
+            Self::Shield => "Shield window",
+            Self::Charge => "Charge window",
+        }
+    }
+    pub fn input_label(self) -> &'static str {
+        match self {
+            Self::Hitpoints => "Current target HP",
+            Self::Shield => "Remaining shield",
+            Self::Charge => "Remaining totem charge",
+        }
+    }
+    pub fn unit(self) -> &'static str {
+        match self {
+            Self::Hitpoints => "HP",
+            Self::Shield => "shield points",
+            Self::Charge => "charge points",
+        }
+    }
+}
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct NpcDamage {
+    pub factor: [u32; 2],
+    #[serde(default)]
+    pub cap: Option<i32>,
 }
 impl DamageModel {
     pub fn divisor(self) -> i32 {
@@ -178,8 +225,22 @@ fn supported() -> bool {
 pub fn mechanics() -> &'static Mechanics {
     static DATA: std::sync::OnceLock<Mechanics> = std::sync::OnceLock::new();
     DATA.get_or_init(|| {
-        serde_json::from_str(include_str!("../assets/encounter-mechanics.json"))
-            .expect("encounter mechanics")
+        let data: Mechanics =
+            serde_json::from_str(include_str!("../assets/encounter-mechanics.json"))
+                .expect("encounter mechanics");
+        for w in &data.windows {
+            assert!(
+                w.hitpoints.is_none_or(|hp| (1..=10_000).contains(&hp)),
+                "NPC counter bounds"
+            );
+            assert!(
+                w.npc_damage.as_ref().is_none_or(|d| d.factor[0] <= 10_000
+                    && (1..=10_000).contains(&d.factor[1])
+                    && d.cap.is_none_or(|cap| (0..=10_000).contains(&cap))),
+                "NPC damage transform"
+            );
+        }
+        data
     })
 }
 pub fn window(id: i32) -> Option<&'static Window> {
@@ -217,10 +278,8 @@ pub fn slayer_eligible(id: i32) -> bool {
         .is_ok()
 }
 pub fn limitation(target: &Monster) -> Option<&'static str> {
-    if window(target.id).is_some_and(|window| !window.outgoing_supported) {
-        return Some(
-            "This attack window needs reactive protection, guaranteed-hit or contract mechanics. Its equipment packing is available; outgoing DPS is not verified.",
-        );
+    if let Some(window) = window(target.id).filter(|w| !w.outgoing_supported) {
+        return Some(&window.description);
     }
     if window(target.id)
         .is_some_and(|w| w.outgoing_supported && w.damage_model != DamageModel::Standard)

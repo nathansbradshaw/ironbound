@@ -77,6 +77,11 @@ Skotizo offers zero through four active-altar comparisons and the named sword
 finishers. Hespori separates flower protection from its vulnerable body and shows
 the twelve-flower attack budget; quest flowers keep their own coverage gate.
 
+Leviathan and Whisperer have separate reviewed attack states; unsupported
+pathfinder/enrage mechanics stay labelled. Nightmare/Phosani distinguish shield,
+totem charge and physical HP, with separate encounter counts and Phosani minion
+rules. These comparisons do not predict complete fights or supplies.
+
 Recommendations use a bounded search. They are **not a proof of global BIS** or a prediction of successful kills.
 
 ## Your bank stays private

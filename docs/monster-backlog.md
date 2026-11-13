@@ -61,10 +61,23 @@ independent references, browser verification, then gameplay verification.
   the complete outgoing distribution/cooldown at every remaining HP.
 - [ ] Vardorvis full fight: axes, head, entangle, lifesteal, movement and incoming
   damage. Quest and awakened variants require separate validation.
-- [ ] Leviathan: reach restrictions, stun/rear bonuses, enrage and incoming damage.
-- [ ] Whisperer: specials, shadow realm, enrage, sanity and incoming damage.
-- [ ] Nightmare / Phosani: shield/HP phases, magic totem multiplier, husks,
-  sleepwalkers, parasite and incoming damage; normal and solo models stay distinct.
+- [x] Leviathan outgoing: normal pre-enrage ranged/Magic, melee restriction,
+  post-stun front cap and rear Magic double-damage comparison.
+- [ ] Leviathan full fight: stun cast/initial free shot, rear ranged minima and
+  bolt procs, special reductions, pathfinder/enrage, movement and incoming attacks.
+- [x] Whisperer outgoing: normal body, per-hit special reductions outside/inside
+  the Shadow Realm, earth weakness and a separate 140-HP enrage with reset stats
+  and independent debuff assumptions.
+- [ ] Whisperer full fight: special thresholds/uptime, sanity, souls/healing,
+  tentacles, travel and incoming attacks; quest/awakened need separate validation.
+- [x] Nightmare / Phosani outgoing: distinct base-team/solo shield and charge
+  counters, protected bodies, totem Magic damage/accuracy, separate Phosani final
+  HP, and maximum crush hits on Phosani husks/weakened parasite. Counters travel
+  through comparisons/exports; ruby against shields/charge stays blocked.
+- [ ] Nightmare / Phosani full fight: larger-team scaling, shield/ruby proc
+  semantics, stat recovery, parasite emergence/healing, sleepwalkers, spawn counts,
+  spores/flowers, movement and incoming damage. Confirm the totem accuracy model
+  in gameplay; normal and solo models stay distinct.
 - [ ] Nex: phase-specific HP, immunities, blood healing, minions, team scaling
   and attack mixtures. Existing Smoke/Ice incoming scenario is only partial.
 - [x] Hespori outgoing: flowers-cleared and flowers-alive body comparisons,
@@ -188,3 +201,20 @@ the altar is a separate comparison. Hespori's living flowers block direct body
 damage; its flower target guarantees a 10-damage hit and shows exactly 12 attack
 commitments (28.8 seconds for the example four-tick weapon). No console errors.
 This excludes travel, flower thresholds, activation sequences and incoming attacks.
+
+Fourth batch, 13 November 2026: 17 reviewed outgoing states and three explicit
+gates for Leviathan, Whisperer, normal Nightmare and Phosani. Fifteen independent
+monster regressions cover caps, fractional reductions, bolts, Scythe/Moon hits,
+enrage/debuff scope, distinct shield/charge counters, totem effects, crush minions,
+variant gates, exports and unverified burn-pulse interactions. An additional
+readiness regression requires both melee and Magic for the Nightmare screens.
+Integrated with the current burn, calibration, public-recording, death-risk and
+requirements work: 586 Rust tests and all 24 standalone references pass.
+
+Browser preview: Leviathan stunned-front ruby maximum 10 and blocked melee;
+Whisperer example Magic maximum 20 becomes 6 outside or 8 inside the realm,
+with a separate 140→0 enrage budget; normal/Phosani shield starts are 2,000/400
+and totem starts 300/200, each with twelve totems. Protected bodies deal zero;
+a weakened parasite with a guaranteed 19 max still needs several hits for 55 HP.
+No console errors. Totem accuracy follows the documented strategy interpretation
+and still needs gameplay confirmation. Deployment evidence is recorded in the PR.

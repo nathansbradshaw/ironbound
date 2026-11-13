@@ -3436,14 +3436,17 @@ fn encounter_label(options: &Options) -> &str {
 }
 fn bestiary_assessments(s: &State) -> Vec<crate::bestiary::Assessment> {
     if s.shared_setup.is_some() {
-        return crate::encounters::catalog().iter().map(|_| crate::bestiary::Assessment {
-            readiness: crate::bestiary::Readiness::Unknown,
-            requirements: Default::default(),
-            reason: "Shared setups do not include the sender's bank or levels.".into(),
-            detail: String::new(),
-            wilderness: false,
-            preview: None,
-        }).collect();
+        return crate::encounters::catalog()
+            .iter()
+            .map(|_| crate::bestiary::Assessment {
+                readiness: crate::bestiary::Readiness::Unknown,
+                requirements: Default::default(),
+                reason: "Shared setups do not include the sender's bank or levels.".into(),
+                detail: String::new(),
+                wilderness: false,
+                preview: None,
+            })
+            .collect();
     }
     thread_local! {
         static CACHE: RefCell<Option<(String, Vec<crate::bestiary::Assessment>)>> = const { RefCell::new(None) };
@@ -3808,6 +3811,8 @@ fn encounter_targets(s: &State) -> Vec<i32> {
             })
             .map(|w| w.id),
     );
+    let mut seen = std::collections::BTreeSet::new();
+    targets.retain(|id| seen.insert(*id));
     targets
 }
 fn comparison_style(s: &State) -> &str {
@@ -4633,7 +4638,11 @@ fn combat_panel(s: &State, p: &Plan) -> String {
     if let (Some(m), Some(target)) = (s.saved.snapshot.selected(), comparison_monster(s)) {
         if let Some(hp) = s.saved.options.combat.target_hp.get(&target.id) {
             html.push_str(&format!(
-                "<p class=\"small-note\">Current target HP: {hp}. {}</p>",
+                "<p class=\"small-note\">{}: {hp}. {}</p>",
+                crate::encounters::window(target.id)
+                    .map(|w| w.resource)
+                    .unwrap_or_default()
+                    .input_label(),
                 button("reset-target-hp", "Reset target HP", "text-button")
             ));
         }
@@ -4777,6 +4786,9 @@ fn attack_window_budget(
     set: &[Option<i32>],
     result: &combat::ResultStats,
 ) -> String {
+    let resource = crate::encounters::window(target.id)
+        .map(|w| w.resource)
+        .unwrap_or_default();
     let (min, max) = combat::target_hp_bounds(target, s.saved.options.raid_level).unwrap_or((1, 1));
     let current = s
         .saved
@@ -4787,11 +4799,17 @@ fn attack_window_budget(
         .map(u32::to_string)
         .unwrap_or_default();
     let mut html = format!(
-        "<details id=\"attack-budget\" class=\"attack-budget\" {}><summary>Attack window & supply budget</summary><label>Current target HP<input id=\"target-hp\" type=\"number\" min=\"{min}\" max=\"{max}\" placeholder=\"{max}\" value=\"{current}\"></label><p class=\"small-note\">Leave empty for this window's starting HP. Ruby bolts and HP-dependent NPC stats use this HP; the attack budget recalculates them as HP falls.</p>",
+        "<details id=\"attack-budget\" class=\"attack-budget\" {}><summary>Attack window & supply budget</summary><label>{}<input id=\"target-hp\" type=\"number\" min=\"{min}\" max=\"{max}\" placeholder=\"{max}\" value=\"{current}\"></label><p class=\"small-note\">{}</p>",
         if s.attack_budget_open || result.burn.is_some() {
             "open"
         } else {
             ""
+        },
+        resource.input_label(),
+        if resource == crate::encounters::Resource::Hitpoints {
+            "Leave empty for this window's starting HP. Ruby bolts and HP-dependent NPC stats use this HP; the attack budget recalculates them as HP falls."
+        } else {
+            "Leave empty for this window's starting counter. Shield and totem charge are separate from physical HP; unverified ruby effects against these counters are blocked."
         }
     );
     if let Some(window) = crate::encounters::window(target.id) {
@@ -4821,7 +4839,7 @@ fn attack_window_budget(
             let spread=f64::from(budget.entities);
             html.push_str(&format!("<dl class=\"combat-values\"><div><dt>Estimated attacks</dt><dd>{:.2} ± {:.2}</dd></div><div><dt>Attack cooldown budget</dt><dd>{:.2}s ± {:.2}s</dd></div><div><dt>HP window · each of {} target(s)</dt><dd>{} → {}</dd></div><div><dt>Burn damage · each target</dt><dd>{:.2}</dd></div></dl><p>Time to HP boundary from the first attack: {:.2}s ± {:.2}s per target, excluding projectile travel. No attacks or burn damage are credited after that boundary.</p><p class=\"small-note\">{} seeded trials; ± is an approximate 95% confidence interval for the estimated mean, not an outcome range or safe supply minimum. Five-stack cap, expiry, misses, accurate zeroes and overkill are included. The cooldown budget retains the finishing attack's committed delay. Each entity/window starts with no burns. Transition clearing and downtime are handled separately in the full-fight scenario.</p>",budget.attacks,1.96*burn.attacks_error*spread,budget.seconds,1.96*burn.cooldown_error*0.6*spread,budget.entities,budget.start_hp,budget.stop_hp,burn.burn_damage,burn.death_ticks*0.6,1.96*burn.death_error*0.6,burn.trials));
         },
-        Ok(budget) => html.push_str(&format!("<dl class=\"combat-values\"><div><dt>Expected attacks</dt><dd>{:.1}</dd></div><div><dt>Attack cooldown budget</dt><dd>{:.1}s</dd></div><div><dt>HP window · each of {} target(s)</dt><dd>{} → {}</dd></div></dl><p class=\"small-note\">Includes misses, overkill and the finishing cooldown. This is an expectation, not a safe supply minimum or kill-time prediction. Compare with your {}-cast / {}-projectile packing budgets; projectile recovery, ruby self-damage, movement, specials, regeneration and eating are excluded.</p>", budget.attacks, budget.seconds, budget.entities, budget.start_hp, budget.stop_hp, s.saved.options.combat.spell_casts, s.saved.options.combat.ammo_shots)),
+        Ok(budget) => html.push_str(&format!("<dl class=\"combat-values\"><div><dt>Expected attacks</dt><dd>{:.1}</dd></div><div><dt>Attack cooldown budget</dt><dd>{:.1}s</dd></div><div><dt>{} · each of {} target(s)</dt><dd>{} → {}</dd></div></dl><p class=\"small-note\">Includes misses, overkill and the finishing cooldown. This is an expectation, not a safe supply minimum or kill-time prediction. Compare with your {}-cast / {}-projectile packing budgets; projectile recovery, ruby self-damage, movement, specials, regeneration and eating are excluded.</p>", budget.attacks, budget.seconds, resource.window_label(), budget.entities, budget.start_hp, budget.stop_hp, s.saved.options.combat.spell_casts, s.saved.options.combat.ammo_shots)),
         Err(reason) => html.push_str(&format!("<p class=\"small-note\">{}</p>", esc(&reason))),
     }
     html.push_str("</details>");
@@ -4944,38 +4962,81 @@ fn simulation_panel(s: &State, p: &Plan) -> String {
     }
     html.push_str(&format!("<details id=\"gameplay-calibration\" class=\"gameplay-calibration\" {}><summary>Compare with recorded gameplay</summary><p>No matched gameplay recordings are checked in for this encounter. Public mechanics references and synthetic tests do not validate fight duration, consumption or survival.</p><p>Run a scenario, download its gameplay worksheet, and annotate recordings with the same stats, equipment, supplies and solo rules. Keep later attempts separate as holdouts. Unknown quantities can stay blank.</p><p><a class=\"text-button\" href=\"https://github.com/nathansbradshaw/ironbound/blob/main/docs/gameplay-calibration.md\" target=\"_blank\" rel=\"noopener\">Recording guide and worksheet format ↗</a></p><label>Recorded gameplay worksheet<input id=\"calibration-file\" type=\"file\" accept=\".json,application/json\"></label><p class=\"small-note\">Read locally for this session. This does not upload recordings, save evidence in your account, or change scenario defaults. Download the comparison to keep it.</p>",if s.calibration_open {"open"}else{""}));
     html.push_str("<ul>");
-    for note in crate::calibration::capture_notes(encounter) {html.push_str(&format!("<li>{}</li>",esc(note)));}
+    for note in crate::calibration::capture_notes(encounter) {
+        html.push_str(&format!("<li>{}</li>", esc(note)));
+    }
     html.push_str("</ul>");
-    if let Some((key,result))=&s.calibration_result {
-        if *key!=simulation_key(s,p) {
+    if let Some((key, result)) = &s.calibration_result {
+        if *key != simulation_key(s, p) {
             html.push_str("<p role=\"status\">Setup or assumptions changed. Restore the worksheet setup and compare again.</p>");
-        } else {match result {
-            Err(reason)=>html.push_str(&format!("<p role=\"status\">Gameplay comparison unavailable: {}</p>",esc(reason))),
-            Ok(report)=>{
-                html.push_str(&format!("<div aria-live=\"polite\"><h3>Gameplay comparison</h3><p>{}. {} accepted attempts; {} skipped.</p>",esc(&report.status),report.accepted,report.skipped.len()));
-                for (id,reason) in &report.skipped {html.push_str(&format!("<p>{}: {}</p>",esc(id),esc(reason)));}
-                for row in &report.completion {
-                    let uncertainty=row.wilson_95.map(|(lo,hi)|format!(" Observed completion 95% interval: {:.1}–{:.1}%.",lo*100.0,hi*100.0)).unwrap_or_default();
-                    html.push_str(&format!("<p>{:?}: {} / {} completed; {} deaths, {} teleports, {} timeouts. Model completion: {:.1}%.{uncertainty}</p>",row.split,row.completed,row.attempts,row.deaths,row.teleports,row.timeouts,row.predicted_rate*100.0));
-                }
-                if !report.summaries.is_empty() {
-                    html.push_str("<table class=\"wiki-table\"><thead><tr><th>Metric / split</th><th>Attempts</th><th>Mean bias / absolute error</th><th>10–90% interval coverage</th></tr></thead><tbody>");
-                    for row in &report.summaries {html.push_str(&format!("<tr><th>{} · {:?}</th><td>{}</td><td>{:.1} / {:.1}</td><td>{:.0}%</td></tr>",esc(&crate::calibration::metric_label(&row.metric)),row.split,row.samples,row.mean_error,row.mean_absolute_error,row.interval_coverage*100.0));}
-                    html.push_str("</tbody></table><p class=\"small-note\">Positive bias means the model predicts more than observed. Timing uses ticks. Consumption uses the worksheet's named units. Only completed attempts enter this table.</p>");
-                }
-                if !report.proposals.is_empty() {
-                    html.push_str("<h4>Training-only suggestions</h4><p>These use directly measured controls. Check the recording, then use new holdout attempts after changing settings.</p><ul>");
-                    for row in &report.proposals {
-                        let fields=s.saved.options.simulation.fields();
-                        let label=fields.iter().find(|f|f.0==row.setting).map(|f|f.1).unwrap_or(&row.setting);
-                        html.push_str(&format!("<li>{}: {:.1} (current {}; {} run(s), {} measurements; {})</li>",esc(label),row.proposed,row.current,row.training_runs,row.measurements,if row.within_bounds {"within allowed bounds"} else {"outside allowed bounds; investigate model mismatch"}));
+        } else {
+            match result {
+                Err(reason) => html.push_str(&format!(
+                    "<p role=\"status\">Gameplay comparison unavailable: {}</p>",
+                    esc(reason)
+                )),
+                Ok(report) => {
+                    html.push_str(&format!("<div aria-live=\"polite\"><h3>Gameplay comparison</h3><p>{}. {} accepted attempts; {} skipped.</p>",esc(&report.status),report.accepted,report.skipped.len()));
+                    for (id, reason) in &report.skipped {
+                        html.push_str(&format!("<p>{}: {}</p>", esc(id), esc(reason)));
                     }
-                    html.push_str("</ul>");
+                    for row in &report.completion {
+                        let uncertainty = row
+                            .wilson_95
+                            .map(|(lo, hi)| {
+                                format!(
+                                    " Observed completion 95% interval: {:.1}–{:.1}%.",
+                                    lo * 100.0,
+                                    hi * 100.0
+                                )
+                            })
+                            .unwrap_or_default();
+                        html.push_str(&format!("<p>{:?}: {} / {} completed; {} deaths, {} teleports, {} timeouts. Model completion: {:.1}%.{uncertainty}</p>",row.split,row.completed,row.attempts,row.deaths,row.teleports,row.timeouts,row.predicted_rate*100.0));
+                    }
+                    if !report.summaries.is_empty() {
+                        html.push_str("<table class=\"wiki-table\"><thead><tr><th>Metric / split</th><th>Attempts</th><th>Mean bias / absolute error</th><th>10–90% interval coverage</th></tr></thead><tbody>");
+                        for row in &report.summaries {
+                            html.push_str(&format!("<tr><th>{} · {:?}</th><td>{}</td><td>{:.1} / {:.1}</td><td>{:.0}%</td></tr>",esc(&crate::calibration::metric_label(&row.metric)),row.split,row.samples,row.mean_error,row.mean_absolute_error,row.interval_coverage*100.0));
+                        }
+                        html.push_str("</tbody></table><p class=\"small-note\">Positive bias means the model predicts more than observed. Timing uses ticks. Consumption uses the worksheet's named units. Only completed attempts enter this table.</p>");
+                    }
+                    if !report.proposals.is_empty() {
+                        html.push_str("<h4>Training-only suggestions</h4><p>These use directly measured controls. Check the recording, then use new holdout attempts after changing settings.</p><ul>");
+                        for row in &report.proposals {
+                            let fields = s.saved.options.simulation.fields();
+                            let label = fields
+                                .iter()
+                                .find(|f| f.0 == row.setting)
+                                .map(|f| f.1)
+                                .unwrap_or(&row.setting);
+                            html.push_str(&format!(
+                                "<li>{}: {:.1} (current {}; {} run(s), {} measurements; {})</li>",
+                                esc(label),
+                                row.proposed,
+                                row.current,
+                                row.training_runs,
+                                row.measurements,
+                                if row.within_bounds {
+                                    "within allowed bounds"
+                                } else {
+                                    "outside allowed bounds; investigate model mismatch"
+                                }
+                            ));
+                        }
+                        html.push_str("</ul>");
+                    }
+                    html.push_str(&format!(
+                        "<p class=\"small-note\">{}</p></div>",
+                        esc(crate::calibration::LIMITATION)
+                    ));
+                    html.push_str(&button(
+                        "download-calibration",
+                        "Download gameplay comparison",
+                        "text-button",
+                    ));
                 }
-                html.push_str(&format!("<p class=\"small-note\">{}</p></div>",esc(crate::calibration::LIMITATION)));
-                html.push_str(&button("download-calibration","Download gameplay comparison","text-button"));
             }
-        }}
+        }
     }
     html.push_str("</details></details></section>");
     html

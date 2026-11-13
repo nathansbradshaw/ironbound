@@ -513,7 +513,7 @@ fn complete_moon_sets_compete_against_stronger_individual_armour() {
 #[test]
 fn frostweaver_applies_debuffs_and_acid_reduction_once_to_each_style() {
     let s = blue();
-    for id in [2215, 100020] {
+    for id in [2215, 100020, 319] {
         let mut settings = Settings {
             blue_moon_melee: "Stab".into(),
             ..Default::default()
@@ -552,6 +552,31 @@ fn frostweaver_applies_debuffs_and_acid_reduction_once_to_each_style() {
         close(on.dps, off.dps + off.accuracy * 0.5 * melee.dps);
         assert_eq!(on.max_hit, off.max_hit + melee.max_hit);
     }
+}
+
+#[test]
+fn frostweaver_does_not_block_magic_or_add_melee_damage_when_the_spear_cannot_reach() {
+    let s = blue();
+    let target = planner::monster(2042).unwrap();
+    let settings = Settings {
+        blue_moon_melee: "Stab".into(),
+        ..Default::default()
+    };
+    let on =
+        combat::calculate_configured(&member(), &s, "Magic", target, "Undead Grasp", 0, &settings)
+            .unwrap();
+    let off = combat::calculate_configured(
+        &member(),
+        &s,
+        "Magic",
+        target,
+        "Undead Grasp",
+        0,
+        &Settings::default(),
+    )
+    .unwrap();
+    close(on.dps, off.dps);
+    assert_eq!(on.max_hit, off.max_hit);
 }
 
 #[test]

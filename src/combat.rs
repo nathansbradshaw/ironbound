@@ -754,15 +754,18 @@ pub fn calculate_configured(
     if rule.has(Effect::ObsidianWeapon) && rules::equipped_effect(set, "berserker_necklace") {
         damage_factor = [6, 5];
     }
+    let frostweaver = style == "Magic"
+        && rules::set_effect(set, "blue_moon")
+        && settings.blue_moon_melee != "Off"
+        && rules::spells()
+            .iter()
+            .any(|r| r.name == spell && r.frostweaver_percent > 0)
+        && !hit_rule.is_some_and(|r| !r.allowed_styles.iter().any(|s| s == "Melee"))
+        && crate::monster_rules::check_weapon(monster.id, "Melee", weapon).is_ok();
     let per_splat_npc = rule.has(Effect::TwinHits)
         || rule.has(Effect::Macuahuitl)
         || rule.has(Effect::Scythe)
-        || style == "Magic"
-            && rules::set_effect(set, "blue_moon")
-            && settings.blue_moon_melee != "Off"
-            && rules::spells()
-                .iter()
-                .any(|r| r.name == spell && r.frostweaver_percent > 0)
+        || frostweaver
         || style == "Ranged" && rules::set_effect(set, "karil_damned");
     let hit_effects = crate::effects::SetHitEffects {
         npc_transform: if per_splat_npc {
@@ -967,11 +970,7 @@ pub fn calculate_configured(
         hits = vec![(max_hit, 1.0)];
     }
     let mut combined_final_damage = false;
-    if style == "Magic"
-        && rules::set_effect(set, "blue_moon")
-        && settings.blue_moon_melee != "Off"
-        && !hit_rule.is_some_and(|r| !r.allowed_styles.iter().any(|s| s == "Melee"))
-    {
+    if frostweaver {
         let chance = rules::spells()
             .iter()
             .find(|r| r.name == spell)

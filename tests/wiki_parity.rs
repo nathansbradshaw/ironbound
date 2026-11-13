@@ -9,7 +9,7 @@ use ironbound::{
 fn independently_sourced_wiki_golden_cases() {
     let suite: ironbound::validation::ReferenceSuite =
         serde_json::from_str(include_str!("fixtures/wiki-reference.json")).unwrap();
-    assert_eq!(suite.cases.len(), 17);
+    assert_eq!(suite.cases.len(), 24);
     let errors: Vec<_> = suite
         .cases
         .iter()

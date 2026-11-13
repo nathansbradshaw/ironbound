@@ -14,6 +14,8 @@ pub struct ReferenceSuite {
 #[derive(Deserialize)]
 pub struct ReferenceCase {
     pub name: String,
+    #[serde(default)]
+    pub reference_revision: Option<String>,
     pub level: u32,
     #[serde(default)]
     pub levels: BTreeMap<String, u32>,
@@ -29,6 +31,12 @@ pub struct ReferenceCase {
     pub kandarin_diary: bool,
     #[serde(default)]
     pub slayer_task: bool,
+    #[serde(default)]
+    pub loaded_dart: Option<i32>,
+    #[serde(default)]
+    pub boosts: crate::modifiers::Boosts,
+    #[serde(default)]
+    pub reductions: crate::modifiers::Reductions,
     #[serde(default)]
     pub attack_roll: Option<i64>,
     #[serde(default)]
@@ -54,6 +62,13 @@ impl ReferenceCase {
             set[*slot] = Some(*id);
         }
         let mut settings = defence::Settings::default();
+        settings.loaded_dart = self.loaded_dart;
+        settings.boosts = self.boosts.clone();
+        if !self.reductions.is_empty() {
+            settings
+                .reductions
+                .insert(self.target.unwrap_or(1673), self.reductions.clone());
+        }
         settings.kandarin_diary = self.kandarin_diary;
         if self.slayer_task {
             settings.slayer_targets.insert(self.target.unwrap_or(1673));

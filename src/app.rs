@@ -5,7 +5,10 @@ use crate::{
     reference, share,
 };
 use serde::{Deserialize, Serialize};
-use std::{cell::RefCell, collections::BTreeMap};
+use std::{
+    cell::{Cell, RefCell},
+    collections::BTreeMap,
+};
 use wasm_bindgen::{JsCast, prelude::*};
 use wasm_bindgen_futures::{JsFuture, spawn_local};
 use web_sys::{Element, HtmlInputElement, HtmlSelectElement, HtmlTextAreaElement};
@@ -44,6 +47,7 @@ struct State {
     building_group: bool,
     raid_rooms_open: bool,
     switch_preferences_open: bool,
+    combat_options_open: bool,
     ranking_draft: Option<crate::ranking::Preferences>,
 }
 impl State {
@@ -127,6 +131,7 @@ impl State {
             building_group: false,
             raid_rooms_open: false,
             switch_preferences_open: false,
+            combat_options_open: false,
             ranking_draft: None,
             saved,
             tab: "bossing".into(),
@@ -209,6 +214,141 @@ fn goal_key(account: &str, options: &Options) -> String {
     format!("{account}:{encounter}")
 }
 thread_local! {static STATE:RefCell<State>=RefCell::new(State::initial());}
+thread_local! {static LIVE_EDIT:Cell<u64>=const {Cell::new(0)};}
+
+fn live_number(id: &str) -> bool {
+    [
+        "max-switches",
+        "switch-slots",
+        "food",
+        "potions",
+        "raid-level",
+    ]
+    .contains(&id)
+        || id.starts_with("priority-")
+        || id.starts_with("skill-")
+        || id.starts_with("reduction-")
+}
+fn apply_number(s: &mut State, id: &str, value: &str) -> bool {
+    if s.shared_setup.is_some() && !id.starts_with("skill-") {
+        return false;
+    }
+    let target_id = comparison_monster(s).map(|m| m.id);
+    let o = &mut s.saved.options;
+    if id == "max-switches" && value.trim().is_empty() {
+        o.max_switches = None;
+        o.fewer_switches = false;
+        o.inventory_overrides.clear();
+        o.inventory_quantities.clear();
+        s.export_text = None;
+        return true;
+    }
+    let Ok(n) = value.parse::<u32>() else {
+        return false;
+    };
+    match id {
+        "max-switches" => {
+            o.max_switches = Some((n as usize).min(11));
+            o.fewer_switches = false;
+            o.inventory_overrides.clear();
+            o.inventory_quantities.clear();
+        }
+        "switch-slots" => o.switch_slots = (n as usize).min(20),
+        "food" => {
+            o.food = (n as usize).min(20);
+            o.inventory_overrides.clear();
+            o.inventory_quantities.clear();
+        }
+        "potions" => {
+            o.prayer_potions = (n as usize).min(12);
+            o.inventory_overrides.clear();
+            o.inventory_quantities.clear();
+        }
+        "raid-level" => o.raid_level = n.min(150),
+        _ if id.starts_with("reduction-") => {
+            let Some(target) = target_id else {
+                return false;
+            };
+            let r = o.combat.reductions.entry(target).or_default();
+            match &id[10..] {
+                "dwh" => r.dwh = n.min(20),
+                "elder_maul" => r.elder_maul = n.min(20),
+                "arclight" => r.arclight = n.min(20),
+                "emberlight" => r.emberlight = n.min(20),
+                "tonalztic" => r.tonalztic = n.min(20),
+                "bgs" => r.bgs = n.min(10_000),
+                "seercull" => r.seercull = n.min(10_000),
+                "ayak" => r.ayak = n.min(10_000),
+                _ => return false,
+            }
+            if r.is_empty() {
+                o.combat.reductions.remove(&target);
+            }
+        }
+        _ if id.starts_with("priority-") => {
+            let Ok(target) = id[9..].parse::<i32>() else {
+                return false;
+            };
+            if !encounter_targets(s).contains(&target) {
+                return false;
+            }
+            s.saved.options.phase_priorities.insert(target, n.min(10));
+        }
+        _ if id.starts_with("skill-") => {
+            let Ok(index) = id[6..].parse::<usize>() else {
+                return false;
+            };
+            if index >= 24 || !(1..=99).contains(&n) {
+                return false;
+            }
+            let selected = s.saved.snapshot.selected.clone();
+            if let Some(m) = s
+                .saved
+                .snapshot
+                .members
+                .iter_mut()
+                .find(|m| m.name == selected)
+            {
+                m.level_overrides.insert(SKILLS[index].into(), n);
+            }
+        }
+        _ => return false,
+    }
+    s.export_text = None;
+    true
+}
+/// Recalculate after a short typing pause; never require blur or steal focus.
+fn schedule_number_render(id: String) {
+    let revision = LIVE_EDIT.with(|value| {
+        let next = value.get().wrapping_add(1);
+        value.set(next);
+        next
+    });
+    let callback = Closure::once_into_js(move || {
+        if LIVE_EDIT.with(|value| value.get() != revision) {
+            return;
+        }
+        let active = document().active_element();
+        if active.as_ref().is_some_and(|e| {
+            ["INPUT", "TEXTAREA", "SELECT"].contains(&e.tag_name().as_str()) && e.id() != id
+        }) {
+            return;
+        }
+        let restore = active.is_some_and(|e| e.id() == id);
+        STATE.with(|state| state.borrow().persist());
+        render();
+        if restore {
+            if let Some(field) = document()
+                .get_element_by_id(&id)
+                .and_then(|e| e.dyn_into::<web_sys::HtmlElement>().ok())
+            {
+                let _ = field.focus();
+            }
+        }
+    });
+    let _ = window()
+        .set_timeout_with_callback_and_timeout_and_arguments_0(callback.unchecked_ref(), 250);
+}
 fn window() -> web_sys::Window {
     web_sys::window().unwrap()
 }
@@ -320,6 +460,12 @@ pub fn start() -> Result<(), JsValue> {
                         results.set_inner_html(&gear_choices(&s));
                     }
                 });
+            } else if live_number(&el.id()) {
+                let changed = STATE
+                    .with(|state| apply_number(&mut state.borrow_mut(), &el.id(), &el.value()));
+                if changed {
+                    schedule_number_render(el.id());
+                }
             }
         }
     });
@@ -332,6 +478,10 @@ pub fn start() -> Result<(), JsValue> {
             } else if el.id() == "switch-preferences" {
                 STATE.with(|state| {
                     state.borrow_mut().switch_preferences_open = el.has_attribute("open")
+                });
+            } else if el.id() == "combat-assumptions" {
+                STATE.with(|state| {
+                    state.borrow_mut().combat_options_open = el.has_attribute("open")
                 });
             }
         }
@@ -485,6 +635,15 @@ pub fn start() -> Result<(), JsValue> {
             "preserve",
             "mark-darkness",
             "ranged-stance",
+            "loaded-dart",
+            "loaded-ammo-confirmed",
+            "boost-melee",
+            "boost-ranged",
+            "boost-magic",
+            "boost-defence",
+            "boost-encounter",
+            "reduction-accursed",
+            "reduction-vulnerability",
             "kandarin-diary",
             "slayer-task",
             "safety",
@@ -504,39 +663,262 @@ pub fn start() -> Result<(), JsValue> {
             && !id.starts_with("gear-")
             && !id.starts_with("quest-")
             && !id.starts_with("priority-")
+            && !id.starts_with("reduction-")
         {
             return;
         }
-        STATE.with(|state|{let mut s=state.borrow_mut();if s.shared_setup.is_some() && !id.starts_with("skill-"){s.notice("Choose Rebuild using my items before editing this shared setup.",true);return;}match id.as_str(){
-            "inventory-filter"=>{if let Ok(sel)=el.dyn_into::<HtmlSelectElement>(){s.inventory_filter=sel.value();}},
-            _ if id.starts_with("priority-")=>{if let(Ok(target),Ok(weight))=(id[9..].parse::<i32>(),input(&id).parse::<u32>()){if encounter_targets(&s).contains(&target){s.saved.options.phase_priorities.insert(target,weight.min(10));}}},
-            "incoming-attack"=>{if let Ok(sel)=el.dyn_into::<HtmlSelectElement>(){s.incoming_attack=Some(sel.value());}},
-            "protection"=>{if let Ok(sel)=el.dyn_into::<HtmlSelectElement>(){let value=sel.value();if ["None","Melee","Ranged","Magic"].contains(&value.as_str()){s.saved.options.combat.protection=value;}}},
-            "offensive-prayer"=>{if let Ok(sel)=el.dyn_into::<HtmlSelectElement>(){let value=sel.value();if crate::prayer::prayers().iter().any(|p|p.name==value){s.saved.options.combat.offensive=value;}}},
-            "preserve"=>s.saved.options.combat.preserve=el.dyn_ref::<HtmlInputElement>().is_some_and(|e|e.checked()),
-            "mark-darkness"=>s.saved.options.combat.mark_darkness=el.dyn_ref::<HtmlInputElement>().is_some_and(|e|e.checked()),
-            "ranged-stance"=>{if let Ok(sel)=el.dyn_into::<HtmlSelectElement>(){let value=sel.value();if ["Rapid","Accurate"].contains(&value.as_str()){s.saved.options.combat.ranged_stance=value;}}},
-            "kandarin-diary"=>s.saved.options.combat.kandarin_diary=el.dyn_ref::<HtmlInputElement>().is_some_and(|e|e.checked()),
-            "slayer-task"=>{if let Some(id)=comparison_monster(&s).map(|m|m.id){if el.dyn_ref::<HtmlInputElement>().is_some_and(|e|e.checked()){s.saved.options.combat.slayer_targets.insert(id);}else{s.saved.options.combat.slayer_targets.remove(&id);}}},
-            "safety"=>{if let Ok(sel)=el.dyn_into::<HtmlSelectElement>(){s.saved.options.combat.safety=sel.value().parse::<u32>().unwrap_or(1).min(3);}},
-            "prayer-weight"=>{if let Ok(sel)=el.dyn_into::<HtmlSelectElement>(){s.saved.options.combat.prayer_weight=sel.value().parse::<u32>().unwrap_or(0).min(3);}},
-            "max-switches"=>{if let Ok(control)=el.dyn_into::<HtmlInputElement>(){let value=control.value();let limit=if value.trim().is_empty(){None}else if let Ok(n)=value.parse::<usize>(){Some(n.min(11))}else{return;};s.saved.options.max_switches=limit;s.saved.options.fewer_switches=false;s.saved.options.inventory_overrides.clear();s.saved.options.inventory_quantities.clear();}},
-            "switch-slots"=>{s.saved.options.switch_slots=input("switch-slots").parse::<usize>().unwrap_or(12).min(20);},
-            "focus-style"=>{if let Ok(sel)=el.dyn_into::<HtmlSelectElement>(){let value=sel.value();if value=="Balanced"||crate::rules::STYLES.contains(&value.as_str()){s.saved.options.focus_style=value;}}},
-            "compare-target"=>{if let Ok(sel)=el.dyn_into::<HtmlSelectElement>(){s.compare_target=sel.value().parse().ok();s.incoming_attack=None;if s.saved.options.boss==Boss::Custom {if let Some(target)=s.saved.options.targets.iter().find(|t|Some(t.id)==s.compare_target){s.edit_style=Some(target.style.clone());}}}},
-            _ if id.starts_with("quest-")=>{if let (Ok(i),Ok(sel))=(id[6..].parse::<usize>(),el.dyn_into::<HtmlSelectElement>()){if let Some(quest)=planner::GEAR_QUESTS.get(i){let selected=s.saved.snapshot.selected.clone();if let Some(m)=s.saved.snapshot.members.iter_mut().find(|m|m.name==selected){match sel.value().as_str(){"yes"=>{m.quest_overrides.insert((*quest).into(),2);},"no"=>{m.quest_overrides.insert((*quest).into(),1);},_=>{m.quest_overrides.remove(*quest);}}}}}},
-            "member"=>{if let Ok(select)=el.dyn_into::<HtmlSelectElement>(){s.saved.snapshot.selected=select.value();s.saved.options.access_override=None;s.saved.options.started_barrows=None;s.phase=None;}},
-            "shared"=>s.saved.options.shared=el.dyn_ref::<HtmlInputElement>().is_some_and(|e|e.checked()),
-            "fewer"=>s.saved.options.fewer_switches=el.dyn_ref::<HtmlInputElement>().is_some_and(|e|e.checked()),
-            "food"=>{s.saved.options.food=input("food").parse::<usize>().unwrap_or(8).min(20);s.saved.options.inventory_overrides.clear();s.saved.options.inventory_quantities.clear();},
-            "potions"=>{s.saved.options.prayer_potions=input("potions").parse::<usize>().unwrap_or(3).min(12);s.saved.options.inventory_overrides.clear();s.saved.options.inventory_quantities.clear();},
-            "raid-level"=>s.saved.options.raid_level=input("raid-level").parse::<u32>().unwrap_or(0).min(150),
-            "access"=>{if let Ok(select)=el.dyn_into::<HtmlSelectElement>(){s.saved.options.access_override=match select.value().as_str(){"yes"=>Some(true),"no"=>Some(false),_=>None};}},
-            "started"=>{if let Ok(select)=el.dyn_into::<HtmlSelectElement>(){s.saved.options.started_barrows=match select.value().as_str(){"yes"=>Some(true),"no"=>Some(false),_=>None};}},
-            _ if id.starts_with("gear-")=>{if let Ok(sel)=el.dyn_into::<HtmlSelectElement>(){if let Ok(value)=sel.value().parse::<i32>(){s.saved.options.gear_overrides.insert(id[5..].into(),value);s.saved.options.inventory_overrides.clear();}}},
-            _ if id.starts_with("skill-")=>{if let (Ok(index),Ok(level))=(id[6..].parse::<usize>(),input(&id).parse::<u32>()){if index<24&&(1..=99).contains(&level){let selected=s.saved.snapshot.selected.clone();if let Some(m)=s.saved.snapshot.members.iter_mut().find(|m|m.name==selected){m.level_overrides.insert(SKILLS[index].into(),level);s.notice("Skill correction saved locally. Public skill lookup replaces local corrections.",false);}}}},
-            _=>return,
-        }s.export_text=None;s.persist();});
+        STATE.with(|state| {
+            let mut s = state.borrow_mut();
+            if s.shared_setup.is_some() && !id.starts_with("skill-") {
+                s.notice(
+                    "Choose Rebuild using my items before editing this shared setup.",
+                    true,
+                );
+                return;
+            }
+            match id.as_str() {
+                "loaded-dart" => {
+                    if let Ok(sel) = el.dyn_into::<HtmlSelectElement>() {
+                        s.saved.options.combat.loaded_dart = sel
+                            .value()
+                            .parse::<i32>()
+                            .ok()
+                            .filter(|id| crate::rules::all_internal_ammo_ids().contains(id));
+                        s.saved.options.combat.loaded_ammo_confirmed = false;
+                    }
+                }
+                "loaded-ammo-confirmed" => {
+                    s.saved.options.combat.loaded_ammo_confirmed =
+                        s.saved.options.combat.loaded_dart.is_some()
+                            && el
+                                .dyn_ref::<HtmlInputElement>()
+                                .is_some_and(|e| e.checked())
+                }
+                _ if id.starts_with("boost-") => {
+                    if let Ok(sel) = el.dyn_into::<HtmlSelectElement>() {
+                        let value = sel.value();
+                        let channel = &id[6..];
+                        if value == "None"
+                            || crate::modifiers::boost_options(channel)
+                                .iter()
+                                .any(|b| b.id == value)
+                        {
+                            let b = &mut s.saved.options.combat.boosts;
+                            if channel == "magic" && value == "Forgotten brew" {
+                                b.melee = "None".into();
+                                b.defence = "None".into();
+                                b.encounter = "None".into();
+                            } else if ["melee", "defence", "encounter"].contains(&channel)
+                                && value != "None"
+                                && b.magic == "Forgotten brew"
+                            {
+                                b.magic = "None".into();
+                            }
+                            match channel {
+                                "melee" => b.melee = value,
+                                "ranged" => b.ranged = value,
+                                "magic" => b.magic = value,
+                                "defence" => b.defence = value,
+                                "encounter" => b.encounter = value,
+                                _ => {}
+                            }
+                        }
+                    }
+                }
+                "reduction-accursed" | "reduction-vulnerability" => {
+                    if let Some(target) = comparison_monster(&s).map(|m| m.id) {
+                        let checked = el
+                            .dyn_ref::<HtmlInputElement>()
+                            .is_some_and(|e| e.checked());
+                        let r = s.saved.options.combat.reductions.entry(target).or_default();
+                        if id == "reduction-accursed" {
+                            r.accursed = checked;
+                        } else {
+                            r.vulnerability = checked;
+                        }
+                        if r.is_empty() {
+                            s.saved.options.combat.reductions.remove(&target);
+                        }
+                    }
+                }
+                "inventory-filter" => {
+                    if let Ok(sel) = el.dyn_into::<HtmlSelectElement>() {
+                        s.inventory_filter = sel.value();
+                    }
+                }
+                _ if live_number(&id) => {
+                    apply_number(&mut s, &id, &input(&id));
+                }
+                "incoming-attack" => {
+                    if let Ok(sel) = el.dyn_into::<HtmlSelectElement>() {
+                        s.incoming_attack = Some(sel.value());
+                    }
+                }
+                "protection" => {
+                    if let Ok(sel) = el.dyn_into::<HtmlSelectElement>() {
+                        let value = sel.value();
+                        if ["None", "Melee", "Ranged", "Magic"].contains(&value.as_str()) {
+                            s.saved.options.combat.protection = value;
+                        }
+                    }
+                }
+                "offensive-prayer" => {
+                    if let Ok(sel) = el.dyn_into::<HtmlSelectElement>() {
+                        let value = sel.value();
+                        if crate::prayer::prayers().iter().any(|p| p.name == value) {
+                            s.saved.options.combat.offensive = value;
+                        }
+                    }
+                }
+                "preserve" => {
+                    s.saved.options.combat.preserve = el
+                        .dyn_ref::<HtmlInputElement>()
+                        .is_some_and(|e| e.checked())
+                }
+                "mark-darkness" => {
+                    s.saved.options.combat.mark_darkness = el
+                        .dyn_ref::<HtmlInputElement>()
+                        .is_some_and(|e| e.checked())
+                }
+                "ranged-stance" => {
+                    if let Ok(sel) = el.dyn_into::<HtmlSelectElement>() {
+                        let value = sel.value();
+                        if ["Rapid", "Accurate"].contains(&value.as_str()) {
+                            s.saved.options.combat.ranged_stance = value;
+                        }
+                    }
+                }
+                "kandarin-diary" => {
+                    s.saved.options.combat.kandarin_diary = el
+                        .dyn_ref::<HtmlInputElement>()
+                        .is_some_and(|e| e.checked())
+                }
+                "slayer-task" => {
+                    if let Some(id) = comparison_monster(&s).map(|m| m.id) {
+                        if el
+                            .dyn_ref::<HtmlInputElement>()
+                            .is_some_and(|e| e.checked())
+                        {
+                            s.saved.options.combat.slayer_targets.insert(id);
+                        } else {
+                            s.saved.options.combat.slayer_targets.remove(&id);
+                        }
+                    }
+                }
+                "safety" => {
+                    if let Ok(sel) = el.dyn_into::<HtmlSelectElement>() {
+                        s.saved.options.combat.safety =
+                            sel.value().parse::<u32>().unwrap_or(1).min(3);
+                    }
+                }
+                "prayer-weight" => {
+                    if let Ok(sel) = el.dyn_into::<HtmlSelectElement>() {
+                        s.saved.options.combat.prayer_weight =
+                            sel.value().parse::<u32>().unwrap_or(0).min(3);
+                    }
+                }
+                "focus-style" => {
+                    if let Ok(sel) = el.dyn_into::<HtmlSelectElement>() {
+                        let value = sel.value();
+                        if value == "Balanced" || crate::rules::STYLES.contains(&value.as_str()) {
+                            s.saved.options.focus_style = value;
+                        }
+                    }
+                }
+                "compare-target" => {
+                    if let Ok(sel) = el.dyn_into::<HtmlSelectElement>() {
+                        s.compare_target = sel.value().parse().ok();
+                        s.incoming_attack = None;
+                        if s.saved.options.boss == Boss::Custom {
+                            if let Some(target) = s
+                                .saved
+                                .options
+                                .targets
+                                .iter()
+                                .find(|t| Some(t.id) == s.compare_target)
+                            {
+                                s.edit_style = Some(target.style.clone());
+                            }
+                        }
+                    }
+                }
+                _ if id.starts_with("quest-") => {
+                    if let (Ok(i), Ok(sel)) =
+                        (id[6..].parse::<usize>(), el.dyn_into::<HtmlSelectElement>())
+                    {
+                        if let Some(quest) = planner::GEAR_QUESTS.get(i) {
+                            let selected = s.saved.snapshot.selected.clone();
+                            if let Some(m) = s
+                                .saved
+                                .snapshot
+                                .members
+                                .iter_mut()
+                                .find(|m| m.name == selected)
+                            {
+                                match sel.value().as_str() {
+                                    "yes" => {
+                                        m.quest_overrides.insert((*quest).into(), 2);
+                                    }
+                                    "no" => {
+                                        m.quest_overrides.insert((*quest).into(), 1);
+                                    }
+                                    _ => {
+                                        m.quest_overrides.remove(*quest);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                "member" => {
+                    if let Ok(select) = el.dyn_into::<HtmlSelectElement>() {
+                        s.saved.snapshot.selected = select.value();
+                        s.saved.options.access_override = None;
+                        s.saved.options.started_barrows = None;
+                        s.phase = None;
+                    }
+                }
+                "shared" => {
+                    s.saved.options.shared = el
+                        .dyn_ref::<HtmlInputElement>()
+                        .is_some_and(|e| e.checked())
+                }
+                "fewer" => {
+                    s.saved.options.fewer_switches = el
+                        .dyn_ref::<HtmlInputElement>()
+                        .is_some_and(|e| e.checked())
+                }
+                "access" => {
+                    if let Ok(select) = el.dyn_into::<HtmlSelectElement>() {
+                        s.saved.options.access_override = match select.value().as_str() {
+                            "yes" => Some(true),
+                            "no" => Some(false),
+                            _ => None,
+                        };
+                    }
+                }
+                "started" => {
+                    if let Ok(select) = el.dyn_into::<HtmlSelectElement>() {
+                        s.saved.options.started_barrows = match select.value().as_str() {
+                            "yes" => Some(true),
+                            "no" => Some(false),
+                            _ => None,
+                        };
+                    }
+                }
+                _ if id.starts_with("gear-") => {
+                    if let Ok(sel) = el.dyn_into::<HtmlSelectElement>() {
+                        if let Ok(value) = sel.value().parse::<i32>() {
+                            s.saved.options.gear_overrides.insert(id[5..].into(), value);
+                            s.saved.options.inventory_overrides.clear();
+                        }
+                    }
+                }
+                _ => return,
+            }
+            s.export_text = None;
+            s.persist();
+        });
         render();
     });
     document().add_event_listener_with_callback("change", change.as_ref().unchecked_ref())?;
@@ -678,7 +1060,7 @@ fn act(action: &str) {
                                 .is_ok();
                         notice(
                             if copied {
-                                "Setup link copied. Only encounter, equipped items and inventory are shared."
+                                "Setup link copied with carried items and combat settings. Your bank and levels stay private."
                             } else {
                                 "Copy the setup link shown below. Your bank remains private."
                             },
@@ -1030,6 +1412,17 @@ fn act(action: &str) {
                                     .is_some_and(|m| planner::can_use(id, m))))
                     {
                         let mut selected_style = parts[0].to_string();
+                        if slot == 3 {
+                            s.saved.options.combat.loaded_ammo_confirmed = false;
+                            if let Some(rule) = crate::rules::weapon(id) {
+                                if s.saved.options.combat.loaded_dart.is_some_and(|dart| {
+                                    !rule.family.internal_ammo.is_empty()
+                                        && !rule.family.internal_ammo.contains(&dart)
+                                }) {
+                                    s.saved.options.combat.loaded_dart = None;
+                                }
+                            }
+                        }
                         if slot == 3
                             && s.saved.options.boss == Boss::Custom
                             && s.saved.options.targets.len() == 1
@@ -2290,6 +2683,108 @@ fn sustain_panel(
     html.push_str("</section>");
     html
 }
+fn combat_assumptions(
+    s: &State,
+    p: &Plan,
+    m: &account::Member,
+    target: &planner::Monster,
+    set: &[Option<i32>],
+) -> String {
+    let settings = &s.saved.options.combat;
+    let mut html = format!(
+        "<details id=\"combat-assumptions\" {}><summary>Boosts, darts &amp; debuffs</summary><div class=\"sustain-controls\">",
+        if s.combat_options_open { "open" } else { "" }
+    );
+    for (channel, label, value) in [
+        ("melee", "Melee boost", &settings.boosts.melee),
+        ("ranged", "Ranged boost", &settings.boosts.ranged),
+        ("magic", "Magic boost", &settings.boosts.magic),
+        ("defence", "Defence boost", &settings.boosts.defence),
+        ("encounter", "Raid boost", &settings.boosts.encounter),
+    ] {
+        html.push_str(&format!(
+            "<label>{label}<select id=\"boost-{channel}\"><option {}>None</option>",
+            if value == "None" { "selected" } else { "" }
+        ));
+        for boost in crate::modifiers::boost_options(channel) {
+            html.push_str(&format!(
+                "<option value=\"{}\" {}>{}</option>",
+                esc(&boost.id),
+                if value == &boost.id { "selected" } else { "" },
+                esc(&boost.label)
+            ));
+        }
+        html.push_str("</select></label>");
+    }
+    let owned = s.saved.snapshot.available(s.saved.options.shared);
+    let internal = set[3]
+        .and_then(crate::rules::weapon)
+        .filter(|r| !r.family.internal_ammo.is_empty())
+        .map(|r| r.family.internal_ammo.clone());
+    if internal.is_some()
+        || owned
+            .keys()
+            .any(|id| crate::rules::weapon(*id).is_some_and(|r| !r.family.internal_ammo.is_empty()))
+    {
+        html.push_str("<label>Darts to load<select id=\"loaded-dart\"><option value=\"0\">Auto · best owned compatible darts</option>");
+        for id in internal.unwrap_or_else(crate::rules::all_internal_ammo_ids) {
+            html.push_str(&format!(
+                "<option value=\"{id}\" {}>{} · {} owned</option>",
+                if settings.loaded_dart == Some(id) {
+                    "selected"
+                } else {
+                    ""
+                },
+                esc(&planner::item_name(id)),
+                owned.get(&id).copied().unwrap_or(0)
+            ));
+        }
+        html.push_str(&format!("</select></label><label><input id=\"loaded-ammo-confirmed\" type=\"checkbox\" {} {}> Already loaded: at least 100 darts</label>",if settings.loaded_ammo_confirmed{"checked"}else{""},if settings.loaded_dart.is_none(){"disabled"}else{""}));
+        if let Some(ammo) = &p.loaded_ammo {
+            html.push_str(&format!("<p class=\"small-note\">Load {} × {} inside the weapon. Check charges; darts occupy no worn ammo or bag slot.</p>",esc(&planner::item_name(ammo.id)),ammo.quantity));
+        }
+    }
+    html.push_str(
+        "</div><details><summary>Current levels</summary><table class=\"bonus-table\"><tbody>",
+    );
+    for skill in ["Attack", "Strength", "Defence", "Ranged", "Magic"] {
+        if let Some(level) = crate::modifiers::level(m, skill, &settings.boosts) {
+            html.push_str(&format!(
+                "<tr><th>{skill}</th><td>{} → {level}</td></tr>",
+                m.level(skill).unwrap_or(0)
+            ));
+        }
+    }
+    html.push_str(&format!("</tbody></table></details><p class=\"small-note\">Reductions against {} · successful hits or damage already dealt</p><div class=\"sustain-controls\">",esc(&target.name)));
+    let r = settings
+        .reductions
+        .get(&target.id)
+        .cloned()
+        .unwrap_or_default();
+    for (id, label, value) in [
+        ("elder_maul", "Elder maul hits", r.elder_maul),
+        ("dwh", "Dragon warhammer hits", r.dwh),
+        ("arclight", "Arclight hits", r.arclight),
+        ("emberlight", "Emberlight hits", r.emberlight),
+        ("tonalztic", "Tonalztic hits", r.tonalztic),
+        ("seercull", "Seercull damage", r.seercull),
+        ("bgs", "BGS damage", r.bgs),
+        ("ayak", "Ayak defence drain", r.ayak),
+    ] {
+        html.push_str(&format!("<label>{label}<input id=\"reduction-{id}\" type=\"number\" min=\"0\" max=\"{}\" step=\"1\" value=\"{value}\"></label>",if ["bgs","seercull","ayak"].contains(&id){10000}else{20}));
+    }
+    for (id, label, checked) in [
+        ("accursed", "Accursed sceptre landed", r.accursed),
+        ("vulnerability", "Vulnerability active", r.vulnerability),
+    ] {
+        html.push_str(&format!(
+            "<label><input id=\"reduction-{id}\" type=\"checkbox\" {}> {label}</label>",
+            if checked { "checked" } else { "" }
+        ));
+    }
+    html.push_str("</div><p class=\"small-note\">Peak active boosts and successful reductions are assumptions. No decay, drinking delay, venom or special-attack damage. Accursed takes priority over Vulnerability. Wear requirements use base levels.</p></details>");
+    html
+}
 fn combat_panel(s: &State, p: &Plan) -> String {
     if s.shared_setup.is_some() {
         return String::new();
@@ -2323,6 +2818,13 @@ fn combat_panel(s: &State, p: &Plan) -> String {
     }
     html.push_str("</select></label>");
     if let (Some(m), Some(target)) = (s.saved.snapshot.selected(), comparison_monster(s)) {
+        let mut stock = s.saved.snapshot.available(s.saved.options.shared);
+        for id in &s.saved.options.excluded {
+            stock.remove(id);
+        }
+        let stock_member = planner::member_with_stock(m, &stock);
+        let m = &stock_member;
+        html.push_str(&combat_assumptions(s, p, m, target, &set));
         if crate::encounters::slayer_eligible(target.id) {
             html.push_str(&format!("<label><input id=\"slayer-task\" type=\"checkbox\" {}> This target is my Slayer task</label>", if s.saved.options.combat.slayer_targets.contains(&target.id) { "checked" } else { "" }));
         }
@@ -2400,7 +2902,7 @@ fn combat_panel(s: &State, p: &Plan) -> String {
         "<tr><th>Magic damage</th><td>{:.1}%</td></tr>",
         bonus.other.get("magic_str").copied().unwrap_or(0) as f64 / 10.0
     ));
-    html.push_str("</tbody></table></details><details><summary>DPS assumptions</summary><p class=\"small-note\">Unboosted levels with the selected stat prayer; no specials or recoil. ToA assumes solo, path level 0, raid levels 0–150. Bolt effects use full target HP and the selected Kandarin diary setting. Outgoing DPS covers uninterrupted attacks while vulnerable. Incoming scenarios are separate and their coverage notes apply. Movement, special-phase uptime, curses and eating are not a full encounter simulation. Unsupported mechanics show no DPS.</p></details></div></section>");
+    html.push_str("</tbody></table></details><details><summary>DPS assumptions</summary><p class=\"small-note\">Selected current-level boosts and stat prayer; no boost decay, special-attack damage, venom or recoil. ToA assumes solo, path level 0, raid levels 0–150. Bolt effects use full target HP and the selected Kandarin diary setting. Outgoing DPS covers uninterrupted attacks while vulnerable. Incoming scenarios are separate and their coverage notes apply. Movement, special-phase uptime, curses and eating are not a full encounter simulation. Unsupported mechanics show no DPS.</p></details></div></section>");
     html
 }
 fn tier_table(s: &State) -> String {
@@ -2825,7 +3327,12 @@ fn ranked_gear(s: &State) -> (Vec<GearChoice>, Vec<&'static str>) {
                         &trial,
                         trial_style,
                         target,
-                        crate::rules::spell_name(member, &trial, &owned),
+                        crate::rules::spell_name_configured(
+                            member,
+                            &trial,
+                            &owned,
+                            &s.saved.options.combat,
+                        ),
                         s.saved.options.raid_level,
                         &s.saved.options.combat,
                     )

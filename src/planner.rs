@@ -272,6 +272,7 @@ pub struct Check {
 }
 #[derive(Clone, Debug)]
 pub struct Plan {
+    pub loaded_ammo: Option<Packed>,
     pub optimization: Option<crate::optimization::Report>,
     pub equipment: Vec<Option<i32>>,
     pub inventory: Vec<Packed>,
@@ -547,6 +548,20 @@ pub fn owned_tiers(
         })
         .collect()
 }
+/// Calculations see the same available stock as the planner, including shared
+/// items and exclusions. This transient copy never leaves the local process.
+pub(crate) fn member_with_stock(m: &Member, owned: &BTreeMap<i32, u32>) -> Member {
+    let mut member = m.clone();
+    member.bank = Some(
+        owned
+            .iter()
+            .flat_map(|(id, q)| [i64::from(*id), i64::from(*q)])
+            .collect(),
+    );
+    member.inventory = None;
+    member.equipment = None;
+    member
+}
 pub fn equipment_for_style(
     snapshot: &Snapshot,
     options: &Options,
@@ -555,10 +570,12 @@ pub fn equipment_for_style(
     let Some(m) = snapshot.selected() else {
         return vec![None; 14];
     };
-    let mut owned = snapshot.available(false);
+    let mut owned = snapshot.available(options.shared);
     for id in &options.excluded {
         owned.remove(id);
     }
+    let stock_member = member_with_stock(m, &owned);
+    let m = &stock_member;
     let mut set = style_set(style, options.boss, m, &owned, equipment(), options);
     if options.fewer_switches && style != primary_style(options) {
         let primary = style_set(
@@ -611,6 +628,8 @@ pub fn recommend_encounter(
     }
     let mut owned = snapshot.available(options.shared);
     owned.retain(|id, _| !options.excluded.contains(id));
+    let stock_member = member_with_stock(member, &owned);
+    let member = &stock_member;
     let mut best = None::<(f64, String)>;
     for style in crate::rules::STYLES {
         if !profile
@@ -816,7 +835,7 @@ fn refine_dps(
                         set,
                         style,
                         target,
-                        crate::rules::spell_name(m, set, owned),
+                        crate::rules::spell_name_configured(m, set, owned, &options.combat),
                         options.raid_level,
                         &options.combat,
                     )
@@ -835,7 +854,9 @@ fn refine_dps(
         let chosen = choose(&trials);
         *set = trials[chosen].clone();
     }
-    let spell = |set: &Vec<Option<i32>>| crate::rules::spell_name(m, set, owned);
+    let spell = |set: &Vec<Option<i32>>| {
+        crate::rules::spell_name_configured(m, set, owned, &options.combat)
+    };
     let metric = |set: &Vec<Option<i32>>| {
         let dps = crate::combat::calculate_configured(
             m,
@@ -936,11 +957,12 @@ fn refine_dps(
                 };
                 for a in ammo {
                     trial[13] = a;
-                    if !crate::rules::casting_supported(
+                    if !crate::rules::casting_supported_configured(
                         m,
                         &trial,
                         owned,
                         crate::rules::DEFAULT_CASTS,
+                        &options.combat,
                     ) {
                         continue;
                     }
@@ -1138,6 +1160,7 @@ fn pack_profile_supplies(
 }
 fn plan_uncached(snapshot: &Snapshot, options: &Options) -> Plan {
     let mut out = Plan {
+        loaded_ammo: None,
         optimization: None,
         equipment: vec![None; 14],
         inventory: vec![],
@@ -1169,6 +1192,8 @@ fn plan_uncached(snapshot: &Snapshot, options: &Options) -> Plan {
         owned.remove(id);
     }
     let catalog = equipment();
+    let stock_member = member_with_stock(m, &owned);
+    let m = &stock_member;
     let profile = crate::guidance::profile(options);
     out.owned = owned.len();
     out.supported = owned
@@ -1243,7 +1268,10 @@ fn plan_uncached(snapshot: &Snapshot, options: &Options) -> Plan {
     if needs_ranged && ranged[3].is_none() {
         out.missing.push("A supported ranged weapon".into());
     }
-    if needs_ranged && ranged[13].is_none() {
+    if needs_ranged
+        && ranged[3].is_some_and(|id| !crate::rules::ammo_ids(id).is_empty())
+        && ranged[13].is_none()
+    {
         out.missing
             .push("At least 100 compatible bolts or arrows".into());
     }
@@ -1477,7 +1505,7 @@ fn plan_uncached(snapshot: &Snapshot, options: &Options) -> Plan {
         {
             continue;
         }
-        let spell = crate::rules::spell_name(m, set, &owned);
+        let spell = crate::rules::spell_name_configured(m, set, &owned, &options.combat);
         mark_applies |= options.combat.mark_darkness
             && set[3]
                 .and_then(crate::rules::weapon)
@@ -1490,7 +1518,13 @@ fn plan_uncached(snapshot: &Snapshot, options: &Options) -> Plan {
             }
             .into();
         }
-        if !crate::rules::casting_supported(m, set, &owned, crate::rules::DEFAULT_CASTS) {
+        if !crate::rules::casting_supported_configured(
+            m,
+            set,
+            &owned,
+            crate::rules::DEFAULT_CASTS,
+            &options.combat,
+        ) {
             let level = crate::rules::spells()
                 .iter()
                 .find(|s| s.name == spell)
@@ -1762,6 +1796,35 @@ fn plan_uncached(snapshot: &Snapshot, options: &Options) -> Plan {
     for p in &out.inventory {
         *total.entry(p.id).or_insert(0) += p.quantity;
     }
+    for weapon in std::iter::once(&out.equipment)
+        .chain(out.phases.iter().map(|p| &p.equipment))
+        .filter_map(|set| set[3])
+    {
+        if !crate::rules::weapon(weapon).is_some_and(|r| !r.family.internal_ammo.is_empty()) {
+            continue;
+        }
+        if let Some(dart) = crate::rules::internal_ammo(m, weapon, &options.combat) {
+            let q = crate::rules::DEFAULT_LOADED_SHOTS;
+            out.loaded_ammo = Some(Packed {
+                id: dart,
+                quantity: q,
+                purpose: "Load before leaving; stored inside the weapon".into(),
+            });
+            let loaded_ok = options.combat.loaded_ammo_confirmed
+                || owned.get(&dart).copied().unwrap_or(0)
+                    >= q.saturating_add(total.get(&dart).copied().unwrap_or(0));
+            if !loaded_ok {
+                out.missing.push(format!("{} × {q} needed to load the blowpipe in addition to carried darts, or confirm its existing contents.",item_name(dart)));
+            }
+            out.checks.push(Check{name:"Loaded darts".into(),state:Some(loaded_ok),detail:format!("{} × {q}. {} Verify remaining darts and charges; these are not worn in the ammo slot.",item_name(dart),if options.combat.loaded_ammo_confirmed{"Existing contents confirmed by you."}else{"Load from your bank before leaving."})});
+        } else {
+            out.missing.push(
+                "Select compatible blowpipe darts or import at least 100 owned darts to load."
+                    .into(),
+            );
+        }
+        break;
+    }
     for (id, quantity) in &total {
         if *quantity > owned.get(id).copied().unwrap_or(0) {
             out.missing.push(format!(
@@ -1872,7 +1935,9 @@ pub fn raw_item_count(m: &Member) -> usize {
     pairs.len()
 }
 pub fn is_stackable(id: i32) -> bool {
-    if crate::rules::all_ammo_ids().contains(&id) {
+    if crate::rules::all_ammo_ids().contains(&id)
+        || crate::rules::all_internal_ammo_ids().contains(&id)
+    {
         return true;
     }
     if crate::inventory::public_name(id)

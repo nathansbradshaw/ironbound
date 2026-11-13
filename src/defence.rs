@@ -5,6 +5,10 @@ use serde::{Deserialize, Serialize};
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(default, deny_unknown_fields)]
 pub struct Settings {
+    pub boosts: crate::modifiers::Boosts,
+    pub reductions: std::collections::BTreeMap<i32, crate::modifiers::Reductions>,
+    pub loaded_dart: Option<i32>,
+    pub loaded_ammo_confirmed: bool,
     pub protection: String,
     // Retained for old backups/shared setups; automatic ranking uses Options::ranking.
     pub safety: u32,
@@ -19,6 +23,10 @@ pub struct Settings {
 impl Default for Settings {
     fn default() -> Self {
         Self {
+            boosts: Default::default(),
+            reductions: Default::default(),
+            loaded_dart: None,
+            loaded_ammo_confirmed: false,
             protection: "None".into(),
             safety: 1,
             offensive: "None".into(),
@@ -34,6 +42,13 @@ impl Default for Settings {
 impl Settings {
     pub fn valid(&self) -> bool {
         self.safety <= 3
+            && self.boosts.valid()
+            && self.reductions.len() <= crate::rules::MAX_TARGETS
+            && self.reductions.iter().all(|(id, r)| *id > 0 && r.valid())
+            && self
+                .loaded_dart
+                .is_none_or(|id| crate::rules::all_internal_ammo_ids().contains(&id))
+            && (!self.loaded_ammo_confirmed || self.loaded_dart.is_some())
             && self.slayer_targets.len() <= crate::rules::MAX_TARGETS
             && self.slayer_targets.iter().all(|id| *id > 0)
             && ["Rapid", "Accurate"].contains(&self.ranged_stance.as_str())
@@ -156,6 +171,13 @@ pub fn estimate(
     settings: &Settings,
 ) -> Result<Estimate, String> {
     crate::prayer::eligible_settings(member, settings)?;
+    let original = target;
+    let reduced = settings
+        .reductions
+        .get(&target.id)
+        .map(|r| crate::modifiers::reduce(target, r))
+        .transpose()?;
+    let target = reduced.as_ref().unwrap_or(target);
     if set.len() != 14 {
         return Err("Equipment needs 14 slots.".into());
     }
@@ -216,10 +238,22 @@ pub fn estimate(
         map.get(key).copied().unwrap_or(0) as i64
     };
     let prayer = crate::prayer::selected(settings);
-    let defence = member.level("Defence").ok_or("Enter your Defence level.")? as i64;
+    let damage_stat = if basic == "magic" {
+        "magic"
+    } else if basic == "ranged" {
+        "ranged"
+    } else {
+        "str"
+    };
+    if target.skills.get(damage_stat) != original.skills.get(damage_stat) {
+        return Err("Incoming max hits after this NPC damage-stat drain are not modelled; outgoing DPS still uses the reduced stats.".into());
+    }
+    let defence = crate::modifiers::level(member, "Defence", &settings.boosts)
+        .ok_or("Enter your Defence level.")? as i64;
     let defence = defence * (100 + prayer.defence) / 100;
     let effective = if basic == "magic" {
-        let magic = member.level("Magic").ok_or("Enter your Magic level.")? as i64;
+        let magic = crate::modifiers::level(member, "Magic", &settings.boosts)
+            .ok_or("Enter your Magic level.")? as i64;
         let magic = magic * (100 + prayer.magic_defence) / 100;
         7 * magic / 10 + 3 * defence / 10 + 8
     } else {
@@ -312,7 +346,7 @@ pub fn estimate(
         healing_per_second: healing / (ticks as f64 * 0.6),
         healing_modelled: profile.is_some_and(|p| p.healing_modelled),
         note: format!(
-            "{note} Uses unboosted skills, the selected prayer and +0 defensive-stance bonus. This is one attack scenario, not full-fight incoming DPS."
+            "{note} Uses the selected current-level boosts, prayer and +0 defensive-stance bonus. This is one attack scenario, not full-fight incoming DPS."
         ),
     })
 }

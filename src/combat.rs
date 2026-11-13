@@ -148,6 +148,12 @@ pub fn calculate_configured(
     if !settings.valid() {
         return Err("Invalid combat settings.".into());
     }
+    let reduced = settings
+        .reductions
+        .get(&monster.id)
+        .map(|reductions| crate::modifiers::reduce(monster, reductions))
+        .transpose()?;
+    let monster = reduced.as_ref().unwrap_or(monster);
     if settings.mark_darkness && !member.level("Magic").is_some_and(|level| level >= 59) {
         return Err("Mark of Darkness requires 59 Magic.".into());
     }
@@ -232,6 +238,14 @@ pub fn calculate_configured(
     }
     let toa = crate::encounters::mechanics().toa_ids.contains(&monster.id);
     let mut b = bonuses_in_context(set, toa);
+    if !rule.family.internal_ammo.is_empty() {
+        let dart = rules::internal_ammo(member, weapon, settings).ok_or(
+            "Choose compatible loaded darts, or provide at least 100 owned darts to load.",
+        )?;
+        let dart_stats = self::stats(dart).ok_or("Loaded ammunition stats unavailable.")?;
+        *b.other.entry("ranged_str".into()).or_default() +=
+            dart_stats.bonuses.get("ranged_str").copied().unwrap_or(0);
+    }
     if rules::set_effect(set, "elite_void_magic") {
         *b.other.entry("magic_str".into()).or_default() += 50;
     }
@@ -263,8 +277,7 @@ pub fn calculate_configured(
     }
     let get = |m: &BTreeMap<String, i32>, k: &str| m.get(k).copied().unwrap_or(0);
     let level = |s: &str| {
-        member
-            .level(s)
+        crate::modifiers::level(member, s, &settings.boosts)
             .map(|v| v as i64)
             .ok_or_else(|| format!("Enter your {s} level."))
     };

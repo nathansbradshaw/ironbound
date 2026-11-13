@@ -8,6 +8,7 @@ pub mod encounters;
 pub mod export;
 pub mod guidance;
 pub mod inventory;
+pub mod modifiers;
 pub mod optimization;
 pub mod planner;
 pub mod prayer;

@@ -57,7 +57,7 @@ pub fn assess(
             set,
             style,
             target,
-            crate::rules::spell_name(m, set, owned),
+            crate::rules::spell_name_configured(m, set, owned, &o.combat),
             o.raid_level,
             &o.combat,
         ) else {
@@ -81,7 +81,7 @@ pub fn assess(
                 &phase,
                 style,
                 target,
-                crate::rules::spell_name(m, &phase, owned),
+                crate::rules::spell_name_configured(m, &phase, owned, &o.combat),
                 o.raid_level,
                 &o.combat,
             ) {

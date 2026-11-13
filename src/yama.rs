@@ -146,7 +146,7 @@ fn calculated(
     o: &Options,
     owned: &BTreeMap<i32, u32>,
 ) -> Result<combat::ResultStats, String> {
-    if !rules::casting_supported(member, set, owned, rules::DEFAULT_CASTS) {
+    if !rules::casting_supported_configured(member, set, owned, rules::DEFAULT_CASTS, &o.combat) {
         return Err("Judge set needs a usable weapon and sufficient spell runes.".into());
     }
     combat::calculate_configured(
@@ -154,7 +154,7 @@ fn calculated(
         set,
         &target.style,
         planner::monster(target.id).ok_or("Judge target unavailable")?,
-        rules::spell_name(member, set, owned),
+        rules::spell_name_configured(member, set, owned, &o.combat),
         o.raid_level,
         &o.combat,
     )

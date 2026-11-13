@@ -20,7 +20,9 @@
     "shadow": {"style":"Magic","attack_types":["magic"],"formula":"powered","numerator":1,"denominator":3,"offset":1,"accuracy_bonus":11,"ticks":5,"effects":["shadow"]},
     "warped": {"style":"Magic","attack_types":["magic"],"formula":"powered","numerator":8,"denominator":37,"offset":96,"offset_before_division":true,"accuracy_bonus":11,"ticks":4},
     "demonbane": {"style":"Magic","attack_types":["magic"],"formula":"spell","accuracy_bonus":9,"ticks":5,"effects":["demonbane_spell"]},
-    "target_bow": {"style":"Ranged","attack_types":["standard"],"formula":"standard","rapid":true,"ammo":[882,884,886,888,890,892,21326,11212],"target_scaling":{"skill":"magic","offensive":"magic","cap":250,"attribute_caps":{"xerician":350},"accuracy":{"base":140,"linear_numerator":3,"linear_offset":10,"linear_divisor":100,"inner_numerator":3,"inner_divisor":10,"inner_offset":100,"square_divisor":100,"cap":140},"damage":{"base":250,"linear_numerator":3,"linear_offset":14,"linear_divisor":100,"inner_numerator":3,"inner_divisor":10,"inner_offset":140,"square_divisor":100,"cap":250}}}
+    "target_bow": {"style":"Ranged","attack_types":["standard"],"formula":"standard","rapid":true,"ammo":[882,884,886,888,890,892,21326,11212],"target_scaling":{"skill":"magic","offensive":"magic","cap":250,"attribute_caps":{"xerician":350},"accuracy":{"base":140,"linear_numerator":3,"linear_offset":10,"linear_divisor":100,"inner_numerator":3,"inner_divisor":10,"inner_offset":100,"square_divisor":100,"cap":140},"damage":{"base":250,"linear_numerator":3,"linear_offset":14,"linear_divisor":100,"inner_numerator":3,"inner_divisor":10,"inner_offset":140,"square_divisor":100,"cap":250}}},
+    "blowpipe": {"style":"Ranged","attack_types":["light"],"formula":"standard","rapid":true,"internal_ammo":[806,807,808,3093,809,810,811,25849,11230]},
+    "wood_blowpipe": {"style":"Ranged","attack_types":["light"],"formula":"standard","rapid":true,"internal_ammo":[806,807,808,3093,809,810]}
   },
   "weapons": [
     {"ids":[4151,26482],"family":"slash","requirements":{"Attack":70}},
@@ -60,7 +62,11 @@
     {"ids":[28585],"family":"warped","requirements":{"Magic":62}},
     {"ids":[29594],"family":"demonbane","demonbane_spell_factor":2,"requirements":{"Magic":77,"Attack":50}},
     {"ids":[22978],"family":"versatile","multipliers":[{"attribute":"dragon","numerator":6,"denominator":5,"accuracy":true,"damage":true}],"requirements":{"Attack":78}},
-    {"ids":[20997],"family":"target_bow","requirements":{"Ranged":85}}
+    {"ids":[20997],"family":"target_bow","requirements":{"Ranged":85}},
+    {"ids":[12926,28688],"family":"blowpipe","requirements":{"Ranged":75}},
+    {"ids":[31575],"family":"wood_blowpipe","requirements":{"Ranged":45}},
+    {"ids":[31579],"family":"wood_blowpipe","requirements":{"Ranged":55}},
+    {"ids":[31583],"family":"wood_blowpipe","requirements":{"Ranged":65}}
   ],
   "ammunition": [
     {"ids":[892,890,877,878,6061,6062,879,9139,9286,9293,9300,9335,9140,9287,9294,9301,880,9145,9292,9299,9306,9141,9288,9295,9302,9336,9142,9289,9296,9303,9337,9338,9143,9290,9297,9304,9339,9340,9144,9291,9298,9305,11875,21316,9341,9342,21905,21924,21926,21928,21955,21957,21959,21961,21963,21965,21967,21969,21971,21973,882,884,886,888,21326,11212],"effect":"none"},

@@ -1070,7 +1070,6 @@ pub fn start() -> Result<(), JsValue> {
             "reduction-accursed",
             "reduction-vulnerability",
             "kandarin-diary",
-            "slayer-task",
             "safety",
             "prayer-weight",
             "member",
@@ -1191,18 +1190,6 @@ pub fn start() -> Result<(), JsValue> {
                     s.saved.options.combat.kandarin_diary = el
                         .dyn_ref::<HtmlInputElement>()
                         .is_some_and(|e| e.checked())
-                }
-                "slayer-task" => {
-                    if let Some(id) = comparison_monster(&s).map(|m| m.id) {
-                        if el
-                            .dyn_ref::<HtmlInputElement>()
-                            .is_some_and(|e| e.checked())
-                        {
-                            s.saved.options.combat.slayer_targets.insert(id);
-                        } else {
-                            s.saved.options.combat.slayer_targets.remove(&id);
-                        }
-                    }
                 }
                 "safety" => {
                     if let Ok(sel) = el.dyn_into::<HtmlSelectElement>() {
@@ -1684,6 +1671,16 @@ fn act(action: &str) {
                     s.view = "loadout".into();
                     s.budget_comparison_open = false;
                     s.notice(&format!("Applied the {cap}-item switch cap."), false);
+                }
+            }
+        } else if let Some(selection) = action.strip_prefix("slayer-task:") {
+            if s.shared_setup.is_none() {
+                if let Some((id, value)) = selection.split_once(':') {
+                    if let Ok(id) = id.parse::<i32>() {
+                        if encounter_targets(&s).contains(&id) && ["on", "off"].contains(&value) {
+                            crate::slayer::set_task(&mut s.saved.options.combat, id, value == "on");
+                        }
+                    }
                 }
             }
         } else if let Some(selection) = action.strip_prefix("raid-room:") {
@@ -2493,6 +2490,7 @@ fn render_with_edit(edit: Option<&str>) {
         html.push_str("</details>");
         html.push_str(&raid_rooms(&s));
         html.push_str("</div>");
+        if s.shared_setup.is_none(){html.push_str(&slayer_tasks(&s));}
         if s.shared_setup.is_some(){html.push_str(&format!("<p class=\"notice\">Viewing a shared setup. Your saved bank is unchanged. {}</p>",button("use-bank","Rebuild using my items","text-button")));}
         if s.shared_setup.is_none(){html.push_str(&switch_controls(&s,&plan));html.push_str(&efficient_panel(&s,&plan));html.push_str(&budget_comparison(&s));}
         html.push_str("<nav class=\"planner-tabs\" aria-label=\"Planner sections\">");
@@ -4036,6 +4034,40 @@ fn combat_style_controls(s: &State, set: &[Option<i32>], style: &str) -> String 
     html.push_str("</div>");
     html
 }
+fn task_buttons(s: &State, target: &planner::Monster) -> String {
+    let on_task = s.saved.options.combat.slayer_targets.contains(&target.id);
+    let mut html = format!(
+        "<div class=\"slayer-target\" role=\"group\" aria-label=\"Slayer task for {}\"><strong>{}</strong><div class=\"combat-subtype-options\">",
+        esc(&target.name),
+        esc(&target.name)
+    );
+    for (value, label, active) in [("off", "Off task", !on_task), ("on", "On task", on_task)] {
+        html.push_str(&format!("<button class=\"phase {}\" data-action=\"slayer-task:{}:{value}\" aria-pressed=\"{active}\">{label}</button>", if active {"active"} else {""}, target.id));
+    }
+    html.push_str("</div></div>");
+    html
+}
+
+fn slayer_tasks(s: &State) -> String {
+    let mut seen = std::collections::BTreeSet::new();
+    let targets: Vec<_> = encounter_targets(s)
+        .into_iter()
+        .filter(|id| seen.insert(*id) && crate::encounters::slayer_eligible(*id))
+        .filter_map(planner::monster)
+        .collect();
+    if targets.is_empty() {
+        return String::new();
+    }
+    let mut html = String::from(
+        "<section class=\"slayer-tasks\" aria-label=\"Slayer task settings\"><h3>Slayer task</h3><p class=\"small-note\">Set each assigned target on task. Gear recommendations and combat comparisons include eligible Slayer bonuses.</p>",
+    );
+    for target in targets {
+        html.push_str(&task_buttons(s, target));
+    }
+    html.push_str("</section>");
+    html
+}
+
 fn combat_panel(s: &State, p: &Plan) -> String {
     if s.shared_setup.is_some() {
         return String::new();
@@ -4076,8 +4108,12 @@ fn combat_panel(s: &State, p: &Plan) -> String {
         let m = &stock_member;
         html.push_str(&combat_assumptions(s, p, m, target, &set));
         if crate::encounters::slayer_eligible(target.id) {
-            html.push_str(&format!("<label><input id=\"slayer-task\" type=\"checkbox\" {}> This target is my Slayer task</label>", if s.saved.options.combat.slayer_targets.contains(&target.id) { "checked" } else { "" }));
+            html.push_str(&task_buttons(s, target));
         }
+        html.push_str(&format!(
+            "<p class=\"small-note slayer-bonus\">{}</p>",
+            crate::slayer::bonus_note(&s.saved.options.combat, target, &set, style)
+        ));
         if style == "Ranged" {
             html.push_str("<div class=\"ranged-stances\" role=\"group\" aria-label=\"Ranged stance\"><h4>Ranged stance</h4><div class=\"combat-subtype-options\">");
             for stance in ["Rapid", "Accurate"] {

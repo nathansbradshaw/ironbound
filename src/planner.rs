@@ -212,6 +212,7 @@ pub struct Options {
     pub food: usize,
     pub prayer_potions: usize,
     pub excluded: BTreeSet<i32>,
+    pub exclude_void: bool,
     pub access_override: Option<bool>,
     pub started_barrows: Option<bool>,
     pub prayer_unlocks: bool,
@@ -238,6 +239,7 @@ impl Default for Options {
             food: 8,
             prayer_potions: 3,
             excluded: BTreeSet::new(),
+            exclude_void: false,
             access_override: None,
             started_barrows: None,
             prayer_unlocks: false,
@@ -251,6 +253,11 @@ impl Default for Options {
             focus_style: "Balanced".into(),
             phase_priorities: BTreeMap::new(),
         }
+    }
+}
+impl Options {
+    pub fn item_excluded(&self, id: i32) -> bool {
+        self.excluded.contains(&id) || self.exclude_void && crate::rules::void_piece(id)
     }
 }
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
@@ -547,7 +554,7 @@ pub fn owned_tiers(
                         let set = equipment_for_style(snapshot, options, style);
                         crate::rules::ammo_ids(set[3].unwrap_or(0)).contains(id)
                     })),
-            excluded: options.excluded.contains(id),
+            excluded: options.item_excluded(*id),
         })
         .collect()
 }
@@ -574,9 +581,7 @@ pub fn equipment_for_style(
         return vec![None; 14];
     };
     let mut owned = snapshot.available(options.shared);
-    for id in &options.excluded {
-        owned.remove(id);
-    }
+    owned.retain(|id, _| !options.item_excluded(*id));
     let stock_member = member_with_stock(m, &owned);
     let m = &stock_member;
     let mut set = style_set(style, options.boss, m, &owned, equipment(), options);
@@ -630,7 +635,7 @@ pub fn recommend_encounter(
         return targets.to_vec();
     }
     let mut owned = snapshot.available(options.shared);
-    owned.retain(|id, _| !options.excluded.contains(id));
+    owned.retain(|id, _| !options.item_excluded(*id));
     let stock_member = member_with_stock(member, &owned);
     let member = &stock_member;
     let mut best = None::<(f64, String)>;
@@ -673,7 +678,7 @@ pub(crate) fn effective_options(o: &Options, m: &Member, owned: &BTreeMap<i32, u
         crate::rules::STYLES.contains(&style)
             && (*id == 0
                 || owned.get(id).copied().unwrap_or(0) > 0
-                    && !o.excluded.contains(id)
+                    && !o.item_excluded(*id)
                     && can_use(*id, m)
                     && gear(*id).is_some_and(|g| g.slot == SLOT_KEYS[slot]))
     });
@@ -953,7 +958,7 @@ fn void_sets(
             .filter(|id| {
                 pin.is_none_or(|pin| pin == id)
                     && owned.get(id).copied().unwrap_or(0) > 0
-                    && !options.excluded.contains(id)
+                    && !options.item_excluded(*id)
                     && can_use(*id, m)
                     && gear(*id).is_some_and(|g| g.slot == SLOT_KEYS[piece.slot])
             })
@@ -1465,9 +1470,7 @@ fn plan_uncached(snapshot: &Snapshot, options: &Options) -> Plan {
         return out;
     }
     let mut owned = snapshot.available(options.shared);
-    for id in &options.excluded {
-        owned.remove(id);
-    }
+    owned.retain(|id, _| !options.item_excluded(*id));
     let catalog = equipment();
     let stock_member = member_with_stock(m, &owned);
     let m = &stock_member;

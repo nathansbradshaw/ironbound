@@ -443,7 +443,7 @@ pub fn equipment(
         return vec![];
     }
     let mut owned = snapshot.available(o.shared);
-    owned.retain(|id, _| !o.excluded.contains(id));
+    owned.retain(|id, _| !o.item_excluded(*id));
     let member = planner::member_with_stock(original, &owned);
     let baseline = tradeoffs::measure(snapshot, o, c.set, &c.style, c.target);
     // Missing equipment stats also make prayer drain unknown. The metric's

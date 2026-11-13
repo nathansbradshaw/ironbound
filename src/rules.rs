@@ -455,6 +455,13 @@ pub fn equipped_effect(set: &[Option<i32>], effect: &str) -> bool {
             }
     })
 }
+pub fn void_piece(id: i32) -> bool {
+    registry().equipment_sets.iter().any(|rule| {
+        (rule.effect.starts_with("void_") || rule.effect.starts_with("elite_void_"))
+            && rule.pieces.iter().any(|piece| piece.ids.contains(&id))
+    })
+}
+
 pub fn set_effect(set: &[Option<i32>], effect: &str) -> bool {
     registry().equipment_sets.iter().any(|rule| {
         rule.effect == effect

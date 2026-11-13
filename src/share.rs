@@ -16,6 +16,8 @@ pub struct Switch {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Setup {
+    #[serde(default)]
+    pub exclude_void: bool,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub recommended: Option<bool>,
     #[serde(default)]
@@ -44,6 +46,7 @@ pub struct Constraints {
 impl Setup {
     pub fn from_plan(p: &Plan, o: &Options) -> Self {
         Self {
+            exclude_void: o.exclude_void,
             recommended: o.recommended,
             ranking: o.ranking.clone(),
             combat: {
@@ -288,6 +291,7 @@ impl Setup {
     }
     pub fn options(&self) -> Options {
         Options {
+            exclude_void: self.exclude_void,
             recommended: self.recommended,
             ranking: self.ranking.clone(),
             combat: self.combat.clone(),

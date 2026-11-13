@@ -1115,6 +1115,7 @@ pub fn start() -> Result<(), JsValue> {
             "reduction-accursed",
             "reduction-vulnerability",
             "kandarin-diary",
+            "allow-void",
             "safety",
             "prayer-weight",
             "member",
@@ -1235,6 +1236,11 @@ pub fn start() -> Result<(), JsValue> {
                     s.saved.options.combat.kandarin_diary = el
                         .dyn_ref::<HtmlInputElement>()
                         .is_some_and(|e| e.checked())
+                }
+                "allow-void" => {
+                    s.saved.options.exclude_void = !el
+                        .dyn_ref::<HtmlInputElement>()
+                        .is_some_and(|e| e.checked());
                 }
                 "safety" => {
                     if let Ok(sel) = el.dyn_into::<HtmlSelectElement>() {
@@ -1942,6 +1948,7 @@ fn act(action: &str) {
                             || (planner::gear(id)
                                 .is_some_and(|g| g.slot == planner::SLOT_KEYS[slot])
                                 && s.saved.snapshot.available(s.saved.options.shared).contains_key(&id)
+                                && !s.saved.options.item_excluded(id)
                                 && s.saved
                                     .snapshot
                                     .selected()
@@ -3426,7 +3433,7 @@ fn comparison_spell(
     target: &planner::Monster,
 ) -> &'static str {
     let mut owned = s.saved.snapshot.available(s.saved.options.shared);
-    owned.retain(|id, _| !s.saved.options.excluded.contains(id));
+    owned.retain(|id, _| !s.saved.options.item_excluded(*id));
     crate::rules::spell_name_for_target(
         member,
         set,
@@ -3652,7 +3659,7 @@ fn combat_breakdown(
         html.push_str(&format!("</tbody></table><p class=\"small-note\">Your ammunition determines the category. Lower target defence improves accuracy; it does not increase the base max hit. Selected defence roll: {}.</p>",r.defence_roll));
     } else if r.attack_type == "magic" {
         let mut owned = s.saved.snapshot.available(s.saved.options.shared);
-        owned.retain(|id, _| !s.saved.options.excluded.contains(id));
+        owned.retain(|id, _| !s.saved.options.item_excluded(*id));
         let candidates =
             crate::rules::elemental_candidates(member, set, &owned, &s.saved.options.combat);
         html.push_str("<h3>Magic elements</h3><table class=\"wiki-table\"><thead><tr><th>Element</th><th>Target weakness</th><th>Spell</th><th>Max hit</th><th>Hit chance</th><th>DPS</th></tr></thead><tbody>");
@@ -3886,7 +3893,7 @@ fn magic_spell_book(s: &State, set: &[Option<i32>]) -> String {
         return html;
     };
     let mut owned = s.saved.snapshot.available(s.saved.options.shared);
-    owned.retain(|id, _| !s.saved.options.excluded.contains(id));
+    owned.retain(|id, _| !s.saved.options.item_excluded(*id));
     let selected = comparison_monster(s)
         .map(|target| comparison_spell(s, member, set, target))
         .unwrap_or("");
@@ -4013,7 +4020,7 @@ fn ranged_ammunition_card(s: &State, set: &[Option<i32>]) -> String {
         let ammo = set.get(13).copied().flatten().or_else(|| {
             s.saved.snapshot.selected().and_then(|m| {
                 let mut owned = s.saved.snapshot.available(s.saved.options.shared);
-                owned.retain(|id, _| !s.saved.options.excluded.contains(id));
+                owned.retain(|id, _| !s.saved.options.item_excluded(*id));
                 let member = planner::member_with_stock(m, &owned);
                 crate::rules::internal_ammo(&member, id, &s.saved.options.combat)
             })
@@ -4171,9 +4178,7 @@ fn combat_panel(s: &State, p: &Plan) -> String {
             ));
         }
         let mut stock = s.saved.snapshot.available(s.saved.options.shared);
-        for id in &s.saved.options.excluded {
-            stock.remove(id);
-        }
+        stock.retain(|id, _| !s.saved.options.item_excluded(*id));
         let stock_member = planner::member_with_stock(m, &stock);
         let m = &stock_member;
         html.push_str(&combat_assumptions(s, p, m, target, &set));
@@ -4465,6 +4470,7 @@ fn switch_controls(s: &State, p: &Plan) -> String {
         "<p id=\"switch-usage\" class=\"switch-usage\" role=\"status\">{usage}</p>"
     ));
     let recommended = crate::recommendation::enabled(&s.saved.options);
+    html.push_str(&format!("<label class=\"void-preference\"><input id=\"allow-void\" type=\"checkbox\" {}> Use Void armour <small>Normal and Elite Void · turn off to compare your other gear.</small></label>", if s.saved.options.exclude_void { "" } else { "checked" }));
     html.push_str(&format!(r#"<div class="recommendation-policy"><label>Gear approach<select id="recommendation-mode"><option value="recommended" {}>Recommended</option><option value="custom" {}>Custom weights</option></select></label><details><summary>Why this gear?</summary><p>{}</p>"#,if recommended{"selected"}else{""},if recommended{""}else{"selected"},esc(crate::recommendation::summary(&s.saved.options))));
     if recommended {
         if let Some(profile) = crate::guidance::profile(&s.saved.options) {
@@ -5275,7 +5281,7 @@ fn ranked_gear(s: &State) -> (Vec<GearChoice>, Vec<&'static str>) {
                 });
             let usable = compatible
                 && planner::can_use(g.id, member)
-                && !s.saved.options.excluded.contains(&g.id)
+                && !s.saved.options.item_excluded(g.id)
                 && (slot != 13
                     || owned.get(&g.id).copied().unwrap_or(0) >= s.saved.options.combat.ammo_shots);
             let mut trial = set.clone();

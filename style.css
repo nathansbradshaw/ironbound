@@ -874,3 +874,6 @@ button.ranged-type:focus-visible{outline:3px solid #ffe087;outline-offset:2px}
 .slayer-tasks .small-note { color: #514229; }
 .slayer-target { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px; margin: 8px 0; }
 .slayer-target .combat-subtype-options { display: flex; gap: 6px; }
+.flow-controls>label.void-preference { grid-column: 1/-1; display: flex; flex-direction: row; align-items: center; justify-content: flex-start; flex-wrap: wrap; text-align: left; gap: 6px; margin: 0; }
+.flow-controls .void-preference input[type=checkbox] { display: inline-block; width: 18px; height: 18px; min-height: 18px; margin: 0; padding: 0; box-shadow: none; accent-color: #c9a144; }
+.void-preference small { flex-basis: 100%; padding-left: 24px; color: #ddd1b8; font: 16px/1.2 Scape,monospace; }

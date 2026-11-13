@@ -106,6 +106,9 @@ pub fn inventory_setup(plan: &Plan, options: &Options, _account: &str) -> Result
         " Ranged ammunition type: {}.",
         options.combat.ranged_type.label()
     ));
+    if options.exclude_void {
+        notes.push_str(" Void armour excluded by preference.");
+    }
     if let Some(ammo) = &plan.loaded_ammo {
         notes.push_str(&format!(" Loaded weapon: {} × {} inside the blowpipe; verify contents and charges. Not worn ammo or inventory.",crate::planner::item_name(ammo.id),ammo.quantity));
     }

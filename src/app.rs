@@ -64,6 +64,8 @@ struct State {
     attack_budget_open: bool,
     simulation_open: bool,
     simulation_result: Option<(String, Result<crate::simulation::Report, String>)>,
+    calibration_result: Option<(String, Result<crate::calibration::Report, String>)>,
+    calibration_open: bool,
     budget_comparison_open: bool,
     budget_phases_open: bool,
     budget_window: Option<String>,
@@ -180,6 +182,8 @@ impl State {
             attack_budget_open: false,
             simulation_open: false,
             simulation_result: None,
+            calibration_result: None,
+            calibration_open: false,
             budget_comparison_open: comparison_query.is_some(),
             budget_phases_open: false,
             budget_window: None,
@@ -1005,6 +1009,8 @@ pub fn start() -> Result<(), JsValue> {
                     .with(|state| state.borrow_mut().attack_budget_open = el.has_attribute("open"));
             } else if el.id() == "fight-simulation" {
                 STATE.with(|state| state.borrow_mut().simulation_open = el.has_attribute("open"));
+            } else if el.id() == "gameplay-calibration" {
+                STATE.with(|state| state.borrow_mut().calibration_open = el.has_attribute("open"));
             } else if el.id() == "budget-phases" {
                 STATE
                     .with(|state| state.borrow_mut().budget_phases_open = el.has_attribute("open"));
@@ -1135,6 +1141,37 @@ pub fn start() -> Result<(), JsValue> {
                     s.persist();
                 });
                 render();
+            }
+            return;
+        }
+        if id == "calibration-file" {
+            if let Ok(i) = el.dyn_into::<HtmlInputElement>() {
+                if let Some(file) = i.files().and_then(|f| f.get(0)) {
+                    if file.size() > crate::calibration::MAX_BYTES as f64 {
+                        notice("Gameplay worksheet exceeds 4 MB.", true);
+                        return;
+                    }
+                    spawn_local(async move {
+                        let raw = JsFuture::from(file.text()).await;
+                        STATE.with(|state| {
+                            let mut s = state.borrow_mut();
+                            let plan = s.plan();
+                            let key = simulation_key(&s, &plan);
+                            let result = raw.map_err(|_| "Could not read gameplay worksheet.".to_string())
+                                .and_then(|v| crate::calibration::parse(&v.as_string().unwrap_or_default()))
+                                .and_then(|data| {
+                                    let current = crate::simulation::Model::from_plan(&s.saved.snapshot, &s.saved.options, &plan)?;
+                                    if !crate::calibration::same_inputs(&current, &data.inputs) {
+                                        return Err("Worksheet uses a different setup or assumptions. Restore its original setup before comparing.".into());
+                                    }
+                                    crate::calibration::compare(&data)
+                                });
+                            s.calibration_result = Some((key, result));
+                            s.calibration_open = true;
+                        });
+                        render();
+                    });
+                }
             }
             return;
         }
@@ -1856,8 +1893,24 @@ fn act(action: &str) {
             if let Some((key,Ok(report)))=&s.simulation_result {
                 if *key==simulation_key(&s,&plan) {if let Ok(raw)=serde_json::to_string_pretty(report) {download("ironbound-fight-scenario.json",&raw);}}
             }
+        } else if action == "download-gameplay-worksheet" {
+            let plan=s.plan();
+            if let Some((key,Ok(report)))=&s.simulation_result {
+                if *key==simulation_key(&s,&plan) {
+                    if let Ok(raw)=serde_json::to_string_pretty(&crate::calibration::worksheet(&report.inputs)) {
+                        download("ironbound-gameplay-worksheet.json",&raw);
+                    }
+                }
+            }
+        } else if action == "download-calibration" {
+            let plan=s.plan();
+            if let Some((key,Ok(report)))=&s.calibration_result {
+                if *key==simulation_key(&s,&plan) {
+                    if let Ok(raw)=serde_json::to_string_pretty(report) {download("ironbound-gameplay-comparison.json",&raw);}
+                }
+            }
         } else if action == "reset-simulation" {
-            s.saved.options.simulation=Default::default();s.simulation_result=None;
+            s.saved.options.simulation=Default::default();s.simulation_result=None;s.calibration_result=None;
         } else if action == "reset-target-hp" {
             if let Some(target) = comparison_monster(&s).map(|m| m.id) {
                 s.saved.options.combat.target_hp.remove(&target);
@@ -4785,11 +4838,47 @@ fn simulation_panel(s: &State, p: &Plan) -> String {
                 html.push_str("The configured trip cap is a censoring limit, not proof that another fight is impossible. Additional food uses 20-HP shark equivalents; extra prayer doses use ordinary prayer-potion restoration. These extras are demand forecasts and are never added to your bag.</p><details><summary>Model assumptions & exclusions</summary><ul>");
                 for note in &report.notes {html.push_str(&format!("<li>{}</li>",esc(note)));}
                 html.push_str("</ul></details></div>");html.push_str(&button("download-simulation","Download scenario results","text-button"));
+                html.push_str(&button("download-gameplay-worksheet","Download gameplay worksheet","text-button"));
             }
         }
         }
     }
-    html.push_str("</details></section>");
+    html.push_str(&format!("<details id=\"gameplay-calibration\" class=\"gameplay-calibration\" {}><summary>Compare with recorded gameplay</summary><p>No matched gameplay recordings are checked in for this encounter. Public mechanics references and synthetic tests do not validate fight duration, consumption or survival.</p><p>Run a scenario, download its gameplay worksheet, and annotate recordings with the same stats, equipment, supplies and solo rules. Keep later attempts separate as holdouts. Unknown quantities can stay blank.</p><p><a class=\"text-button\" href=\"https://github.com/nathansbradshaw/ironbound/blob/main/docs/gameplay-calibration.md\" target=\"_blank\" rel=\"noopener\">Recording guide and worksheet format ↗</a></p><label>Recorded gameplay worksheet<input id=\"calibration-file\" type=\"file\" accept=\".json,application/json\"></label><p class=\"small-note\">Read locally for this session. This does not upload recordings, save evidence in your account, or change scenario defaults. Download the comparison to keep it.</p>",if s.calibration_open {"open"}else{""}));
+    html.push_str("<ul>");
+    for note in crate::calibration::capture_notes(encounter) {html.push_str(&format!("<li>{}</li>",esc(note)));}
+    html.push_str("</ul>");
+    if let Some((key,result))=&s.calibration_result {
+        if *key!=simulation_key(s,p) {
+            html.push_str("<p role=\"status\">Setup or assumptions changed. Restore the worksheet setup and compare again.</p>");
+        } else {match result {
+            Err(reason)=>html.push_str(&format!("<p role=\"status\">Gameplay comparison unavailable: {}</p>",esc(reason))),
+            Ok(report)=>{
+                html.push_str(&format!("<div aria-live=\"polite\"><h3>Gameplay comparison</h3><p>{}. {} accepted attempts; {} skipped.</p>",esc(&report.status),report.accepted,report.skipped.len()));
+                for (id,reason) in &report.skipped {html.push_str(&format!("<p>{}: {}</p>",esc(id),esc(reason)));}
+                for row in &report.completion {
+                    let uncertainty=row.wilson_95.map(|(lo,hi)|format!(" Observed completion 95% interval: {:.1}–{:.1}%.",lo*100.0,hi*100.0)).unwrap_or_default();
+                    html.push_str(&format!("<p>{:?}: {} / {} completed; {} deaths, {} teleports, {} timeouts. Model completion: {:.1}%.{uncertainty}</p>",row.split,row.completed,row.attempts,row.deaths,row.teleports,row.timeouts,row.predicted_rate*100.0));
+                }
+                if !report.summaries.is_empty() {
+                    html.push_str("<table class=\"wiki-table\"><thead><tr><th>Metric / split</th><th>Attempts</th><th>Mean bias / absolute error</th><th>10–90% interval coverage</th></tr></thead><tbody>");
+                    for row in &report.summaries {html.push_str(&format!("<tr><th>{} · {:?}</th><td>{}</td><td>{:.1} / {:.1}</td><td>{:.0}%</td></tr>",esc(&crate::calibration::metric_label(&row.metric)),row.split,row.samples,row.mean_error,row.mean_absolute_error,row.interval_coverage*100.0));}
+                    html.push_str("</tbody></table><p class=\"small-note\">Positive bias means the model predicts more than observed. Timing uses ticks. Consumption uses the worksheet's named units. Only completed attempts enter this table.</p>");
+                }
+                if !report.proposals.is_empty() {
+                    html.push_str("<h4>Training-only suggestions</h4><p>These use directly measured controls. Check the recording, then use new holdout attempts after changing settings.</p><ul>");
+                    for row in &report.proposals {
+                        let fields=s.saved.options.simulation.fields();
+                        let label=fields.iter().find(|f|f.0==row.setting).map(|f|f.1).unwrap_or(&row.setting);
+                        html.push_str(&format!("<li>{}: {:.1} (current {}; {} run(s), {} measurements; {})</li>",esc(label),row.proposed,row.current,row.training_runs,row.measurements,if row.within_bounds {"within allowed bounds"} else {"outside allowed bounds; investigate model mismatch"}));
+                    }
+                    html.push_str("</ul>");
+                }
+                html.push_str(&format!("<p class=\"small-note\">{}</p></div>",esc(crate::calibration::LIMITATION)));
+                html.push_str(&button("download-calibration","Download gameplay comparison","text-button"));
+            }
+        }}
+    }
+    html.push_str("</details></details></section>");
     html
 }
 fn tier_table(s: &State) -> String {

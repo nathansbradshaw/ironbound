@@ -44,3 +44,9 @@ inherits = "dev"
 
 [profile.simulation-release]
 inherits = "release"
+
+[profile.calibration-dev]
+inherits = "dev"
+
+[profile.calibration-release]
+inherits = "release"

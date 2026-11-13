@@ -104,6 +104,12 @@ Charged Dizana quiver bonuses require compatible arrows/bolts. Oathplate, Torva,
 Masori, Hueycoatl hide, Sunfire fanatic and recent jewellery use reviewed wear
 requirements. Special attacks and the remaining equipment gaps stay labelled.
 
+[Obligator and ammunition](docs/obligator-ascension.md) adds charged Thrust's
+damage selection and size bonus, all three Obligator stances, Ascension crossbows
+with their own bolt/proc rules, and Seeking arrow minimum hits. Choose the
+Obligator stance in **Combat → Boosts, darts & debuffs**. Charged Thrust with
+Inquisitor or encounter minimum-hit bounds remains explicitly unverified.
+
 Weapon IDs map to shared families and reusable mechanics. Exact variants stay separate: owning a basic Keris partisan does not unlock any upgrade. Families supply attack types, stances, ammunition, requirements, rune recipes and effects to both the planner and calculator.
 
 Defaults use unboosted levels. Selected boosts use peak current levels; wear requirements still use base levels. Supported prayers affect combat and drain. Reviewed outgoing calculations include melee, bows/crossbows, loaded blowpipes, powered staves, all 20 elemental Strike/Bolt/Blast/Wave/Surge spells and Iban Blast, with supported Fang, Keris, bolt and Shadow effects. Elemental damage tiers use base Magic; boosted levels unlock casts and affect accuracy. Only matching elements gain weakness bonuses. Charged Fire/Water/Earth tomes have their supported bonuses and rune supply; check pages manually. ToA assumes solo, path level 0 and invocation levels 0–150. Combat offers explicit Wardens obelisk, unprotected P2 shield, melee core and vulnerable P3 comparisons; the complete Wardens cycle remains unverified.

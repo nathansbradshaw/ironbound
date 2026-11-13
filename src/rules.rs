@@ -40,6 +40,8 @@ pub enum Effect {
     ObsidianWeapon,
     SmokeStaff,
     Twinflame,
+    Obligator,
+    Ascension,
 }
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -208,6 +210,7 @@ pub struct EquipmentRequirements {
 #[serde(rename_all = "snake_case")]
 pub enum AmmoEffect {
     None,
+    Seeking,
     Ruby,
     Diamond,
     Opal,
@@ -354,8 +357,10 @@ impl Registry {
         for ammo in &self.ammunition {
             if !ammo.proc_chance.is_finite()
                 || !(0.0..=1.0).contains(&ammo.proc_chance)
-                || (!matches!(ammo.effect, AmmoEffect::None | AmmoEffect::Unsupported)
-                    && ammo.proc_chance == 0.0)
+                || (!matches!(
+                    ammo.effect,
+                    AmmoEffect::None | AmmoEffect::Seeking | AmmoEffect::Unsupported
+                ) && ammo.proc_chance == 0.0)
                 || ammo.ids.is_empty()
                 || ammo.ids.iter().any(|id| *id <= 0 || !ammo_ids.insert(*id))
             {

@@ -456,7 +456,15 @@ pub fn calculate_configured(
                     .unwrap()
                     .as_str()
             };
-            let stance = rule.stance(kind);
+            let stance = if rule.has(Effect::Obligator) {
+                if settings.obligator_style == "Thrust accurate" {
+                    rules::Stance::Accurate
+                } else {
+                    rules::Stance::Aggressive
+                }
+            } else {
+                rule.stance(kind)
+            };
             let mut effective_attack =
                 level("Attack")? * (100 + prayer_attack) / 100 + 8 + stance.attack_bonus();
             let mut effective_strength =
@@ -479,7 +487,11 @@ pub fn calculate_configured(
                 kind,
                 a,
                 max.max(0) as i32,
-                stats.speed.max(1),
+                if rule.has(Effect::Obligator) && settings.obligator_style == "Smash" {
+                    3
+                } else {
+                    stats.speed.max(1)
+                },
                 get(&monster.skills, "def"),
                 get(&monster.defensive, kind),
             )
@@ -834,6 +846,30 @@ pub fn calculate_configured(
     if fang {
         max_hit -= min_hit;
     }
+    let obligator = rule.has(Effect::Obligator)
+        && settings.obligator_style != "Smash"
+        && crate::planner::gear(weapon).is_some_and(|g| g.version == "Charged");
+    let mut damage_rolls = 1;
+    if obligator {
+        // The reference still flags Inquisitor/size-bonus ordering as unknown.
+        // Keep that combination out of scored recommendations until verified.
+        if rules::equipped_effect(set, "inquisitor") {
+            return Err("Obligator's charged Thrust with Inquisitor armour has unverified damage ordering. Use Smash or other armour.".into());
+        }
+        let size = crate::equipment_effects::target_size(monster.id)
+            .ok_or("Obligator needs verified target size metadata.")?;
+        max_hit = max_hit
+            * match size {
+                0 | 1 => 100,
+                2 => 120,
+                _ => 140,
+            }
+            / 100;
+        let crush = get(&monster.defensive, "crush");
+        damage_rolls = 2
+            + u32::from(get(&monster.defensive, "stab") > crush)
+            + u32::from(get(&monster.defensive, "slash") > crush);
+    }
     let respiratory = crate::monster_rules::profile(monster.id)
         .is_some_and(|p| p.kind == crate::monster_rules::Kind::Respiratory);
     let respiratory_finisher = respiratory
@@ -849,6 +885,9 @@ pub fn calculate_configured(
         min_hit = max_hit;
     } else if respiratory {
         min_hit += max_hit / 2;
+    }
+    if obligator && (min_hit != 0 || warden_p2) {
+        return Err("Obligator's charged Thrust with encounter minimum-hit bounds is not verified. Use Smash or another weapon.".into());
     }
     if warden_p2 {
         (min_hit, max_hit) = crate::effects::wardens_p2_bounds(attack, defence, max_hit);
@@ -938,6 +977,14 @@ pub fn calculate_configured(
     let npc_transform =
         crate::monster_rules::transform_for(monster.id, weapon, attack_type, &b, spell);
     let hit_effects = crate::effects::SetHitEffects {
+        damage_rolls,
+        accurate_min: if style == "Ranged"
+            && rules::ammunition(set[13].unwrap_or(0)) == AmmoEffect::Seeking
+        {
+            3
+        } else {
+            1
+        },
         npc_transform: if per_splat_npc {
             npc_transform
         } else {
@@ -1214,7 +1261,12 @@ pub fn calculate_configured(
     distribution = totals.into_iter().collect();
     if style == "Ranged" && !rule.family.ammo.is_empty() {
         let zcb = rule.has(Effect::Zaryte);
-        let chance = rules::bolt_proc_chance(set[13].unwrap_or(0), settings.kandarin_diary);
+        let chance = rules::bolt_proc_chance(set[13].unwrap_or(0), settings.kandarin_diary)
+            * if rule.has(Effect::Ascension) {
+                0.5
+            } else {
+                1.0
+            };
         match rules::ammunition(set[13].unwrap_or(0)) {
             AmmoEffect::Ruby => {
                 if crate::encounters::window(monster.id)
@@ -1490,19 +1542,17 @@ fn conditional_hit(
     mark_bonus: Option<(i64, i64)>,
     set_effects: &crate::effects::SetHitEffects,
 ) -> (f64, i32, Vec<(i32, f64)>) {
-    if max <= 0 {
+    if max <= 0 && set_effects.accurate_min <= 1 {
         let outcomes = set_effects.npc_transform.outcomes(0, 1.0);
         let mean = outcomes.iter().map(|(d, p)| f64::from(*d) * p).sum();
         let max = outcomes.iter().map(|(d, _)| *d).max().unwrap_or(0);
         return (mean, max, outcomes);
     }
-    let mut hits: Vec<_> = (min..=max)
-        .map(|damage| (damage, 1.0 / (max - min + 1) as f64))
-        .collect();
+    let mut hits = crate::effects::best_of_uniform(min, max.max(0), set_effects.damage_rolls);
     for before in [true, false] {
         if !before {
             for (damage, _) in &mut hits {
-                *damage = (*damage).max(1);
+                *damage = (*damage).max(set_effects.accurate_min);
             }
         }
         for proc in procs.iter().filter(|p| {

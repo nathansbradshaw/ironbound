@@ -251,8 +251,23 @@ fn equipment_reason(
                     range(&dps)
                 );
             }
+            let ids = targets(o, p, phase, style);
+            let partial = ids
+                .iter()
+                .filter_map(|id| {
+                    damage(snapshot, o, set, style, &[*id]).and_then(|dps| dps.first().copied())
+                })
+                .collect::<Vec<_>>();
+            if !partial.is_empty() {
+                return format!(
+                    "Provides {style} attacks for {label}: {} modeled DPS in {}/{} windows; unavailable for the rest.",
+                    range(&partial),
+                    partial.len(),
+                    ids.len()
+                );
+            }
             return format!(
-                "Provides {style} attacks for {label}; damage benefits are unverified."
+                "Provides {style} attacks for {label}; DPS is unavailable for this setup."
             );
         }
         return format!("Equipped for {label}; this weapon/style combination is unverified.");

@@ -24,8 +24,9 @@ fn copy_tree(from: &Path, to: &Path) -> std::io::Result<()> {
     Ok(())
 }
 fn copy_runtime_assets() -> Result<(), Box<dyn std::error::Error>> {
-    // Icons and data tables are embedded in Wasm. Publish only referenced files.
+    // The complete public icon pack loads after startup, independently of banks.
     let mut assets = std::collections::BTreeSet::new();
+    assets.insert("item-icons-pack.json".to_string());
     for source in ["index.html", "style.css", "workspace.css"] {
         let text = fs::read_to_string(source)?;
         for reference in text.split("./assets/").skip(1) {
@@ -571,6 +572,15 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                         }),
                 ],
             )?;
+            // Pages does not consistently compress Wasm. Ship deterministic gzip
+            // and let the browser's pre-Wasm bootstrap decompress its stream.
+            let compressed = Command::new("gzip")
+                .args(["-n", "-9", "-c", "dist/pkg/ironbound_bg.wasm"])
+                .output()?;
+            if !compressed.status.success() {
+                return Err("Compressing the startup module failed".into());
+            }
+            fs::write("dist/pkg/ironbound_bg.wasm.gz", compressed.stdout)?;
             // All browser code and CSS share a content-derived cache key. A Pages
             // deployment must not combine a fresh page with cached older Wasm.
             let mut version = 0xcbf29ce484222325u64;
@@ -579,17 +589,30 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 "dist/pkg/ironbound.js",
                 "style.css",
                 "workspace.css",
+                "assets/item-icons-pack.json",
+                "index.html",
             ] {
                 for byte in fs::read(file)? {
                     version = (version ^ byte as u64).wrapping_mul(0x100000001b3);
                 }
             }
             let version = format!("{version:016x}");
+            // This tiny JavaScript bridge must run before Rust/Wasm is available.
+            // Keep the raw module for browsers without streaming decompression.
+            let startup = format!(r#"init({{module_or_path: (async () => {{
+                if (typeof DecompressionStream !== 'function') {{
+                    return fetch(new URL('./pkg/ironbound_bg.wasm?v={version}', location.href));
+                }}
+                const response = await fetch(new URL('./pkg/ironbound_bg.wasm.gz?v={version}', location.href));
+                if (!response.ok || !response.body) throw new Error('Startup download failed');
+                return new Response(response.body.pipeThrough(new DecompressionStream('gzip')), {{headers: {{'Content-Type': 'application/wasm'}}}});
+            }})()}}).catch"#);
             let index=fs::read_to_string("index.html")?
                 .replace("./style.css",&format!("./style.css?v={version}"))
                 .replace("./workspace.css",&format!("./workspace.css?v={version}"))
                 .replace("./pkg/ironbound.js",&format!("./pkg/ironbound.js?v={version}"))
-                .replace("init().catch",&format!("init({{module_or_path: new URL('./pkg/ironbound_bg.wasm?v={version}', location.href)}}).catch"));
+                .replace("</head>",&format!("<meta id=\"item-icon-pack\" content=\"./assets/item-icons-pack.json?v={version}\"></head>"))
+                .replace("init().catch",&startup);
             if !index.contains("module_or_path") {
                 return Err(
                     "The module bootstrap changed; update asset versioning before publishing"
@@ -637,6 +660,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     Ok(bytes) => {
                         let mime = match file.extension().and_then(|s| s.to_str()) {
                             Some("wasm") => "application/wasm",
+                            Some("gz") => "application/gzip",
                             Some("js") => "text/javascript",
                             Some("css") => "text/css",
                             Some("png") => "image/png",

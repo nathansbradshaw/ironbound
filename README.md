@@ -133,7 +133,7 @@ Inventory Setups preserves equipment and inventory positions/quantities; Bank Ta
 <details>
 <summary><strong>Build, test and publish</strong></summary>
 
-Requires Rust, the `wasm32-unknown-unknown` target and wasm-bindgen-cli **0.2.127**.
+Requires Rust, the `wasm32-unknown-unknown` target, wasm-bindgen-cli **0.2.127**, and `gzip`.
 
 ```sh
 cargo test --locked -j 2

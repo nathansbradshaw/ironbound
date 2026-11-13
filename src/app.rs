@@ -4437,6 +4437,7 @@ fn simulation_panel(s: &State, p: &Plan) -> String {
             "flare_regen",
             "glyph_hp",
             "glyph_prayer",
+            "melee_autos",
         ]
         .contains(&key)
         {
@@ -4466,6 +4467,8 @@ fn simulation_panel(s: &State, p: &Plan) -> String {
             Ok(report)=>{
                 let total=report.runs.len();let complete=report.completed();
                 html.push_str(&format!("<div aria-live=\"polite\"><h3>Scenario results</h3><p>{complete} / {total} first fights completed in the model; {} / {total} completed with the packed supply budget. Failures and timeouts are retained; percentiles below include completed first fights only.</p>",report.covered()));
+                let mut failures=BTreeMap::new();for run in report.runs.iter().filter(|r|!r.completed){*failures.entry(run.reason.as_str()).or_insert(0usize)+=1;}
+                if !failures.is_empty(){html.push_str("<p>Unfinished first fights: ");for (reason,n) in failures {html.push_str(&format!("{}: {n}. ",esc(reason)));}html.push_str("</p>");}
                 html.push_str("<table class=\"wiki-table\"><thead><tr><th>First-fight demand</th><th>Median</th><th>90th percentile</th></tr></thead><tbody>");
                 let rows:[(&str,fn(&crate::simulation::Usage)->f64);15]=[
                     ("Duration (seconds)",|u|u.ticks as f64*0.6),("Attacks",|u|u.attacks as f64),
@@ -4487,6 +4490,9 @@ fn simulation_panel(s: &State, p: &Plan) -> String {
                 html.push_str("</tbody></table><h4>Phase time (median seconds)</h4><table class=\"wiki-table\"><tbody>");
                 let phases:std::collections::BTreeSet<_>=report.runs.iter().flat_map(|r|r.usage.phase_ticks.keys().cloned()).collect();
                 for phase in phases {let q=report.quantile(|u|u.phase_ticks.get(&phase).copied().unwrap_or(0) as f64*0.6,0.5);html.push_str(&format!("<tr><th>{}</th><td>{}</td></tr>",esc(&phase),q.map(|n|format!("{n:.1}")).unwrap_or_else(||"—".into())));}
+                html.push_str("</tbody></table><h4>Mechanics observed (median, all first attempts)</h4><table class=\"wiki-table\"><tbody>");
+                let mechanics:[(&str,fn(&crate::simulation::Usage)->u32);8]=[("Acid specials",|u|u.acid),("Freeze specials",|u|u.freeze),("Judges",|u|u.judges),("Flares spawned",|u|u.flares),("Flares exploded",|u|u.exploded),("Core exposures",|u|u.core_downs),("Skull sets",|u|u.skulls),("Enrage transitions",|u|u.enrage)];
+                for (label,metric) in mechanics {let mut values=report.runs.iter().map(|r|metric(&r.usage)).collect::<Vec<_>>();values.sort();if let Some(n)=values.get(values.len()/2){html.push_str(&format!("<tr><th>{label}</th><td>{n}</td></tr>"));}}
                 html.push_str("</tbody></table><h4>Fights covered per trip</h4><p>");
                 let mut counts=BTreeMap::new();for run in &report.runs {*counts.entry(run.trip_kills).or_insert(0usize)+=1;}
                 for (kills,n) in counts {html.push_str(&format!("{kills} fight(s): {n} / {total} trials. "));}

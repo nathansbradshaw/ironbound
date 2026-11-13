@@ -35,6 +35,7 @@ pub struct Settings {
     pub flare_regen: u32,
     pub glyph_hp: u32,
     pub glyph_prayer: u32,
+    pub melee_autos: u32,
     pub warden: u32,
     pub prayer_rotation: u32,
     pub skull_ticks: u32,
@@ -66,6 +67,7 @@ impl Default for Settings {
             flare_regen: 10,
             glyph_hp: 2,
             glyph_prayer: 2,
+            melee_autos: 0,
             warden: 0,
             prayer_rotation: 21,
             skull_ticks: 16,
@@ -89,7 +91,7 @@ impl Settings {
             ),
             (
                 "incoming",
-                "Residual incoming HP / minute",
+                "Residual HP / minute in exposed phases",
                 self.incoming,
                 0,
                 600,
@@ -197,6 +199,13 @@ impl Settings {
                 12,
             ),
             (
+                "melee_autos",
+                "Yama final autos in melee range (%)",
+                self.melee_autos,
+                0,
+                100,
+            ),
+            (
                 "warden",
                 "P2 Warden: 0 Elidinis, 1 Tumeken",
                 self.warden,
@@ -261,6 +270,7 @@ impl Settings {
             "flare_regen" => self.flare_regen = n,
             "glyph_hp" => self.glyph_hp = n,
             "glyph_prayer" => self.glyph_prayer = n,
+            "melee_autos" => self.melee_autos = n,
             "warden" => self.warden = n,
             "prayer_rotation" => self.prayer_rotation = n,
             "skull_ticks" => self.skull_ticks = n,
@@ -313,6 +323,8 @@ pub struct Attack {
     pub weapon: i32,
     pub runes: Vec<(i32, u32)>,
     pub projectile: Option<i32>,
+    #[serde(default)]
+    pub projectile_loss: Option<u32>,
     pub charge: bool,
     pub scales: bool,
     pub prayer: f64,
@@ -362,6 +374,18 @@ pub struct Model {
     pub notes: Vec<String>,
     pub mark_ticks: u32,
 }
+#[derive(Deserialize)]
+struct ConsumptionRules {
+    nonrecoverable_projectiles: Vec<i32>,
+    charge_free_weapons: Vec<i32>,
+}
+fn consumption_rules() -> &'static ConsumptionRules {
+    static DATA: std::sync::OnceLock<ConsumptionRules> = std::sync::OnceLock::new();
+    DATA.get_or_init(|| {
+        serde_json::from_str(include_str!("../assets/consumption-rules.json"))
+            .expect("reviewed consumption rules")
+    })
+}
 fn attack(
     snapshot: &Snapshot,
     o: &Options,
@@ -393,6 +417,9 @@ fn attack(
     let member = snapshot.selected().ok_or("Select an account.")?;
     if rules::equipped_effect(set, "confliction_accuracy") {
         return Err("Full-fight Confliction miss-state transitions are not verified. Choose other gloves for this simulation.".into());
+    }
+    if rules::set_effect(set, "dharok") {
+        return Err("Dharok's changing player-HP damage is not yet verified in the fight simulator. Use another packed set for this scenario.".into());
     }
     let mut target = planner::monster(id)
         .ok_or("Missing simulation target")?
@@ -430,13 +457,17 @@ fn attack(
         (!rule.family.ammo.is_empty()).then_some(set[13]).flatten()
     };
     let runes = rules::rune_supplies_for_set(spell, 1, set);
-    let charge = rule.family.formula == rules::Formula::Powered
-        || (style == "Ranged" && projectile.is_none() && rule.family.ammo.is_empty());
+    let charge = !consumption_rules().charge_free_weapons.contains(&weapon)
+        && (rule.family.formula == rules::Formula::Powered
+            || (style == "Ranged" && projectile.is_none() && rule.family.ammo.is_empty()));
     Ok(Attack {
         hits,
         weapon,
         runes,
         projectile,
+        projectile_loss: projectile
+            .filter(|id| consumption_rules().nonrecoverable_projectiles.contains(id))
+            .map(|_| 100),
         charge,
         scales: internal,
         prayer: prayer::drain_per_minute(prayer::bonus(set), &settings) / 100.0,
@@ -444,7 +475,9 @@ fn attack(
 }
 impl Model {
     pub fn from_plan(snapshot: &Snapshot, o: &Options, p: &Plan) -> Result<Self, String> {
-        if !p.exportable() {return Err("Resolve missing carried items and preparation blockers before simulating this packed setup.".into());}
+        if !p.exportable() {
+            return Err("Resolve missing carried items and preparation blockers before simulating this packed setup.".into());
+        }
         if !o.simulation.valid() {
             return Err("Invalid simulation assumptions.".into());
         }
@@ -542,8 +575,9 @@ impl Model {
             }
         }
         foods.sort_by_key(|(_, heal, _)| std::cmp::Reverse(*heal));
-        notes.push("Incoming HP/min is a user scenario after protection, excluding the separate failed mechanics. It is not inferred from unverified attack mixtures.".into());
+        notes.push("Incoming HP/min applies during exposed attack phases after protection, excluding separate failed mechanics. It is not inferred from unverified attack mixtures. Yama prioritizes killing all flares rather than glyph-skipping them; melee-range autos can spawn extra final flares.".into());
         notes.push("Timing, uptime, missed mechanics, flare healing/regeneration, skull damage and recovery are editable scenario inputs. Defaults are illustrative, not measured player performance.".into());
+        notes.push("Every fight starts with full boss HP. The comparison panel's current-target-HP and fixed-player-HP assumptions are not fight starting conditions. Player HP/Prayer and supplies carry between fights.".into());
         notes.push("No special attacks, passive healing, boost decay, combo eating, projectile travel, armour degradation, tome pages, poison/venom or potion protection expiry. Keep protection/boosts maintained manually. Weapon charges and blowpipe scales are reported separately.".into());
         if encounter == Encounter::Wardens {
             notes.push("Wardens segment only: solo, raid level 0–150, no mechanic-changing invocations. Supplies/HP/Prayer are those assumed on entering this room; preceding raid rooms are excluded. Enrage resets Defence to 180 without reapplying earlier reductions.".into());
@@ -843,7 +877,10 @@ impl<'a> Runner<'a> {
             if *used >= self.m.available.get(&id).copied().unwrap_or(0) {
                 self.usage.ammo_shortage = true;
             }
-            if self.rng.chance(self.m.settings.ammo_loss) {
+            if self
+                .rng
+                .chance(a.projectile_loss.unwrap_or(self.m.settings.ammo_loss))
+            {
                 *used += 1;
             }
         }
@@ -952,6 +989,15 @@ impl<'a> Runner<'a> {
                     return false;
                 }
                 let auto = if stage == 2 { 7 } else { 8 };
+                if stage == 2
+                    && elapsed.is_multiple_of(7)
+                    && self.rng.chance(self.m.settings.melee_autos)
+                    && flares.len() < 4
+                {
+                    flares.push((71, 71, elapsed + self.m.settings.flare_charge));
+                    flare_total += 1;
+                    self.usage.flares += 1;
+                }
                 if elapsed == auto || elapsed > auto && (elapsed - auto).is_multiple_of(auto * 3) {
                     if stage < 2 {
                         self.hurt(self.m.settings.glyph_hp as f64);
@@ -1177,6 +1223,7 @@ pub fn simulate(model: &Model) -> Result<Report, String> {
         || model.mark_ticks > 10_000
         || model.attacks.iter().any(|a| {
             !(1..=20).contains(&a.hits.attack_ticks)
+                || a.projectile_loss.is_some_and(|n| n > 100)
                 || !(0.0..=100.0).contains(&a.prayer)
                 || a.runes.len() > 32
                 || a.runes
@@ -1249,4 +1296,37 @@ pub fn simulate(model: &Model) -> Result<Report, String> {
         runs,
         notes: model.notes.clone(),
     })
+}
+
+#[cfg(test)]
+mod consumption_tests {
+    use super::*;
+    #[test]
+    fn real_weapon_adapters_distinguish_racks_charged_and_corrupted_crystal_bows() {
+        let mut snapshot = crate::account::demo();
+        for skill in crate::account::SKILLS {
+            snapshot.members[0].level_overrides.insert(skill.into(), 99);
+        }
+        let o = Options {
+            boss: Boss::Custom,
+            targets: vec![planner::Target {
+                id: 8059,
+                style: "Ranged".into(),
+            }],
+            ..Default::default()
+        };
+        let mut plan = planner::plan(&snapshot, &Options::default());
+        plan.phases.clear();
+        plan.equipment = vec![None; 14];
+        for (weapon, ammo, charged, loss) in [
+            (4734, Some(4740), false, Some(100)),
+            (25865, None, true, None),
+            (25867, None, false, None),
+        ] {
+            plan.equipment[3] = Some(weapon);
+            plan.equipment[13] = ammo;
+            let a = attack(&snapshot, &o, &plan, 8059, "Ranged", false).unwrap();
+            assert_eq!((a.charge, a.projectile_loss), (charged, loss));
+        }
+    }
 }

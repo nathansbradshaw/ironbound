@@ -11,6 +11,7 @@ fn hit(damage: i32) -> Attack {
             hit_distribution: vec![(damage, 1.0)],
             hp_dependent: None,
             dps: damage as f64 / 0.6,
+            potential_healing_per_second: 0.0,
             accuracy: 1.0,
             max_hit: damage,
             attack_ticks: 1,
@@ -24,6 +25,7 @@ fn hit(damage: i32) -> Attack {
         weapon: 4151,
         runes: vec![],
         projectile: None,
+        projectile_loss: None,
         charge: false,
         scales: false,
         prayer: 0.0,
@@ -159,6 +161,12 @@ fn trip_reuses_stock_and_never_turns_bank_items_into_carried_ammunition() {
     let c = simulation::simulate(&m).unwrap();
     assert_eq!(c.covered(), 0);
     assert!(c.runs.iter().all(|r| r.usage.ammo_shortage));
+    m.available.insert(9242, 2);
+    for a in &mut m.attacks {
+        a.projectile_loss = Some(100);
+    }
+    let racks = simulation::simulate(&m).unwrap();
+    assert!(racks.runs.iter().all(|r| r.trip_kills == 2));
 }
 #[test]
 fn food_prayer_charges_and_death_are_independent_of_completion_percentiles() {
@@ -213,6 +221,24 @@ fn flare_deadlines_regeneration_and_damage_heal_the_same_boss_hp_state() {
     let a = simulation::simulate(&safe).unwrap();
     assert_eq!(a.completed(), 16);
     assert!(a.runs.iter().all(|r| r.usage.exploded == 0));
+}
+#[test]
+fn final_melee_range_autos_add_flares_and_attack_cost_instead_of_free_uptime() {
+    let mut m = model(Encounter::Yama, 50);
+    m.settings.glyph_hp = 0;
+    m.settings.glyph_prayer = 0;
+    m.attacks[4] = hit(200);
+    m.attacks[5] = hit(200);
+    let clean = simulation::simulate(&m).unwrap();
+    m.settings.melee_autos = 100;
+    let exposed = simulation::simulate(&m).unwrap();
+    assert!(
+        exposed
+            .runs
+            .iter()
+            .all(|r| r.completed && r.usage.flares >= 2)
+    );
+    assert!(exposed.runs[0].usage.attacks > clean.runs[0].usage.attacks);
 }
 #[test]
 fn seeds_are_reproducible_and_invalid_or_stalled_models_are_bounded() {

@@ -4126,6 +4126,12 @@ fn combat_panel(s: &State, p: &Plan) -> String {
         .filter(|id| priority_ids.insert(*id))
     {
         if let Some(m) = planner::monsters().iter().find(|m| m.id == id) {
+            let name = crate::encounters::window(id)
+                .filter(|w| {
+                    id < 100_000 && w.damage_model != crate::encounters::DamageModel::Standard
+                })
+                .map(|w| w.phase.as_str())
+                .unwrap_or(&m.name);
             html.push_str(&format!(
                 r#"<button class="phase {}" data-action="compare-target:{id}" aria-pressed="{}">{}</button>"#,
                 if comparison_monster(s).is_some_and(|m| m.id == id) {
@@ -4134,7 +4140,7 @@ fn combat_panel(s: &State, p: &Plan) -> String {
                     ""
                 },
                 comparison_monster(s).is_some_and(|m| m.id == id),
-                esc(&m.name)
+                esc(name)
             ));
         }
     }

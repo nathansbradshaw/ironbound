@@ -146,7 +146,7 @@ fn calculated(
     o: &Options,
     owned: &BTreeMap<i32, u32>,
 ) -> Result<combat::ResultStats, String> {
-    if !rules::casting_supported_configured(member, set, owned, rules::DEFAULT_CASTS, &o.combat) {
+    if !rules::casting_supported_configured(member, set, owned, o.combat.spell_casts, &o.combat) {
         return Err("Judge set needs a usable weapon and sufficient spell runes.".into());
     }
     combat::calculate_configured(

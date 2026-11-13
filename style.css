@@ -782,3 +782,20 @@ footer{font-size:10px;padding:9px 4px 0}footer>span:last-child{display:none}
 .combat-subtype-options>span.active{color:#fff3bd;border-color:#e4bc48;background:#30291c}
 .combat-subtype-options>span small{font-size:14px}
 .combat-subtypes>.small-note{margin:8px 0 0;font-size:16px}
+
+.setup-library{margin:12px 0;padding:12px;border:1px solid #89744b}
+.setup-library>label{display:inline-flex;flex-direction:column;gap:4px;margin:10px 10px 6px 0;max-width:100%}
+.setup-library input{max-width:100%}
+.saved-setup{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:10px;padding:10px 0;border-top:1px solid #89744b66}
+.saved-setup>strong{overflow-wrap:anywhere}
+.saved-setup>div{display:flex;flex-wrap:wrap;gap:6px}
+.manual-confirm{display:block;width:100%;text-align:left;margin:8px 0;padding:10px;border:1px solid #89744b;background:#30291c;color:#e2d3af;font:inherit;cursor:pointer}
+.manual-confirm[aria-pressed=true]{border-color:#b4bd7c;color:#e1ecb5}
+.manual-confirm:focus-visible{outline:2px solid #e4bc48;outline-offset:2px}
+.coverage-details{margin-top:10px;font-size:16px}
+.coverage-panel{margin-top:10px;min-width:0}
+.coverage-panel table{width:100%;border-collapse:collapse;text-align:left}
+.coverage-panel th,.coverage-panel td{padding:9px;border-bottom:1px solid #89744b66;vertical-align:top}
+.coverage-panel small{display:block;font-weight:normal;margin-top:4px}
+.coverage-panel .table-wrap{overflow-x:auto}
+.save-warning{margin:12px;display:flex;flex-wrap:wrap;align-items:center;gap:8px}

@@ -15,6 +15,14 @@ Your account stays on that browser. Import it again when using a different devic
 
 **Starting gear + packing list** is what you export. Choose a boss phase to preview its equipped gear and inventory together; return to **Start** to edit the packing list. **Explore example** opens a temporary demo; your saved bank stays safe.
 
+**Saved setups** keeps named configurations on this device. Save a learning setup, change your gear, then load it again; ownership and levels are rechecked against your current bank. Private backups include the library. Public links exclude setup names and personal confirmations.
+
+**Gear → Adjust supplies → Spell casts for trip** sets your rune budget (default 150). Selection and packing use the same total cast count; rune stacks cover the worst-case mix of selected attack spells. Food and restore counts remain editable. Ammunition still assumes 100 projectiles; charges and actual trip length need your check.
+
+**Preparation** shows encounter calculation coverage and lets you confirm access, unlocks, charges and supplies. These are your confirmations, not data inferred from the bank. Account or plan changes require checking again. Gear and switch edits keep manual inventory choices; packing conflicts block export until resolved. **Reset inventory edits** restores automatic packing.
+
+If browser saving fails, a persistent warning offers a private backup and retry. Unreadable saved data is preserved for download rather than replaced by an example account.
+
 ## What you can do
 
 - **Use Recommended:** reviewed ToA, Moons, Vorkath and Yama roles guide your owned gear. Selecting Vorkath compares complete melee/ranged loadouts, including Salve and full Void sets. **Why this gear? → Compare owned styles** reruns that comparison. Custom weights live under **Options → Advanced**.
@@ -34,6 +42,8 @@ Your account stays on that browser. Import it again when using a different devic
 - **Take it into RuneLite:** export Inventory Setups or Bank Tags, or share a setup link.
 
 ## What is still incomplete?
+
+The prioritized [development backlog](docs/backlog.md) records completed work, remaining mechanics and verification evidence.
 
 **The catalog covers all 72 current hiscores bosses/modes. Their combat mechanics are not all fully supported.**
 

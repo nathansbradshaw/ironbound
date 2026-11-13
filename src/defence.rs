@@ -5,6 +5,7 @@ use serde::{Deserialize, Serialize};
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(default, deny_unknown_fields)]
 pub struct Settings {
+    pub spell_casts: u32,
     pub boosts: crate::modifiers::Boosts,
     pub reductions: std::collections::BTreeMap<i32, crate::modifiers::Reductions>,
     pub loaded_dart: Option<i32>,
@@ -23,6 +24,7 @@ pub struct Settings {
 impl Default for Settings {
     fn default() -> Self {
         Self {
+            spell_casts: crate::rules::DEFAULT_CASTS,
             boosts: Default::default(),
             reductions: Default::default(),
             loaded_dart: None,
@@ -41,7 +43,8 @@ impl Default for Settings {
 }
 impl Settings {
     pub fn valid(&self) -> bool {
-        self.safety <= 3
+        (1..=10_000).contains(&self.spell_casts)
+            && self.safety <= 3
             && self.boosts.valid()
             && self.reductions.len() <= crate::rules::MAX_TARGETS
             && self.reductions.iter().all(|(id, r)| *id > 0 && r.valid())

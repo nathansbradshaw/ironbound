@@ -632,13 +632,13 @@ pub fn family_ids(name: &str) -> Vec<i32> {
         .flat_map(|w| w.ids.iter().copied())
         .collect()
 }
-/// Spell selection uses the common 150-cast trip template. Family order is recipe preference.
+/// Unconfigured callers use the default cast budget. Family order is recipe preference.
 pub fn spell_name(
     member: &Member,
     set: &[Option<i32>],
     owned: &BTreeMap<i32, u32>,
 ) -> &'static str {
-    spell_name_at_level(set, owned, member.level("Magic"))
+    spell_name_at_level(set, owned, member.level("Magic"), DEFAULT_CASTS)
 }
 pub fn spell_name_configured(
     member: &Member,
@@ -650,12 +650,14 @@ pub fn spell_name_configured(
         set,
         owned,
         crate::modifiers::level(member, "Magic", &settings.boosts),
+        settings.spell_casts,
     )
 }
 fn spell_name_at_level(
     set: &[Option<i32>],
     owned: &BTreeMap<i32, u32>,
     magic: Option<u32>,
+    casts: u32,
 ) -> &'static str {
     let Some(rule) = set.get(3).copied().flatten().and_then(weapon) else {
         return "";
@@ -669,9 +671,7 @@ fn spell_name_at_level(
     }
     recipes
         .iter()
-        .find(|s| {
-            magic.is_some_and(|level| level >= s.level) && has_runes(s, set, owned, DEFAULT_CASTS)
-        })
+        .find(|s| magic.is_some_and(|level| level >= s.level) && has_runes(s, set, owned, casts))
         .or_else(|| recipes.last())
         .map(|s| s.name.as_str())
         .unwrap_or("")
@@ -758,7 +758,7 @@ pub fn elemental_candidates(
         .filter(|s| {
             s.family == rule.weapon.family
                 && magic >= s.level
-                && has_runes(s, set, owned, DEFAULT_CASTS)
+                && has_runes(s, set, owned, settings.spell_casts)
         })
         .filter(|s| elements.insert(s.element.as_deref()))
         .collect()
@@ -789,7 +789,7 @@ pub fn elemental_unavailability(
         .min();
     match minimum {
         Some(level) if magic < level => format!("Requires at least {level} Magic."),
-        Some(_) => format!("Insufficient runes for {DEFAULT_CASTS} casts."),
+        Some(_) => format!("Insufficient runes for {} casts.", settings.spell_casts),
         None => "Elemental casting is not supported for this weapon.".into(),
     }
 }
@@ -862,7 +862,7 @@ fn casting_at_level(
     if rule.family.formula == Formula::Powered {
         return magic.is_some();
     }
-    let name = spell_name_at_level(set, owned, magic);
+    let name = spell_name_at_level(set, owned, magic, casts);
     spells().iter().find(|s| s.name == name).is_some_and(|s| {
         magic.is_some_and(|level| level >= s.level) && has_runes(s, set, owned, casts)
     })

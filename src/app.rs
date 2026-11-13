@@ -2,9 +2,10 @@ use crate::{
     account::{self, SKILLS, Snapshot},
     combat, export,
     planner::{self, Boss, Options, Plan},
-    reference, share,
+    reference,
+    setups::{SaveStatus, Saved, default_budget_caps},
+    share,
 };
-use serde::{Deserialize, Serialize};
 use std::{
     cell::{Cell, RefCell},
     collections::BTreeMap,
@@ -14,9 +15,6 @@ use wasm_bindgen_futures::{JsFuture, spawn_local};
 use web_sys::{Element, HtmlInputElement, HtmlSelectElement, HtmlTextAreaElement};
 
 const STORAGE: &str = "ironbound.account.v1";
-fn default_budget_caps() -> [usize; 2] {
-    [4, 8]
-}
 fn comparison_caps_query() -> Option<[usize; 2]> {
     let search = window().location().search().ok()?;
     let value = search
@@ -29,19 +27,11 @@ fn comparison_caps_query() -> Option<[usize; 2]> {
     let caps = [left.parse::<usize>().ok()?, right.parse::<usize>().ok()?];
     caps.iter().all(|cap| *cap <= 11).then_some(caps)
 }
-#[derive(Clone, Serialize, Deserialize)]
-struct Saved {
-    version: u32,
-    snapshot: Snapshot,
-    options: Options,
-    pins: BTreeMap<String, Vec<String>>,
-    #[serde(default)]
-    last_setup_fragment: Option<String>,
-    #[serde(default = "default_budget_caps")]
-    budget_caps: [usize; 2],
-}
 struct State {
     saved: Saved,
+    save_status: Cell<SaveStatus>,
+    unreadable_save: Option<String>,
+    setups_open: bool,
     demo_return: Option<Saved>,
     tab: String,
     view: String,
@@ -73,19 +63,22 @@ struct State {
 }
 impl State {
     fn initial() -> Self {
-        let restored = web_sys::window()
-            .and_then(|w| w.local_storage().ok().flatten())
-            .and_then(|s| s.get_item(STORAGE).ok().flatten())
-            .and_then(|s| serde_json::from_str::<Saved>(&s).ok())
-            .filter(|s| {
-                s.version == 1
-                    && s.snapshot.selected().is_some()
-                    && Snapshot::parse(
-                        &serde_json::to_string(&s.snapshot).unwrap_or_default(),
-                        s.snapshot.fetched_at.clone(),
-                    )
-                    .is_ok()
-            });
+        let read = window()
+            .local_storage()
+            .and_then(|storage| storage.ok_or(JsValue::NULL))
+            .and_then(|storage| storage.get_item(STORAGE));
+        let raw = read.as_ref().ok().and_then(|raw| raw.clone());
+        let restored = raw.as_deref().and_then(|raw| Saved::parse(raw).ok());
+        let unreadable_save = raw.filter(|_| restored.is_none());
+        let save_status = if unreadable_save.is_some() {
+            SaveStatus::Unreadable
+        } else if read.is_err() {
+            SaveStatus::Unavailable
+        } else if restored.is_some() {
+            SaveStatus::Saved
+        } else {
+            SaveStatus::Pending
+        };
         let mut saved = restored.unwrap_or(Saved {
             version: 1,
             snapshot: account::demo(),
@@ -93,6 +86,7 @@ impl State {
             pins: BTreeMap::new(),
             last_setup_fragment: None,
             budget_caps: default_budget_caps(),
+            setups: Default::default(),
         });
         if saved.snapshot.source == "Demo" {
             saved.snapshot = account::demo();
@@ -143,6 +137,9 @@ impl State {
             saved.options = setup.options();
         }
         Self {
+            save_status: Cell::new(save_status),
+            unreadable_save,
+            setups_open: false,
             demo_return: None,
             shared_setup,
             edit_inventory: None,
@@ -182,7 +179,7 @@ impl State {
     }
     fn persist(&self) {
         // An example is a temporary preview. Never replace the saved account or its URL.
-        if self.demo_return.is_some() {
+        if self.demo_return.is_some() || self.unreadable_save.is_some() {
             return;
         }
         let mut stored = self.saved.clone();
@@ -208,16 +205,19 @@ impl State {
                 h.replace_state_with_url(&JsValue::NULL, "", Some(&format!("{base}{hash}")))
             });
         }
-        if let Some(storage) = window().local_storage().ok().flatten() {
-            if storage
-                .set_item(STORAGE, &serde_json::to_string(&stored).unwrap_or_default())
-                .is_err()
-            {
-                web_sys::console::warn_1(
-                    &"Browser storage unavailable; download a backup before leaving.".into(),
-                );
-            }
-        }
+        let result = serde_json::to_string(&stored)
+            .map_err(|_| JsValue::NULL)
+            .and_then(|raw| {
+                window()
+                    .local_storage()
+                    .and_then(|storage| storage.ok_or(JsValue::NULL))
+                    .and_then(|storage| storage.set_item(STORAGE, &raw))
+            });
+        self.save_status.set(if result.is_ok() {
+            SaveStatus::Saved
+        } else {
+            SaveStatus::Unavailable
+        });
     }
     fn notice(&mut self, msg: impl Into<String>, error: bool) {
         self.message = msg.into();
@@ -264,6 +264,7 @@ fn live_number(id: &str) -> bool {
         "raid-level",
         "budget-cap-left",
         "budget-cap-right",
+        "spell-casts",
     ]
     .contains(&id)
         || id.starts_with("priority-")
@@ -287,8 +288,6 @@ fn apply_number(s: &mut State, id: &str, value: &str) -> bool {
     if id == "max-switches" && value.trim().is_empty() {
         o.max_switches = None;
         o.fewer_switches = false;
-        o.inventory_overrides.clear();
-        o.inventory_quantities.clear();
         s.export_text = None;
         return true;
     }
@@ -299,8 +298,6 @@ fn apply_number(s: &mut State, id: &str, value: &str) -> bool {
         "max-switches" => {
             o.max_switches = Some((n as usize).min(11));
             o.fewer_switches = false;
-            o.inventory_overrides.clear();
-            o.inventory_quantities.clear();
         }
         "switch-slots" => o.switch_slots = (n as usize).min(20),
         "food" => {
@@ -314,6 +311,7 @@ fn apply_number(s: &mut State, id: &str, value: &str) -> bool {
             o.inventory_quantities.clear();
         }
         "raid-level" => o.raid_level = n.min(150),
+        "spell-casts" => o.combat.spell_casts = n.clamp(1, 10_000),
         _ if id.starts_with("reduction-") => {
             let Some(target) = target_id else {
                 return false;
@@ -1181,7 +1179,6 @@ pub fn start() -> Result<(), JsValue> {
                     if let Ok(sel) = el.dyn_into::<HtmlSelectElement>() {
                         if let Ok(value) = sel.value().parse::<i32>() {
                             s.saved.options.gear_overrides.insert(id[5..].into(), value);
-                            s.saved.options.inventory_overrides.clear();
                         }
                     }
                 }
@@ -1431,6 +1428,21 @@ fn act(action: &str) {
             download("ironbound-account-backup.json", &text);
             return;
         }
+        "backup-unreadable" => {
+            if let Some(raw) = STATE.with(|s| s.borrow().unreadable_save.clone()) {
+                download("ironbound-unreadable-backup.json", &raw);
+            }
+            return;
+        }
+        "retry-save" => {
+            if STATE.with(|s| s.borrow().unreadable_save.is_some()) {
+                let _ = window().location().reload();
+            } else {
+                STATE.with(|s| s.borrow().persist());
+                render();
+            }
+            return;
+        }
         "forget" => {
             if STATE.with(|s| s.borrow().demo_return.is_some()) {
                 notice("Return to your account before removing saved data.", true);
@@ -1454,7 +1466,64 @@ fn act(action: &str) {
         let mut s = state.borrow_mut();
         s.message.clear();
         s.export_text = None;
-        if let Some(tab) = action.strip_prefix("tab:") {
+        if action == "save-named" {
+            let options = s.saved.options.clone();
+            let result = s.saved.setups.save(&input("setup-name"), &options);
+            s.setups_open = true;
+            match result { Ok(()) => s.notice("Named setup added. Check the device save status before leaving.", false), Err(e) => s.notice(e, true) }
+        } else if let Some(choice) = action.strip_prefix("named:") {
+            s.setups_open = true;
+            if let Some((verb, index)) = choice.split_once(':') {
+                if let Ok(index) = index.parse::<usize>() {
+                    if let Some(entry) = s.saved.setups.0.get(index).cloned() {
+                        match verb {
+                            "load" => {
+                                s.saved.options = entry.options;
+                                s.shared_setup = None;
+                                s.phase = None;
+                                s.edit_style = None;
+                                s.compare_target = None;
+                                s.view = "loadout".into();
+                                s.notice(format!("Loaded {}. Ownership, levels and packing rechecked against your current bank.", entry.name), false);
+                            }
+                            "rename" => {
+                                match s.saved.setups.rename(index, &input("setup-name")) {
+                                    Ok(()) => s.notice("Setup renamed.", false), Err(e) => s.notice(e, true)
+                                }
+                            }
+                            "replace" => {
+                                if window().confirm_with_message(&format!("Replace {} with the current configuration?", entry.name)).unwrap_or(false) {
+                                    let options = s.saved.options.clone();
+                                    match s.saved.setups.replace(index, &options) {
+                                        Ok(()) => s.notice("Named setup updated.", false), Err(e) => s.notice(e, true)
+                                    }
+                                }
+                            }
+                            "remove" => {
+                                if window().confirm_with_message(&format!("Remove {} from this device? Download a private backup first if you want to restore it later.", entry.name)).unwrap_or(false) {
+                                    s.saved.setups.0.remove(index);
+                                    s.notice("Named setup removed.", false);
+                                }
+                            }
+                            _ => {}
+                        }
+                    }
+                }
+            }
+        } else if let Some(id) = action.strip_prefix("confirm:") {
+            if crate::preparation::CONFIRMATIONS.iter().any(|(key, _)| *key == id) {
+                if crate::preparation::confirmed(&s.saved.snapshot, &s.saved.options, id) {
+                    s.saved.options.confirmations.remove(id);
+                } else {
+                    let token = crate::preparation::token(&s.saved.snapshot, &s.saved.options);
+                    s.saved.options.confirmations.insert(id.into(), token);
+                }
+            }
+        } else if action == "reset-inventory" {
+            s.saved.options.inventory_overrides.clear();
+            s.saved.options.inventory_quantities.clear();
+            s.notice("Manual inventory edits cleared. Automatic packing restored.", false);
+        } else if let Some(tab) = action.strip_prefix("tab:") {
             s.tab = tab.into();
             s.edit_equipment = None;
             s.edit_inventory = None;
@@ -1584,8 +1653,6 @@ fn act(action: &str) {
                 &s.saved.options,
                 &s.saved.options.targets,
             );
-            s.saved.options.inventory_overrides.clear();
-            s.saved.options.inventory_quantities.clear();
             s.phase = None;
             s.edit_style = None;
             s.notice("Compared complete owned loadouts for this boss.", false);
@@ -1652,8 +1719,6 @@ fn act(action: &str) {
                     s.saved.options.ranking = preferences;
                 }
                 s.saved.options.gear_overrides.insert(key, row.gear.id);
-                s.saved.options.inventory_overrides.clear();
-                s.saved.options.inventory_quantities.clear();
                 s.edit_equipment = None;
                 s.notice("Top result equipped using your ranking weights.", false);
             } else {
@@ -1749,10 +1814,8 @@ fn act(action: &str) {
                         );
                         s.saved.options.gear_overrides.insert(key, id);
                         s.edit_equipment = None;
-                        s.saved.options.inventory_overrides.clear();
-                        s.saved.options.inventory_quantities.clear();
                         s.notice(
-                            "Owned equipment selected; switches and supplies rechecked.",
+                            "Equipment updated. Inventory edits kept; review any packing conflicts below.",
                             false,
                         );
                     }
@@ -1982,6 +2045,7 @@ fn import_raw(raw: &str) {
                     }
                     s.demo_return = None;
                     s.saved.snapshot = snapshot;
+                    s.unreadable_save = None;
                     s.shared_setup = None;
                     s.saved.options.access_override = None;
                     s.saved.options.started_barrows = None;
@@ -2017,7 +2081,7 @@ fn import_raw(raw: &str) {
         }
         return;
     }
-    if let Ok(mut saved) = serde_json::from_str::<Saved>(raw) {
+    if let Ok(mut saved) = Saved::parse(raw) {
         if saved.version != 1 || saved.snapshot.selected().is_none() {
             notice("This backup version is not supported.", true);
             return;
@@ -2041,6 +2105,7 @@ fn import_raw(raw: &str) {
             let mut s = s.borrow_mut();
             s.demo_return = None;
             s.saved = saved;
+            s.unreadable_save = None;
             s.shared_setup = None;
             s.edit_style = None;
             s.compare_target = None;
@@ -2059,6 +2124,7 @@ fn import_raw(raw: &str) {
             let mut s = s.borrow_mut();
             s.demo_return = None;
             s.saved.snapshot = snapshot;
+            s.unreadable_save = None;
             s.saved.options = Options::default();
             s.shared_setup = None;
             s.edit_style = None;
@@ -2182,13 +2248,16 @@ fn render_with_edit(edit: Option<&str>) {
     let demo=snapshot.source=="Demo";
     let nav=|(key,label,icon):(&str,&str,i32)|format!("<button class=\"nav-item {}\" data-action=\"tab:{key}\">{}<span>{label}</span>{}</button>",if s.tab==key{"active"}else{""},image(icon),if key=="goals"{format!("<span class=\"nav-count\">{}</span>",s.pins().len())}else{String::new()});
     let mut html=format!("<div class=\"app-shell\"><aside class=\"sidebar\"><a class=\"brand\" href=\"#\" aria-label=\"Ironbound home\"><span class=\"brand-mark\">{}</span><span>IRONBOUND<small>IRONMAN BOSSING & GEAR</small></span></a><div class=\"sidebar-rule\"></div><div class=\"nav-label\">YOUR ADVENTURE</div><nav aria-label=\"Main navigation\">{}{}</nav><div class=\"sidebar-note\"><span class=\"tiny-rune\">✦</span><p>Ironman bossing planner</p></div><div class=\"sidebar-bottom\"><div class=\"local-indicator\"><span></span>Saved on this device</div><small>Independent OSRS fan project.<br>Game assets © Jagex.</small></div></aside><main class=\"main\"><header class=\"topbar\"><span class=\"breadcrumb\">Your journal <span>/</span> {}</span><div class=\"account-pill\">{}<span>{}<small>{}</small></span></div></header>",image(2347),nav(("bossing","Bossing",4151)),nav(("account","Your account",1712)),match s.tab.as_str(){"goals"=>"Progression goals","account"=>"Your account",_=>"Bossing"},image(10828),esc(&snapshot.selected),if demo{"Example Ironman"}else{"Imported account"});
+    html = html.replace("Saved on this device", if s.demo_return.is_some() { "Example preview · account unchanged" } else { s.save_status.get().label() });
     if demo{html.push_str(&format!("<div class=\"demo-banner\"><p>{}</p>{}</div>","Example bank",if s.demo_return.is_some(){button("restore-account","Return to your account","text-button")}else{button("tab:account","Import your bank","button gold")}));}
+    html.push_str(&save_banner(&s));
     if !s.message.is_empty(){html.push_str(&format!("<div role=\"status\" class=\"notice {}\">{}</div>",if s.error{"error"}else{""},esc(&s.message)));}
     html.push_str("<div class=\"page-content\">");
     if s.tab=="account"{html.push_str(&account_page(&s));}
     else if s.shared_setup.is_none()&&!planner::missing_combat_levels(snapshot).is_empty(){html.push_str(&format!("<section class=\"page-heading level-gate\"><h1>Add your combat levels</h1><p>Your bank is loaded. Combat levels are needed before a setup can be recommended.</p>{}</section>",button("tab:account","Add levels or look up your character","button gold")));}
     else{
         html.push_str(&encounter_detail(&s,&plan));
+        if s.shared_setup.is_none(){html.push_str(&named_setups(&s));}
         html.push_str("<div class=\"encounter-actions\">");
         html.push_str(&format!("<details class=\"encounter-picker\" {}><summary>Choose boss or raid</summary>",if s.building_group||(options.boss==Boss::Custom&&options.targets.is_empty()){"open"}else{""}));
         html.push_str(&encounter_catalog(&s));
@@ -2206,7 +2275,7 @@ fn render_with_edit(edit: Option<&str>) {
         html.push_str("</nav><section class=\"workspace-view\">");
         match s.view.as_str(){
             "combat"=>{html.push_str("<div class=\"analysis-layout\">");html.push_str(&combat_panel(&s,&plan));html.push_str(&switch_panel(&s,&plan));html.push_str("</div>");},
-            "prepare"=>{html.push_str("<div class=\"prepare-layout\">");html.push_str(&checks_panel(&plan));if !plan.missing.is_empty(){html.push_str("<section class=\"panel\"><div class=\"panel-heading\"><h2>Missing trip items</h2></div><ul class=\"missing-list\">");for missing in &plan.missing{html.push_str(&format!("<li>{}</li>",esc(missing)));}html.push_str("</ul></section>");}if s.shared_setup.is_none(){html.push_str(&next_goal(&s));}html.push_str("</div>");},
+            "prepare"=>{html.push_str("<div class=\"prepare-layout\">");html.push_str(&checks_panel(&s,&plan));if s.shared_setup.is_none(){html.push_str(&manual_checks(&s));html.push_str(&coverage_panel(&s.saved.options));}if !plan.missing.is_empty(){html.push_str("<section class=\"panel\"><div class=\"panel-heading\"><h2>Missing trip items</h2></div><ul class=\"missing-list\">");for missing in &plan.missing{html.push_str(&format!("<li>{}</li>",esc(missing)));}html.push_str("</ul></section>");}if s.shared_setup.is_none(){html.push_str(&next_goal(&s));}html.push_str("</div>");},
             _=>{html.push_str("<div class=\"loadout-layout\">");html.push_str(&loadout_panel(&s,&plan));html.push_str(&inventory_panel(&s,&plan));html.push_str("</div>");}
         }
         html.push_str("</section><div class=\"plan-actions\">");html.push_str(&export_panel(&s,&plan));html.push_str("</div>");
@@ -2255,6 +2324,9 @@ fn encounter_detail(s: &State, p: &Plan) -> String {
     }
     if boss == Boss::Toa {
         html.push_str(&format!("<label class=\"raid-control\">Raid level <input id=\"raid-level\" type=\"number\" min=\"0\" max=\"150\" value=\"{}\"><span>Mechanic-specific invocation planning is outside this starter model.</span></label>",s.saved.options.raid_level));
+    }
+    if s.shared_setup.is_none() {
+        html.push_str(&format!("<details class=\"coverage-details\"><summary>Calculation coverage · {}</summary>{}</details>", esc(&crate::coverage::summary(&s.saved.options)), coverage_panel(&s.saved.options)));
     }
     html.push_str("</section>");
     html
@@ -2499,7 +2571,13 @@ fn inventory_panel(s: &State, p: &Plan) -> String {
     if let Some(phase) = phase {
         html.push_str(&format!("<p class=\"phase-note\">{} inventory preview. {} to edit the packing list. Exports use Start gear.</p>",esc(&phase.name),button("phase:start","Back to Start","text-button")));
     }
-    html.push_str(&format!("<details class=\"supply-settings\"><summary>Adjust supplies</summary><label>Food<input id=\"food\" type=\"number\" min=\"0\" max=\"20\" value=\"{}\"></label><label>Prayer / restores<input id=\"potions\" type=\"number\" min=\"0\" max=\"12\" value=\"{}\"></label><div class=\"small-note\">{} slots free</div></details></div>",s.saved.options.food,s.saved.options.prayer_potions,28usize.saturating_sub(occupied)));
+    html.push_str(&format!("<details class=\"supply-settings\"><summary>Adjust supplies</summary><label>Food<input id=\"food\" type=\"number\" min=\"0\" max=\"20\" value=\"{}\"></label><label>Prayer / restores<input id=\"potions\" type=\"number\" min=\"0\" max=\"12\" value=\"{}\"></label><label>Spell casts for trip<input id=\"spell-casts\" type=\"number\" min=\"1\" max=\"10000\" value=\"{}\"></label><p class=\"small-note\">Rune stacks cover the worst-case mix of this many total attack casts. This does not measure weapon charges or predict trip length. Ammunition assumes 100 projectiles; check remaining charges and your actual consumption.</p><div class=\"small-note\">{} slots free</div></details></div>",s.saved.options.food,s.saved.options.prayer_potions,s.saved.options.combat.spell_casts,28usize.saturating_sub(occupied)));
+    if s.shared_setup.is_none()
+        && (!s.saved.options.inventory_overrides.is_empty()
+            || !s.saved.options.inventory_quantities.is_empty())
+    {
+        html.push_str(&format!("<p class=\"small-note\">Manual inventory edits are kept when gear changes. Resolve conflicts below or {}.</p>", button("reset-inventory", "Reset inventory edits", "text-button")));
+    }
     if !p.missing.is_empty() {
         html.push_str("<div class=\"missing-list\"><strong>Before you set out</strong><ul>");
         for missing in &p.missing {
@@ -2514,12 +2592,17 @@ fn inventory_panel(s: &State, p: &Plan) -> String {
     html.push_str(&format!("<li>{} unique item IDs observed; {} match the reviewed gear priorities. Other items remain in your snapshot.</li></ul></details></section>",p.owned,p.supported));
     html
 }
-fn checks_panel(p: &Plan) -> String {
+fn checks_panel(s: &State, p: &Plan) -> String {
+    let status = if s.shared_setup.is_some() {
+        p.status()
+    } else {
+        crate::preparation::summary(&s.saved.snapshot, &s.saved.options, p)
+    };
     let mut html = format!(
         "<section class=\"panel readiness\"><div class=\"panel-heading\"><h2>Preparation check</h2><span class=\"mini-star\">✦</span></div><div class=\"readiness-status\">{}</div><div class=\"check-list\">",
         badge(
-            p.status(),
-            if p.status() == "Meets starter guidelines" {
+            status,
+            if status.starts_with("Manual checks confirmed") {
                 "green"
             } else {
                 "amber"
@@ -2530,6 +2613,105 @@ fn checks_panel(p: &Plan) -> String {
         html.push_str(&format!("<div class=\"check\"><span class=\"check-mark {}\">{}</span><div><strong>{}</strong><small>{}</small></div></div>",match c.state{Some(true)=>"yes",Some(false)=>"no",None=>"unknown"},match c.state{Some(true)=>"✓",Some(false)=>"!",None=>"?"},esc(&c.name),esc(&c.detail)));
     }
     html.push_str(&format!("</div><p class=\"panel-footnote\">Preparation guidelines don't predict a successful kill. {} to review levels.</p></section>",button("tab:account","Open your account","text-button")));
+    html
+}
+
+fn save_banner(s: &State) -> String {
+    let status = s.save_status.get();
+    if s.demo_return.is_some() {
+        return String::new();
+    }
+    if matches!(status, SaveStatus::Saved | SaveStatus::Pending) {
+        return String::new();
+    }
+    format!(
+        "<div class=\"notice error save-warning\" role=\"alert\"><strong>{}.</strong> {} {} {}</div>",
+        status.label(),
+        if status == SaveStatus::Unreadable {
+            "The original saved data is preserved. Download it before importing a replacement backup."
+        } else {
+            "Download a private backup before leaving this page."
+        },
+        button(
+            if status == SaveStatus::Unreadable {
+                "backup-unreadable"
+            } else {
+                "backup"
+            },
+            "Download private backup",
+            "button ghost"
+        ),
+        button(
+            "retry-save",
+            if status == SaveStatus::Unreadable {
+                "Reload saved account"
+            } else {
+                "Retry saving"
+            },
+            "button ghost"
+        )
+    )
+}
+
+fn named_setups(s: &State) -> String {
+    let mut html = format!(
+        "<details class=\"secondary-section setup-library\" {}><summary>Saved setups ({})</summary><label>Setup name<input id=\"setup-name\" maxlength=\"64\" placeholder=\"e.g. Yama learning\"></label>{}<p class=\"small-note\">Configurations stay on this device and in private backups. Loading rechecks your current bank. Enter a name above to rename a row.</p><div class=\"saved-setup-list\">",
+        if s.setups_open { "open" } else { "" },
+        s.saved.setups.0.len(),
+        button("save-named", "Save current setup", "button gold")
+    );
+    for (i, entry) in s.saved.setups.0.iter().enumerate() {
+        html.push_str(&format!(
+            "<div class=\"saved-setup\"><strong>{}</strong><div>",
+            esc(&entry.name)
+        ));
+        for (verb, label) in [
+            ("load", "Load"),
+            ("rename", "Rename"),
+            ("replace", "Replace"),
+            ("remove", "Remove"),
+        ] {
+            html.push_str(&button(&format!("named:{verb}:{i}"), label, "button ghost"));
+        }
+        html.push_str("</div></div>");
+    }
+    html.push_str("</div></details>");
+    html
+}
+
+fn manual_checks(s: &State) -> String {
+    let mut html = String::from(
+        "<section class=\"panel manual-checks\"><h2>Check before leaving</h2><p>Bank imports cannot verify these. Confirm them yourself for this setup; changing the account or plan requires checking again.</p>",
+    );
+    for (id, label) in crate::preparation::CONFIRMATIONS {
+        let checked = crate::preparation::confirmed(&s.saved.snapshot, &s.saved.options, id);
+        html.push_str(&format!("<button class=\"manual-confirm\" data-action=\"confirm:{id}\" aria-pressed=\"{checked}\">{} {label}</button>", if checked { "✓" } else { "□" }));
+    }
+    html.push_str("<p class=\"small-note\">Your confirmations are private and do not prove combat mechanics are supported or predict a successful kill.</p></section>");
+    html
+}
+
+fn coverage_panel(options: &Options) -> String {
+    let mut html = String::from(
+        "<section class=\"panel coverage-panel\"><h2>Selected attack windows</h2><div class=\"table-wrap\"><table><thead><tr><th>Target / style</th><th>Coverage</th></tr></thead><tbody>",
+    );
+    for row in crate::coverage::windows(options) {
+        html.push_str(&format!(
+            "<tr><th>{}<small>{}</small></th><td><strong>{}</strong><small>{}</small></td></tr>",
+            esc(&row.name),
+            esc(&row.style),
+            if row.supported {
+                "Basic attack model"
+            } else {
+                "Packing only"
+            },
+            esc(&row.reason)
+        ));
+    }
+    html.push_str(&format!(
+        "</tbody></table></div><p class=\"small-note\">{}</p></section>",
+        crate::coverage::LIMITS
+    ));
     html
 }
 fn export_panel(s: &State, p: &Plan) -> String {
@@ -3290,7 +3472,7 @@ fn combat_breakdown(
             }
             html.push_str("</tr>");
         }
-        html.push_str("</tbody></table><p class=\"small-note\">Each row uses the strongest spell you can cast with banked runes for 150 casts. Staff-provided runes are included. Spells are checked by Magic level and rune supplies. Selection compares sustained DPS; check tome pages and charges.</p>");
+        html.push_str(&format!("</tbody></table><p class=\"small-note\">Each row uses the strongest spell you can cast with banked runes for {} casts. Change the budget under Gear → Adjust supplies. Staff-provided runes are included. Spells are checked by Magic level and rune supplies. Selection compares sustained DPS; check tome pages and charges.</p>", s.saved.options.combat.spell_casts));
         if let Some(e) = &r.elemental {
             html.push_str(&format!("<h3>{} · calculation</h3><dl class=\"combat-values\"><div><dt>Base spell max</dt><dd>{}</dd></div><div><dt>After gear, prayer & task</dt><dd>{}</dd></div><div><dt>Elemental damage · {}%</dt><dd>+{}</dd></div><div><dt>Elemental accuracy roll · {}%</dt><dd>+{}</dd></div></dl><p class=\"small-note\">Weakness adds a percentage of base spell damage and the base accuracy roll ({}), after other bonuses. Damage is rounded down at each stage. {} Final max hit: {}. Damage tiers use base Magic; active boosts can unlock spells and improve accuracy.</p>",esc(&r.spell),e.base_max,e.damage_before_weakness,e.weakness_percent,e.weakness_damage,e.weakness_percent,e.weakness_accuracy,e.base_attack_roll,if e.tome { "Matching charged tome multiplies damage by 1.10 after weakness." } else { "" },r.max_hit));
         } else {

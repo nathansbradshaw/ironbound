@@ -12,6 +12,11 @@ fn encounter_name(options: &Options) -> &str {
 
 /// RuneLite Bank Tags v1 CSV. Filtering only; quantities belong in Inventory Setups.
 pub fn bank_tags(plan: &Plan, options: &Options) -> Result<String, String> {
+    if let Some(kit) = &options.wilderness {
+        if !kit.valid() || !crate::wilderness::violations(plan, kit).is_empty() {
+            return Err("Resolve the wilderness gear limit before exporting.".into());
+        }
+    }
     if !plan.exportable() {
         return Err("Resolve setup blockers before exporting.".into());
     }
@@ -35,6 +40,11 @@ pub fn bank_tags(plan: &Plan, options: &Options) -> Result<String, String> {
 
 /// InventorySetupPortable -> InventorySetupSerializable, as used by the plugin's Import setup button.
 pub fn inventory_setup(plan: &Plan, options: &Options, _account: &str) -> Result<String, String> {
+    if let Some(kit) = &options.wilderness {
+        if !kit.valid() || !crate::wilderness::violations(plan, kit).is_empty() {
+            return Err("Resolve the wilderness gear limit before exporting.".into());
+        }
+    }
     if !plan.exportable() {
         return Err(
             "Resolve missing equipment, skill checks and inventory capacity before exporting."
@@ -106,6 +116,9 @@ pub fn inventory_setup(plan: &Plan, options: &Options, _account: &str) -> Result
         " Ranged ammunition type: {}.",
         options.combat.ranged_type.label()
     ));
+    if let Some(kit) = &options.wilderness {
+        notes.push_str(&format!(" Scaredy cat kit: up to 3 valuable gear pieces; disposable fillers <= {} GP per piece/stack (public snapshot {}). {}",kit.filler_cap,crate::wilderness::prices().captured_at,crate::wilderness::CAUTION));
+    }
     if options.exclude_void {
         notes.push_str(" Void armour excluded by preference.");
     }

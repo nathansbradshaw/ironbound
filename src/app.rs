@@ -54,6 +54,9 @@ struct State {
     building_group: bool,
     raid_rooms_open: bool,
     bestiary_open: bool,
+    wilderness_location: String,
+    scaredy_cat: bool,
+    filler_cap: u32,
     switch_preferences_open: bool,
     combat_options_open: bool,
     attack_budget_open: bool,
@@ -157,6 +160,14 @@ impl State {
             building_group: false,
             raid_rooms_open: false,
             bestiary_open: false,
+            wilderness_location: "all".into(),
+            scaredy_cat: saved.options.wilderness.is_some(),
+            filler_cap: saved
+                .options
+                .wilderness
+                .as_ref()
+                .map(|k| k.filler_cap)
+                .unwrap_or(crate::wilderness::DEFAULT_CAP),
             switch_preferences_open: false,
             combat_options_open: false,
             attack_budget_open: false,
@@ -1420,6 +1431,35 @@ fn focus_inventory(slot: usize) {
     }
 }
 fn act(action: &str) {
+    if action == "wilderness-mode"
+        || action.starts_with("wilderness-location:")
+        || action.starts_with("wilderness-cap:")
+    {
+        STATE.with(|state| {
+            let mut s = state.borrow_mut();
+            if action == "wilderness-mode" {
+                s.scaredy_cat = !s.scaredy_cat;
+                if s.scaredy_cat {
+                    s.wilderness_location = "wild".into();
+                }
+            } else if let Some(location) = action.strip_prefix("wilderness-location:") {
+                if ["all", "safe", "wild"].contains(&location) {
+                    s.wilderness_location = location.into();
+                }
+            } else if let Some(cap) = action
+                .strip_prefix("wilderness-cap:")
+                .and_then(|v| v.parse::<u32>().ok())
+            {
+                if crate::wilderness::CAPS.contains(&cap) {
+                    s.filler_cap = cap;
+                }
+            }
+            s.bestiary_open = true;
+        });
+        render();
+        return;
+    }
+
     if let Some(filter) = action.strip_prefix("encounter-filter:") {
         if crate::bestiary::FILTERS.contains(&filter) {
             STATE.with(|state| {
@@ -1443,6 +1483,7 @@ fn act(action: &str) {
                 let mut s = state.borrow_mut();
                 s.encounter_query.clear();
                 s.encounter_filter = "For you".into();
+                s.wilderness_location = "all".into();
                 if let Some(input) = document()
                     .get_element_by_id("encounter-search")
                     .and_then(|e| e.dyn_into::<HtmlInputElement>().ok())
@@ -1451,6 +1492,7 @@ fn act(action: &str) {
                 }
                 refresh_encounter_browser(&s);
             });
+            render();
             return;
         }
         "load-levels" => {
@@ -1647,7 +1689,10 @@ fn act(action: &str) {
         let mut s = state.borrow_mut();
         s.message.clear();
         s.export_text = None;
-        if action == "save-named" {
+        if action == "wilderness-off" {
+            s.saved.options.wilderness=None; s.saved.options.gear_overrides.clear();
+            s.notice("Returned to unrestricted gear planning.",false);
+        } else if action == "save-named" {
             let options = s.saved.options.clone();
             let result = s.saved.setups.save(&input("setup-name"), &options);
             s.setups_open = true;
@@ -1794,6 +1839,7 @@ fn act(action: &str) {
         } else if action == "custom-done" {
             s.building_group = false;
         } else if let Some(boss) = action.strip_prefix("boss:") {
+            s.saved.options.wilderness=None;
             s.saved.options.boss = if boss == "toa" {
                 Boss::Toa
             } else if boss == "custom" {
@@ -1824,6 +1870,12 @@ fn act(action: &str) {
                 if entry.targets.is_empty() {
                     s.notice(&entry.note, true);
                 } else {
+                    let restricted_preview = if s.scaredy_cat && crate::wilderness::exposure(&entry.name) != crate::wilderness::Exposure::None {
+                        let index=crate::encounters::catalog().iter().position(|e|e.name==entry.name).unwrap();
+                        let Some(preview)=bestiary_assessments(&s)[index].preview.clone() else { s.notice("No supported three-item kit is available for this encounter.",true); return; };
+                        Some(preview)
+                    } else { None };
+                    s.saved.options.wilderness=None;
                     s.saved.options.boss = match entry.name.as_str() {
                         "Barrows Chests" => Boss::Barrows,
                         "Tombs of Amascut" => Boss::Toa,
@@ -1857,6 +1909,7 @@ fn act(action: &str) {
                     s.building_group = false;
                     s.raid_rooms_open = false;
                     s.bestiary_open = false;
+                    if let Some(preview) = restricted_preview { crate::wilderness::apply(&mut s.saved.options,entry,&preview); }
                 }
             } else {
                 s.notice("Choose a listed boss, raid or encounter.", true);
@@ -2566,6 +2619,7 @@ fn render_with_edit(edit: Option<&str>) {
     else if s.shared_setup.is_none()&&!planner::missing_combat_levels(snapshot).is_empty(){html.push_str(&format!("<section class=\"page-heading level-gate\"><h1>Add your combat levels</h1><p>Your bank is loaded. Combat levels are needed before a setup can be recommended.</p>{}</section>",button("tab:account","Add levels or look up your character","button gold")));}
     else{
         html.push_str(&encounter_detail(&s,&plan));
+        html.push_str(&wilderness_banner(&s));
         if s.shared_setup.is_none(){html.push_str(&named_setups(&s));}
         html.push_str("<div class=\"encounter-actions\">");
         html.push_str(&format!("<details class=\"encounter-picker\" id=\"boss-bestiary\" {}><summary>Boss bestiary</summary>",if s.bestiary_open||s.building_group||(options.boss==Boss::Custom&&options.targets.is_empty()){"open"}else{""}));
@@ -3179,6 +3233,8 @@ fn bestiary_assessments(s: &State) -> Vec<crate::bestiary::Assessment> {
         s.saved.options.shared,
         &s.saved.options.excluded,
         s.saved.options.exclude_void,
+        s.scaredy_cat,
+        s.filler_cap,
     ))
     .unwrap_or_default();
     CACHE.with(|cache| {
@@ -3186,7 +3242,15 @@ fn bestiary_assessments(s: &State) -> Vec<crate::bestiary::Assessment> {
         if cache.as_ref().is_none_or(|(old, _)| *old != key) {
             *cache = Some((
                 key,
-                crate::bestiary::assess_catalog(&s.saved.snapshot, &s.saved.options),
+                if s.scaredy_cat {
+                    crate::bestiary::assess_wilderness(
+                        &s.saved.snapshot,
+                        &s.saved.options,
+                        s.filler_cap,
+                    )
+                } else {
+                    crate::bestiary::assess_catalog(&s.saved.snapshot, &s.saved.options)
+                },
             ));
         }
         cache.as_ref().unwrap().1.clone()
@@ -3200,7 +3264,9 @@ fn encounter_catalog(s: &State) -> String {
     for filter in crate::bestiary::FILTERS {
         html.push_str(&format!(r#"<button id="enc-filter-{}" class="encounter-filter {}" data-action="encounter-filter:{filter}" aria-pressed="{}">{filter}</button>"#,filter.replace(' ', "-"),if s.encounter_filter==filter{"active"}else{""},s.encounter_filter==filter));
     }
-    html.push_str("</nav><p class=\"bestiary-disclaimer\">Gear & level screening · not a kill guarantee. Access, supplies, movement and team size need checking. Expanded notes show the planner guidelines.</p><div id=\"encounter-results\">");
+    html.push_str("</nav>");
+    html.push_str(&wilderness_controls(s));
+    html.push_str("<p class=\"bestiary-disclaimer\">Gear & level screening · not a kill guarantee. Access, supplies, movement and team size need checking. Expanded notes show the planner guidelines.</p><div id=\"encounter-results\">");
     html.push_str(&encounter_results(s));
     html.push_str("</div></section>");
     html
@@ -3213,6 +3279,12 @@ fn encounter_results(s: &State) -> String {
         .iter()
         .enumerate()
         .filter(|(index, e)| {
+            let exposed = crate::wilderness::exposure(&e.name) != crate::wilderness::Exposure::None;
+            if s.wilderness_location == "safe" && exposed
+                || s.wilderness_location == "wild" && !exposed
+            {
+                return false;
+            }
             if crate::encounters::groups()
                 .iter()
                 .any(|g| g.aliases.contains(&e.name))
@@ -3257,6 +3329,8 @@ fn encounter_results(s: &State) -> String {
                 readiness: crate::bestiary::Readiness::Unknown,
                 reason: "Shared setups do not include the sender's bank or levels.".into(),
                 detail: String::new(),
+                wilderness: false,
+                preview: None,
             }
         } else {
             assessments[index].clone()
@@ -5713,4 +5787,38 @@ fn keris_family(s: &State, set: &Vec<Option<i32>>) -> String {
     }
     html.push_str("</tbody></table></section>");
     html
+}
+
+fn wilderness_controls(s: &State) -> String {
+    let mut html = String::from(
+        "<section class=\"wilderness-controls\" aria-label=\"Wilderness filters\"><div class=\"wilderness-location\" role=\"group\" aria-label=\"Boss location\">",
+    );
+    for (key, label) in [
+        ("all", "All locations"),
+        ("safe", "Avoid Wilderness"),
+        ("wild", "Wilderness only"),
+    ] {
+        html.push_str(&format!("<button class=\"encounter-filter {}\" data-action=\"wilderness-location:{key}\" aria-pressed=\"{}\">{label}</button>",if s.wilderness_location==key{"active"}else{""},s.wilderness_location==key));
+    }
+    html.push_str(&format!("</div><button class=\"encounter-filter scaredy-toggle {}\" data-action=\"wilderness-mode\" aria-pressed=\"{}\">Scaredy cat · 3 valuable items</button>",if s.scaredy_cat{"active"}else{""},s.scaredy_cat));
+    if s.scaredy_cat {
+        html.push_str("<div class=\"wilderness-cap\" role=\"group\" aria-label=\"Disposable gear price ceiling\"><span>Cheap gear per piece / ammo stack:</span>");
+        for cap in crate::wilderness::CAPS {
+            html.push_str(&format!("<button class=\"encounter-filter {}\" data-action=\"wilderness-cap:{cap}\" aria-pressed=\"{}\">≤{}k GP</button>",if s.filler_cap==cap{"active"}else{""},s.filler_cap==cap,cap/1000));
+        }
+        html.push_str("</div><p>Wilderness cards recalculate with up to 3 valuable gear pieces plus owned cheap fillers. Open a card to see the exact kit and full-gear comparison. Selecting it keeps that kit in the planner.</p><small>Unskulled + PK Skull Prevention assumed. Confirm Items Kept on Death; supplies, charges and loot add risk.</small>");
+    }
+    html.push_str("</section>");
+    html
+}
+fn wilderness_banner(s: &State) -> String {
+    let Some(kit) = &s.saved.options.wilderness else {
+        return String::new();
+    };
+    format!(
+        "<section class=\"wilderness-plan-banner\"><strong>Scaredy cat kit active · up to 3 valuable gear pieces</strong><p>Gear is locked to your screened kit; cheap fillers ≤{} GP per piece/stack. Changing quantities rechecks the carried gear limit.</p><details><summary>Protection assumptions</summary><p>{}</p></details>{}</section>",
+        kit.filler_cap,
+        esc(crate::wilderness::CAUTION),
+        button("wilderness-off", "Return to full gear", "text-button")
+    )
 }

@@ -385,3 +385,31 @@ fn dynamic_vardorvis_budget_keeps_delayed_burn_unverified() {
         "{reason}"
     );
 }
+
+#[test]
+fn chemical_comparisons_share_the_source_npcs_slayer_assignment() {
+    let mut settings = Settings::default();
+    let mut gear = set(9185, Some(9144));
+    gear[0] = Some(11865); // Slayer helmet (i).
+    ironbound::slayer::set_task(&mut settings, 8619, true);
+    for id in [8619, 100101] {
+        assert!(ironbound::slayer::on_task(&settings, id));
+        assert!(
+            ironbound::effects::target_bonus(
+                &gear,
+                "Ranged",
+                planner::monster(id).unwrap(),
+                &settings,
+            )
+            .unwrap()
+            .slayer_task
+        );
+    }
+    ironbound::slayer::set_task(&mut settings, 100101, false);
+    assert!(settings.slayer_targets.is_empty());
+    // Older setup links may store the comparison key; read and clear those too.
+    settings.slayer_targets.insert(100101);
+    assert!(ironbound::slayer::on_task(&settings, 8619));
+    ironbound::slayer::set_task(&mut settings, 8619, false);
+    assert!(settings.slayer_targets.is_empty());
+}

@@ -4264,7 +4264,7 @@ fn combat_style_controls(s: &State, set: &[Option<i32>], style: &str) -> String 
     html
 }
 fn task_buttons(s: &State, target: &planner::Monster) -> String {
-    let on_task = s.saved.options.combat.slayer_targets.contains(&target.id);
+    let on_task = crate::slayer::on_task(&s.saved.options.combat, target.id);
     let mut html = format!(
         "<div class=\"slayer-target\" role=\"group\" aria-label=\"Slayer task for {}\"><strong>{}</strong><div class=\"combat-subtype-options\">",
         esc(&target.name),
@@ -4281,6 +4281,7 @@ fn slayer_tasks(s: &State) -> String {
     let mut seen = std::collections::BTreeSet::new();
     let targets: Vec<_> = encounter_targets(s)
         .into_iter()
+        .map(crate::encounters::source_npc_id)
         .filter(|id| seen.insert(*id) && crate::encounters::slayer_eligible(*id))
         .filter_map(planner::monster)
         .collect();

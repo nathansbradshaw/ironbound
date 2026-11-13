@@ -15,6 +15,7 @@ fn hit(damage: i32) -> Attack {
             accuracy: 1.0,
             max_hit: damage,
             attack_ticks: 1,
+            expected_attack_ticks: 1.0,
             attack_roll: 1,
             defence_roll: 0,
             attack_type: "stab".into(),
@@ -27,6 +28,7 @@ fn hit(damage: i32) -> Attack {
         projectile: None,
         projectile_loss: None,
         charge: false,
+        charge_on_damage: false,
         scales: false,
         prayer: 0.0,
     }
@@ -223,6 +225,22 @@ fn flare_deadlines_regeneration_and_damage_heal_the_same_boss_hp_state() {
     assert!(a.runs.iter().all(|r| r.usage.exploded == 0));
 }
 #[test]
+fn successful_hit_charges_are_not_spent_on_misses_or_per_splat() {
+    let mut m = model(Encounter::Vorkath, 5);
+    m.hp[0] = 10;
+    m.attacks[0].charge = true;
+    m.attacks[0].charge_on_damage = true;
+    m.attacks[0].hits.hit_distribution = vec![(0, 0.5), (5, 0.5)];
+    let report = simulation::simulate(&m).unwrap();
+    assert!(
+        report
+            .runs
+            .iter()
+            .all(|r| r.completed && r.usage.charges[&4151] == 2)
+    );
+    assert!(report.runs.iter().any(|r| r.usage.attacks > 2));
+}
+#[test]
 fn final_melee_range_autos_add_flares_and_attack_cost_instead_of_free_uptime() {
     let mut m = model(Encounter::Yama, 50);
     m.settings.glyph_hp = 0;
@@ -256,6 +274,8 @@ fn seeds_are_reproducible_and_invalid_or_stalled_models_are_bounded() {
         percent: 20,
         cap: 100,
         divisor: 0,
+        transform: Default::default(),
+        distribution_entries: 1,
     });
     assert!(simulation::simulate(&bad).is_err());
     let report = simulation::simulate(&m).unwrap();

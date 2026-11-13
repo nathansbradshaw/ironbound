@@ -326,6 +326,8 @@ pub struct Attack {
     #[serde(default)]
     pub projectile_loss: Option<u32>,
     pub charge: bool,
+    #[serde(default)]
+    pub charge_on_damage: bool,
     pub scales: bool,
     pub prayer: f64,
 }
@@ -334,19 +336,9 @@ impl Attack {
         let mut pick = rng.unit();
         let proc = self.hits.hp_dependent;
         let no_ruby = proc.is_some() && player_hp < 10.0;
-        for (i, (damage, p)) in self.hits.hit_distribution.iter().enumerate() {
-            if i + 1 == self.hits.hit_distribution.len() {
-                if let Some(proc) = proc {
-                    if no_ruby {
-                        break;
-                    }
-                    return (
-                        ((hp as i64 * i64::from(proc.percent) / 100).min(proc.cap as i64) as i32)
-                            / proc.divisor,
-                        true,
-                    );
-                }
-            }
+        let count =
+            self.hits.hit_distribution.len() - proc.map(|p| p.distribution_entries).unwrap_or(0);
+        for (damage, p) in &self.hits.hit_distribution[..count] {
             let p = if no_ruby {
                 *p / (1.0 - proc.unwrap().chance)
             } else {
@@ -356,6 +348,14 @@ impl Attack {
                 return (*damage, false);
             }
             pick -= p;
+        }
+        if let Some(proc) = proc.filter(|_| !no_ruby) {
+            for (damage, p) in proc.outcomes(hp) {
+                if pick < p {
+                    return (damage, true);
+                }
+                pick -= p;
+            }
         }
         (0, false)
     }
@@ -378,6 +378,7 @@ pub struct Model {
 struct ConsumptionRules {
     nonrecoverable_projectiles: Vec<i32>,
     charge_free_weapons: Vec<i32>,
+    charge_on_damage: Vec<i32>,
 }
 fn consumption_rules() -> &'static ConsumptionRules {
     static DATA: std::sync::OnceLock<ConsumptionRules> = std::sync::OnceLock::new();
@@ -440,11 +441,17 @@ fn attack(
     let spell = rules::spell_name_for_target(member, set, &stock, &settings, &target, o.raid_level);
     let hits =
         combat::calculate_configured(member, set, style, &target, spell, o.raid_level, &settings)?;
+    if (hits.expected_attack_ticks - hits.attack_ticks as f64).abs() > 1e-8 {
+        return Err("Conditional attack-speed procs need a verified per-attack timing model. Use another packed set for this simulation.".into());
+    }
     if !hits.dps.is_finite() || hits.dps <= 0.0 {
         return Err("This phase cannot make damage progress.".into());
     }
     let weapon = set[3].ok_or("Weapon missing")?;
     let rule = rules::weapon(weapon).ok_or("Unverified weapon")?;
+    if rule.has(rules::Effect::Soulreaper) {
+        return Err("Soulreaper stack buildup, HP costs and recovery are not verified in this fight simulator. Use another packed weapon.".into());
+    }
     let internal = !rule.family.internal_ammo.is_empty();
     let projectile = if style == "Ranged" && planner::is_stackable(weapon) {
         Some(weapon)
@@ -459,6 +466,7 @@ fn attack(
     let runes = rules::rune_supplies_for_set(spell, 1, set);
     let charge = !consumption_rules().charge_free_weapons.contains(&weapon)
         && (rule.family.formula == rules::Formula::Powered
+            || consumption_rules().charge_on_damage.contains(&weapon)
             || (style == "Ranged" && projectile.is_none() && rule.family.ammo.is_empty()));
     Ok(Attack {
         hits,
@@ -469,6 +477,7 @@ fn attack(
             .filter(|id| consumption_rules().nonrecoverable_projectiles.contains(id))
             .map(|_| 100),
         charge,
+        charge_on_damage: consumption_rules().charge_on_damage.contains(&weapon),
         scales: internal,
         prayer: prayer::drain_per_minute(prayer::bonus(set), &settings) / 100.0,
     })
@@ -884,7 +893,7 @@ impl<'a> Runner<'a> {
                 *used += 1;
             }
         }
-        if a.charge {
+        if a.charge && (!a.charge_on_damage || n > 0) {
             *self.usage.charges.entry(a.weapon).or_default() += 1;
         }
         if a.scales && self.rng.unit() < 2.0 / 3.0 {
@@ -1237,8 +1246,17 @@ pub fn simulate(model: &Model) -> Result<Report, String> {
                         || !(1..=2).contains(&p.divisor)
                         || a.hits
                             .hit_distribution
-                            .last()
-                            .is_none_or(|v| (v.1 - p.chance).abs() > 1e-8)
+                            .get(
+                                a.hits
+                                    .hit_distribution
+                                    .len()
+                                    .saturating_sub(p.distribution_entries)..,
+                            )
+                            .is_none_or(|v| {
+                                p.distribution_entries == 0
+                                    || p.distribution_entries > a.hits.hit_distribution.len()
+                                    || (v.iter().map(|v| v.1).sum::<f64>() - p.chance).abs() > 1e-8
+                            })
                 })
                 || a.hits.hit_distribution.is_empty()
                 || a.hits

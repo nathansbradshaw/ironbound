@@ -207,7 +207,14 @@ fn spell_selection_and_supplies_share_the_same_recipes() {
     let mut owned = std::collections::BTreeMap::from([(565, 150), (560, 150)]);
     let staff = set(1381);
     assert_eq!(rules::spell_name(&member(62), &staff, &owned), "Wind Wave");
-    assert_eq!(rules::rune_supplies("Wind Wave", 150), vec![(565, 150)]);
+    assert_eq!(
+        rules::rune_supplies("Wind Wave", 150),
+        vec![(556, 750), (565, 150)]
+    );
+    assert_eq!(
+        rules::rune_supplies_for_set("Wind Wave", 150, &staff),
+        vec![(565, 150)]
+    );
     owned.insert(565, 149);
     assert_eq!(rules::spell_name(&member(62), &staff, &owned), "Wind Blast");
     assert!(rules::casting_supported(&member(41), &staff, &owned, 150));

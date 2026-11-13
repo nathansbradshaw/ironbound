@@ -101,8 +101,14 @@ fn targets(o: &Options) -> Vec<(i32, &str)> {
         Boss::Custom => o.targets.iter().map(|t| (t.id, t.style.as_str())).collect(),
     }
 }
-fn spell(m: &Member, set: &Set, owned: &BTreeMap<i32, u32>, o: &Options) -> &'static str {
-    crate::rules::spell_name_configured(m, set, owned, &o.combat)
+fn spell(
+    m: &Member,
+    set: &Set,
+    owned: &BTreeMap<i32, u32>,
+    o: &Options,
+    target: &planner::Monster,
+) -> &'static str {
+    crate::rules::spell_name_for_target(m, set, owned, &o.combat, target, o.raid_level)
 }
 fn value(
     m: &Member,
@@ -130,7 +136,7 @@ fn value(
             set,
             style,
             target,
-            spell(m, set, owned, o),
+            spell(m, set, owned, o, target),
             o.raid_level,
             &o.combat,
         )
@@ -143,7 +149,7 @@ fn value(
             reference,
             style,
             target,
-            spell(m, reference, owned, o),
+            spell(m, reference, owned, o, target),
             o.raid_level,
             &o.combat,
         )
@@ -461,7 +467,7 @@ pub fn solve(
                     before,
                     style,
                     target,
-                    spell(m, before, owned, o),
+                    spell(m, before, owned, o, target),
                     o.raid_level,
                     &o.combat,
                 )
@@ -472,7 +478,7 @@ pub fn solve(
                     after,
                     style,
                     target,
-                    spell(m, after, owned, o),
+                    spell(m, after, owned, o, target),
                     o.raid_level,
                     &o.combat,
                 )

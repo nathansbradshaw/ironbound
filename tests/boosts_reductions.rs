@@ -440,7 +440,7 @@ fn boosted_spell_choice_packs_wave_runes_instead_of_blast_runes() {
         &o.combat,
     )
     .unwrap();
-    assert_eq!(damage.max_hit, 18); // Magic61+4 reaches the65 Wave tier.
+    assert_eq!(damage.max_hit, 17); // Boost unlocks Wave; damage tier uses base61.
     let mut short = bank.clone();
     short.members[0].bank = Some(vec![1381, 1, 8007, 1, 565, 149, 560, 150]);
     let fallback = planner::plan(&short, &o);

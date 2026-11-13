@@ -835,7 +835,14 @@ fn refine_dps(
                         set,
                         style,
                         target,
-                        crate::rules::spell_name_configured(m, set, owned, &options.combat),
+                        crate::rules::spell_name_for_target(
+                            m,
+                            set,
+                            owned,
+                            &options.combat,
+                            target,
+                            options.raid_level,
+                        ),
                         options.raid_level,
                         &options.combat,
                     )
@@ -855,7 +862,14 @@ fn refine_dps(
         *set = trials[chosen].clone();
     }
     let spell = |set: &Vec<Option<i32>>| {
-        crate::rules::spell_name_configured(m, set, owned, &options.combat)
+        crate::rules::spell_name_for_target(
+            m,
+            set,
+            owned,
+            &options.combat,
+            target,
+            options.raid_level,
+        )
     };
     let metric = |set: &Vec<Option<i32>>| {
         let dps = crate::combat::calculate_configured(
@@ -1497,6 +1511,7 @@ fn plan_uncached(snapshot: &Snapshot, options: &Options) -> Plan {
         allocated.insert(id, 100);
     }
     let mut spell_runes = BTreeMap::<i32, u32>::new();
+    let mut trip_spells = std::collections::BTreeSet::new();
     let mut mark_applies = false;
     for set in std::iter::once(&out.equipment).chain(out.phases.iter().map(|p| &p.equipment)) {
         if !set[3]
@@ -1505,45 +1520,69 @@ fn plan_uncached(snapshot: &Snapshot, options: &Options) -> Plan {
         {
             continue;
         }
-        let spell = crate::rules::spell_name_configured(m, set, &owned, &options.combat);
+        let mut selected_spells = std::collections::BTreeSet::new();
+        for (id, style) in crate::recommendation::targets(options) {
+            if crate::rules::base_style(style) == "Magic" {
+                if let Some(target) = monster(id) {
+                    selected_spells.insert(crate::rules::spell_name_for_target(
+                        m,
+                        set,
+                        &owned,
+                        &options.combat,
+                        target,
+                        options.raid_level,
+                    ));
+                }
+            }
+        }
+        if selected_spells.is_empty() {
+            selected_spells.insert(crate::rules::spell_name_configured(
+                m,
+                set,
+                &owned,
+                &options.combat,
+            ));
+        }
         mark_applies |= options.combat.mark_darkness
             && set[3]
                 .and_then(crate::rules::weapon)
                 .is_some_and(|r| r.has(crate::rules::Effect::DemonbaneSpell));
-        if out.spell.is_empty() {
-            out.spell = if spell.is_empty() {
+        for spell in selected_spells {
+            trip_spells.insert(if spell.is_empty() {
                 "Built-in spell"
             } else {
                 spell
+            });
+            if !crate::rules::casting_supported_configured(
+                m,
+                set,
+                &owned,
+                crate::rules::DEFAULT_CASTS,
+                &options.combat,
+            ) {
+                let level = crate::rules::spells()
+                    .iter()
+                    .find(|s| s.name == spell)
+                    .map(|s| s.level);
+                out.missing.push(format!(
+                    "{} is required for this spell template, with sufficient runes for {} casts.",
+                    level
+                        .map(|l| format!("{l} Magic"))
+                        .unwrap_or("A usable charged staff".into()),
+                    crate::rules::DEFAULT_CASTS
+                ));
             }
-            .into();
-        }
-        if !crate::rules::casting_supported_configured(
-            m,
-            set,
-            &owned,
-            crate::rules::DEFAULT_CASTS,
-            &options.combat,
-        ) {
-            let level = crate::rules::spells()
-                .iter()
-                .find(|s| s.name == spell)
-                .map(|s| s.level);
-            out.missing.push(format!(
-                "{} is required for this spell template, with sufficient runes for {} casts.",
-                level
-                    .map(|l| format!("{l} Magic"))
-                    .unwrap_or("A usable charged staff".into()),
-                crate::rules::DEFAULT_CASTS
-            ));
-        }
-        for (id, quantity) in crate::rules::rune_supplies(spell, crate::rules::DEFAULT_CASTS) {
-            spell_runes
-                .entry(id)
-                .and_modify(|q| *q = (*q).max(quantity))
-                .or_insert(quantity);
+            for (id, quantity) in
+                crate::rules::rune_supplies_for_set(spell, crate::rules::DEFAULT_CASTS, set)
+            {
+                spell_runes
+                    .entry(id)
+                    .and_modify(|q| *q = (*q).max(quantity))
+                    .or_insert(quantity);
+            }
         }
     }
+    out.spell = trip_spells.into_iter().collect::<Vec<_>>().join(" / ");
     if mark_applies {
         for (id, quantity) in crate::rules::mark_darkness_supplies() {
             *spell_runes.entry(id).or_default() += quantity;

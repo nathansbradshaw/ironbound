@@ -2194,7 +2194,7 @@ fn loadout_panel(s: &State, p: &Plan) -> String {
     }
     if !p.spell.is_empty() {
         html.push_str(&format!(
-            "<div class=\"spell-line\">{}<span>Selected spell<strong>{}</strong></span></div>",
+            "<div class=\"spell-line\">{}<span>Trip spells<strong>{}</strong></span></div>",
             image(556),
             esc(&p.spell)
         ));
@@ -2755,6 +2755,23 @@ fn comparison_monster(s: &State) -> Option<&'static planner::Monster> {
         .or_else(|| targets.first().copied())?;
     planner::monsters().iter().find(|m| m.id == id)
 }
+fn comparison_spell(
+    s: &State,
+    member: &account::Member,
+    set: &[Option<i32>],
+    target: &planner::Monster,
+) -> &'static str {
+    let mut owned = s.saved.snapshot.available(s.saved.options.shared);
+    owned.retain(|id, _| !s.saved.options.excluded.contains(id));
+    crate::rules::spell_name_for_target(
+        member,
+        set,
+        &owned,
+        &s.saved.options.combat,
+        target,
+        s.saved.options.raid_level,
+    )
+}
 fn incoming_choice(s: &State, target: &planner::Monster) -> Option<String> {
     let choices = crate::defence::attacks(target);
     s.incoming_attack
@@ -2840,7 +2857,7 @@ fn sustain_panel(
                     set,
                     comparison_style(s),
                     target,
-                    &p.spell,
+                    comparison_spell(s, member, set, target),
                     s.saved.options.raid_level,
                     settings,
                 ) {
@@ -2972,6 +2989,106 @@ fn combat_assumptions(
     html.push_str("</div><p class=\"small-note\">Peak active boosts and successful reductions are assumptions. No decay, drinking delay, venom or special-attack damage. Accursed takes priority over Vulnerability. Wear requirements use base levels.</p></details>");
     html
 }
+fn combat_breakdown(
+    s: &State,
+    member: &account::Member,
+    set: &[Option<i32>],
+    target: &planner::Monster,
+    r: &combat::ResultStats,
+) -> String {
+    let mut html = String::from("<div class=\"combat-breakdown\">");
+    if ["light", "standard", "heavy"].contains(&r.attack_type.as_str()) {
+        html.push_str("<h3>Ranged defence by ammunition</h3><table class=\"wiki-table\"><thead><tr><th>Type</th><th>Ammunition</th><th>Target bonus</th><th>Used</th></tr></thead><tbody>");
+        for (kind, name, ammo) in [
+            ("light", "Light", "Darts, knives, thrown"),
+            ("standard", "Standard", "Arrows, crystal bows"),
+            ("heavy", "Heavy", "Bolts, javelins"),
+        ] {
+            let reduced = s
+                .saved
+                .options
+                .combat
+                .reductions
+                .get(&target.id)
+                .and_then(|reductions| crate::modifiers::reduce(target, reductions).ok());
+            let effective_target = reduced.as_ref().unwrap_or(target);
+            let value = effective_target
+                .defensive
+                .get(kind)
+                .map(|v| format!("{v:+}"))
+                .unwrap_or("Unknown".into());
+            html.push_str(&format!(
+                "<tr><th>{name}</th><td>{ammo}</td><td>{value}</td><td>{}</td></tr>",
+                if r.attack_type == kind {
+                    "Selected weapon"
+                } else {
+                    "—"
+                }
+            ));
+        }
+        html.push_str(&format!("</tbody></table><p class=\"small-note\">Your ammunition determines the category. Lower target defence improves accuracy; it does not increase the base max hit. Selected defence roll: {}.</p>",r.defence_roll));
+    } else if r.attack_type == "magic" {
+        let mut owned = s.saved.snapshot.available(s.saved.options.shared);
+        owned.retain(|id, _| !s.saved.options.excluded.contains(id));
+        let candidates =
+            crate::rules::elemental_candidates(member, set, &owned, &s.saved.options.combat);
+        html.push_str("<h3>Magic elements</h3><table class=\"wiki-table\"><thead><tr><th>Element</th><th>Target weakness</th><th>Owned spell</th><th>Max hit</th><th>Hit chance</th><th>DPS</th></tr></thead><tbody>");
+        for (element, label) in [
+            ("air", "Air"),
+            ("water", "Water"),
+            ("earth", "Earth"),
+            ("fire", "Fire"),
+        ] {
+            let weakness = target
+                .weakness
+                .as_ref()
+                .filter(|w| w.element == element)
+                .map(|w| w.severity)
+                .unwrap_or(0);
+            html.push_str(&format!("<tr><th>{label}</th><td>{weakness}%</td>"));
+            let candidate = candidates
+                .iter()
+                .find(|spell| spell.element.as_deref() == Some(element));
+            if let Some((spell, calc)) = candidate.and_then(|spell| {
+                combat::calculate_configured(
+                    member,
+                    set,
+                    "Magic",
+                    target,
+                    &spell.name,
+                    s.saved.options.raid_level,
+                    &s.saved.options.combat,
+                )
+                .ok()
+                .map(|calc| (*spell, calc))
+            }) {
+                html.push_str(&format!(
+                    "<td>{}{}</td><td>{}</td><td>{:.1}%</td><td>{:.3}</td>",
+                    esc(&spell.name),
+                    if spell.name == r.spell {
+                        " · selected"
+                    } else {
+                        ""
+                    },
+                    calc.max_hit,
+                    calc.accuracy * 100.0,
+                    calc.dps
+                ));
+            } else {
+                html.push_str("<td colspan=\"4\">No usable owned spell for this weapon</td>");
+            }
+            html.push_str("</tr>");
+        }
+        html.push_str("</tbody></table><p class=\"small-note\">Each row uses the strongest spell of that element with runes for 150 casts. Selection compares sustained DPS. Staff-provided runes are included; check tome pages and charges.</p>");
+        if let Some(e) = &r.elemental {
+            html.push_str(&format!("<h3>{} · calculation</h3><dl class=\"combat-values\"><div><dt>Base spell max</dt><dd>{}</dd></div><div><dt>After gear, prayer & task</dt><dd>{}</dd></div><div><dt>Elemental damage · {}%</dt><dd>+{}</dd></div><div><dt>Elemental accuracy roll · {}%</dt><dd>+{}</dd></div></dl><p class=\"small-note\">Weakness adds a percentage of base spell damage and the base accuracy roll ({}), after other bonuses. Damage is rounded down at each stage. {} Final max hit: {}. Damage tiers use base Magic; active boosts can unlock spells and improve accuracy.</p>",esc(&r.spell),e.base_max,e.damage_before_weakness,e.weakness_percent,e.weakness_damage,e.weakness_percent,e.weakness_accuracy,e.base_attack_roll,if e.tome { "Matching charged tome multiplies damage by 1.10 after weakness." } else { "" },r.max_hit));
+        } else {
+            html.push_str("<p class=\"small-note\">This powered or non-elemental spell receives no elemental weakness bonus.</p>");
+        }
+    }
+    html.push_str("</div>");
+    html
+}
 fn combat_panel(s: &State, p: &Plan) -> String {
     if s.shared_setup.is_some() {
         return String::new();
@@ -3037,7 +3154,25 @@ fn combat_panel(s: &State, p: &Plan) -> String {
         {
             html.push_str(&format!("<label><input id=\"mark-darkness\" type=\"checkbox\" {}> Mark of Darkness active</label>", if s.saved.options.combat.mark_darkness { "checked" } else { "" }));
         }
-        match combat::calculate_configured(m,&set,style,target,&p.spell,s.saved.options.raid_level,&s.saved.options.combat){Ok(r)=>html.push_str(&format!(r#"<dl class="combat-values"><div><dt>Outgoing DPS</dt><dd>{:.3}</dd></div><div><dt>Hit chance</dt><dd>{:.1}%</dd></div><div><dt>Max hit</dt><dd>{}</dd></div><div><dt>Attack speed</dt><dd>{} ticks</dd></div></dl><p>{} attacks · {:.1} seconds per attack</p>"#,r.dps,r.accuracy*100.0,r.max_hit,r.attack_ticks,esc(&r.attack_type),r.attack_ticks as f64*0.6)),Err(e)=>html.push_str(&format!("<p class=\"combat-unavailable\">DPS unavailable: {}</p>",esc(&e)))}
+        let spell = comparison_spell(s, m, &set, target);
+        match combat::calculate_configured(
+            m,
+            &set,
+            style,
+            target,
+            spell,
+            s.saved.options.raid_level,
+            &s.saved.options.combat,
+        ) {
+            Ok(r) => {
+                html.push_str(&format!(r#"<dl class="combat-values"><div><dt>Outgoing DPS</dt><dd>{:.3}</dd></div><div><dt>Hit chance</dt><dd>{:.1}%</dd></div><div><dt>Max hit</dt><dd>{}</dd></div><div><dt>Attack speed</dt><dd>{} ticks</dd></div></dl><p>{} attacks · {:.1} seconds per attack</p>"#,r.dps,r.accuracy*100.0,r.max_hit,r.attack_ticks,esc(&r.attack_type),r.attack_ticks as f64*0.6));
+                html.push_str(&combat_breakdown(s, m, &set, target, &r));
+            }
+            Err(e) => html.push_str(&format!(
+                "<p class=\"combat-unavailable\">DPS unavailable: {}</p>",
+                esc(&e)
+            )),
+        }
         if crate::yama::has_judge_cycle(&s.saved.options) {
             let judge_set = |style| {
                 s.saved
@@ -3100,7 +3235,6 @@ fn tier_table(s: &State) -> String {
         return String::new();
     };
     let target = comparison_monster(s);
-    let spell = planner::plan(&s.saved.snapshot, &s.saved.options).spell;
     let mut html = format!(
         r#"<section class="owned-tiers"><h2>Your bank: equipment tiers</h2><p>{style} · click an owned item to use it. Rows compare one slot at a time with the other equipment held fixed.</p><p>When DPS is supported, choices are sorted by calculated DPS against the selected monster. Otherwise the reviewed starter order is shown. This is not a global best-in-slot search.</p><table class="wiki-table"><thead><tr><th>Slot</th><th>Owned choices, best supported DPS first</th></tr></thead><tbody>"#
     );
@@ -3125,7 +3259,7 @@ fn tier_table(s: &State) -> String {
                                 &trial,
                                 style,
                                 m,
-                                &spell,
+                                comparison_spell(s, member, &trial, m),
                                 s.saved.options.raid_level,
                                 &s.saved.options.combat,
                             )
@@ -3540,11 +3674,13 @@ fn ranked_gear(s: &State) -> (Vec<GearChoice>, Vec<&'static str>) {
                         &trial,
                         trial_style,
                         target,
-                        crate::rules::spell_name_configured(
+                        crate::rules::spell_name_for_target(
                             member,
                             &trial,
                             &owned,
                             &s.saved.options.combat,
+                            target,
+                            s.saved.options.raid_level,
                         ),
                         s.saved.options.raid_level,
                         &s.saved.options.combat,
@@ -3743,7 +3879,7 @@ fn bis_scale(s: &State) -> String {
                     &trial,
                     style,
                     m,
-                    &p.spell,
+                    comparison_spell(s, member, &trial, m),
                     s.saved.options.raid_level,
                     &s.saved.options.combat,
                 )

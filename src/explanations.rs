@@ -107,7 +107,7 @@ fn damage(
                 set,
                 style,
                 target,
-                rules::spell_name_configured(&member, set, &owned, &o.combat),
+                rules::spell_name_for_target(&member, set, &owned, &o.combat, target, o.raid_level),
                 o.raid_level,
                 &o.combat,
             )

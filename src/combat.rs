@@ -83,8 +83,21 @@ pub struct ResultStats {
     pub attack_roll: i64,
     pub defence_roll: i64,
     pub attack_type: String,
+    pub spell: String,
+    pub elemental: Option<ElementalStats>,
     /// Guaranteed-hit windows retain proc probabilities for exact alternating cycles.
     pub guaranteed_hits: Option<Vec<(i32, f64)>>,
+}
+#[derive(Clone, Debug)]
+pub struct ElementalStats {
+    pub element: String,
+    pub base_max: i32,
+    pub weakness_percent: i32,
+    pub damage_before_weakness: i32,
+    pub weakness_damage: i32,
+    pub base_attack_roll: i64,
+    pub weakness_accuracy: i64,
+    pub tome: bool,
 }
 /// Normal accuracy includes negative attack/defence rolls.
 pub fn accuracy(mut a: i64, mut d: i64) -> f64 {
@@ -281,6 +294,7 @@ pub fn calculate_configured(
             .map(|v| v as i64)
             .ok_or_else(|| format!("Enter your {s} level."))
     };
+    let mut elemental = None;
     let (attack_type, attack, max_hit, ticks, def_level, def_bonus) = match style {
         "Melee" => {
             let kind = if requested_style == "Melee" {
@@ -341,47 +355,40 @@ pub fn calculate_configured(
             }
             let max = (strength * (get(&b.other, "ranged_str") as i64 + 64) + 320) / 640;
             (
-                "ranged",
+                rule.family.attack_types[0].as_str(),
                 a,
                 max.max(0) as i32,
                 (stats.speed - i32::from(rule.family.rapid && settings.ranged_stance == "Rapid"))
                     .max(1),
                 get(&monster.skills, "def"),
-                get(&monster.defensive, &rule.family.attack_types[0]),
+                *monster
+                    .defensive
+                    .get(&rule.family.attack_types[0])
+                    .ok_or("Selected ranged defence category is unavailable for this target.")?,
             )
         }
         "Magic" => {
             let mage = level("Magic")?;
             let base = match rule.family.formula {
-                Formula::Wind => match spell {
-                    "Wind Wave" => {
-                        if mage >= 75 {
-                            20
-                        } else if mage >= 70 {
-                            19
-                        } else if mage >= 65 {
-                            18
-                        } else if mage >= 62 {
-                            17
-                        } else {
-                            return Err("Wind Wave requires 62 Magic.".into());
-                        }
+                Formula::Elemental => {
+                    let recipe = rules::spells()
+                        .iter()
+                        .find(|r| r.name == spell && r.family == rule.weapon.family)
+                        .ok_or("Choose a supported elemental spell.")?;
+                    if mage < i64::from(recipe.level) {
+                        return Err(format!("{} requires {} Magic.", recipe.name, recipe.level));
                     }
-                    "Wind Blast" => {
-                        if mage >= 59 {
-                            16
-                        } else if mage >= 53 {
-                            15
-                        } else if mage >= 47 {
-                            14
-                        } else if mage >= 41 {
-                            13
-                        } else {
-                            return Err("Wind Blast requires 41 Magic.".into());
-                        }
-                    }
-                    _ => return Err("Choose Wind Blast or Wind Wave.".into()),
-                },
+                    // Boosts unlock casts and improve accuracy; damage tiers use base Magic.
+                    let base_magic = member.level("Magic").ok_or("Enter your Magic level.")?;
+                    recipe
+                        .tiers
+                        .iter()
+                        .rev()
+                        .find(|(level, _)| base_magic >= *level)
+                        .or_else(|| recipe.tiers.first())
+                        .map(|(_, max)| *max)
+                        .ok_or("Spell damage tier unavailable.")?
+                }
                 Formula::Powered => if rule.family.offset_before_division {
                     (rule.family.numerator * mage + rule.family.offset) / rule.family.denominator
                 } else {
@@ -418,12 +425,38 @@ pub fn calculate_configured(
             }
             let base_a = effective * (get(&b.offensive, "magic") as i64 + 64);
             let mut a = base_a * accuracy_bonus[0] / accuracy_bonus[1];
-            if rule.family.formula == Formula::Wind {
-                if let Some(w) = &monster.weakness {
-                    if w.element == "air" {
-                        a += base_a * w.severity as i64 / 100;
-                        max += base * w.severity as i64 / 100;
-                    }
+            if rule.family.formula == Formula::Elemental {
+                let element = rules::spells()
+                    .iter()
+                    .find(|r| r.name == spell)
+                    .and_then(|r| r.element.as_deref())
+                    .ok_or("Spell element unavailable.")?;
+                let weakness_percent = monster
+                    .weakness
+                    .as_ref()
+                    .filter(|w| w.element == element)
+                    .map(|w| w.severity)
+                    .unwrap_or(0);
+                let weakness_accuracy = base_a * i64::from(weakness_percent) / 100;
+                let weakness_damage = base * i64::from(weakness_percent) / 100;
+                let focus = rules::elemental_focus(set).filter(|f| f.element == element);
+                elemental = Some(ElementalStats {
+                    element: element.into(),
+                    base_max: base as i32,
+                    weakness_percent,
+                    damage_before_weakness: max as i32,
+                    weakness_damage: weakness_damage as i32,
+                    base_attack_roll: base_a,
+                    weakness_accuracy,
+                    tome: focus.is_some(),
+                });
+                a += weakness_accuracy;
+                max += weakness_damage;
+                if let Some(focus) = focus {
+                    max = max * (100 + focus.damage_percent) / 100;
+                    // Tome accuracy precedes the additive weakness bonus.
+                    a = (a - weakness_accuracy) * (100 + focus.accuracy_percent) / 100
+                        + weakness_accuracy;
                 }
             }
             (
@@ -602,6 +635,12 @@ pub fn calculate_configured(
         attack_roll: attack,
         defence_roll: defence,
         attack_type: attack_type.into(),
+        spell: if style == "Magic" {
+            spell.into()
+        } else {
+            String::new()
+        },
+        elemental,
         guaranteed_hits: always_max.then_some(hits),
     })
 }

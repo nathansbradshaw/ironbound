@@ -23,7 +23,8 @@ Your account stays on that browser. Import it again when using a different devic
 - **Switch less:** limit changed items and carried gear; favour one style or phase.
 - **Compare gear:** outgoing DPS, supported incoming damage, defence and prayer drain.
 - **Check the maths:** [live Wiki comparisons and update guide](docs/combat-validation.md). Run `cargo run --locked --bin validate_combat` to check the pinned reference loadouts.
-- **Model your fight:** Combat → **Boosts, darts & debuffs**. Choose active boosts, loaded blowpipe darts and successful reductions for each target. Numeric settings, including switch limits, update after a short typing pause.
+- **Model your fight:** Combat → **Boosts, darts & debuffs**. Choose active boosts, loaded blowpipe darts and successful reductions for each target.
+- **Choose your switch limit:** this is a maximum. See how many changes the plan actually uses. Equal combat scores prefer lower prayer use, then fewer packed items. Numeric controls update while typing or using their arrows.
 - **Pack your inventory:** click any slot, search owned items by type, and keep your chosen positions when exporting.
 - **Compare supplies:** food by potential healing per slot; potions by restoration or boost within each role, with fuller bottles first on ties.
 - **Plan longer trips:** weigh prayer efficiency against damage and see a prayer-supply estimate.

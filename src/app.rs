@@ -227,7 +227,8 @@ fn live_number(id: &str) -> bool {
     .contains(&id)
         || id.starts_with("priority-")
         || id.starts_with("skill-")
-        || id.starts_with("reduction-")
+        || (id.starts_with("reduction-")
+            && !["reduction-accursed", "reduction-vulnerability"].contains(&id))
 }
 fn apply_number(s: &mut State, id: &str, value: &str) -> bool {
     if s.shared_setup.is_some() && !id.starts_with("skill-") {
@@ -318,7 +319,7 @@ fn apply_number(s: &mut State, id: &str, value: &str) -> bool {
     true
 }
 /// Recalculate after a short typing pause; never require blur or steal focus.
-fn schedule_number_render(id: String) {
+fn schedule_number_render() {
     let revision = LIVE_EDIT.with(|value| {
         let next = value.get().wrapping_add(1);
         value.set(next);
@@ -328,23 +329,13 @@ fn schedule_number_render(id: String) {
         if LIVE_EDIT.with(|value| value.get() != revision) {
             return;
         }
-        let active = document().active_element();
-        if active.as_ref().is_some_and(|e| {
-            ["INPUT", "TEXTAREA", "SELECT"].contains(&e.tag_name().as_str()) && e.id() != id
-        }) {
-            return;
-        }
-        let restore = active.is_some_and(|e| e.id() == id);
+        let edit = document().active_element().filter(|e| {
+            ["INPUT", "TEXTAREA", "SELECT"].contains(&e.tag_name().as_str()) && !e.id().is_empty()
+        });
         STATE.with(|state| state.borrow().persist());
-        render();
-        if restore {
-            if let Some(field) = document()
-                .get_element_by_id(&id)
-                .and_then(|e| e.dyn_into::<web_sys::HtmlElement>().ok())
-            {
-                let _ = field.focus();
-            }
-        }
+        // Refresh even after Tab moves to another field. Preserve that field,
+        // rather than discarding this update or taking focus back.
+        render_with_edit(edit.as_ref().map(Element::id).as_deref());
     });
     let _ = window()
         .set_timeout_with_callback_and_timeout_and_arguments_0(callback.unchecked_ref(), 250);
@@ -464,7 +455,7 @@ pub fn start() -> Result<(), JsValue> {
                 let changed = STATE
                     .with(|state| apply_number(&mut state.borrow_mut(), &el.id(), &el.value()));
                 if changed {
-                    schedule_number_render(el.id());
+                    schedule_number_render();
                 }
             }
         }
@@ -623,6 +614,14 @@ pub fn start() -> Result<(), JsValue> {
             }
             return;
         }
+        if live_number(&id) {
+            let changed =
+                STATE.with(|state| apply_number(&mut state.borrow_mut(), &id, &input(&id)));
+            if changed {
+                schedule_number_render();
+            }
+            return;
+        }
         // Draft form fields must survive blur: they are committed by their action button.
         if ![
             "max-switches",
@@ -745,9 +744,6 @@ pub fn start() -> Result<(), JsValue> {
                     if let Ok(sel) = el.dyn_into::<HtmlSelectElement>() {
                         s.inventory_filter = sel.value();
                     }
-                }
-                _ if live_number(&id) => {
-                    apply_number(&mut s, &id, &input(&id));
                 }
                 "incoming-attack" => {
                     if let Ok(sel) = el.dyn_into::<HtmlSelectElement>() {
@@ -1808,7 +1804,77 @@ fn download(name: &str, text: &str) {
     }
 }
 
+/// Refresh siblings around the active form control without removing it or its
+/// ancestors. Recreating a number input loses its caret and interrupts native
+/// spinner/keyboard repetition, even if focus is restored afterwards.
+fn patch_around_edit(
+    old: &web_sys::Node,
+    fresh: &web_sys::Node,
+    edit: &web_sys::Node,
+    fresh_edit: &web_sys::Node,
+) -> Result<(), JsValue> {
+    if old.is_same_node(Some(edit)) {
+        return Ok(());
+    }
+    let children = |node: &web_sys::Node| {
+        let list = node.child_nodes();
+        (0..list.length())
+            .filter_map(|i| list.item(i))
+            .collect::<Vec<_>>()
+    };
+    let old_children = children(old);
+    let fresh_children = children(fresh);
+    let kept = old_children
+        .iter()
+        .find(|node| node.contains(Some(edit)))
+        .ok_or_else(|| JsValue::from_str("Active field path missing"))?;
+    let fresh_index = fresh_children
+        .iter()
+        .position(|node| node.contains(Some(fresh_edit)))
+        .ok_or_else(|| JsValue::from_str("Updated field path missing"))?;
+    for node in &old_children {
+        if !node.is_same_node(Some(kept)) {
+            old.remove_child(node)?;
+        }
+    }
+    for (index, node) in fresh_children.iter().enumerate() {
+        if index < fresh_index {
+            old.insert_before(&node.clone_node_with_deep(true)?, Some(kept))?;
+        } else if index > fresh_index {
+            old.append_child(&node.clone_node_with_deep(true)?)?;
+        }
+    }
+    patch_around_edit(kept, &fresh_children[fresh_index], edit, fresh_edit)
+}
+
+fn update_markup(root: &Element, html: &str, keep: Option<&str>) {
+    let retained = (|| -> Result<bool, JsValue> {
+        let Some(id) = keep else { return Ok(false) };
+        let Some(edit) = document()
+            .get_element_by_id(id)
+            .filter(|e| root.contains(Some(e)))
+        else {
+            return Ok(false);
+        };
+        let fresh = document().create_element("div")?;
+        fresh.set_inner_html(html);
+        let Some(fresh_edit) = fresh.query_selector(&format!("[id=\"{id}\"]"))? else {
+            return Ok(false);
+        };
+        patch_around_edit(root, &fresh, &edit, &fresh_edit)?;
+        Ok(true)
+    })()
+    .unwrap_or(false);
+    if !retained {
+        root.set_inner_html(html);
+    }
+}
+
 fn render() {
+    render_with_edit(None);
+}
+
+fn render_with_edit(edit: Option<&str>) {
     STATE.with(|state|{let s=state.borrow();let snapshot=&s.saved.snapshot;let options=&s.saved.options;let plan=s.plan();
     let demo=snapshot.source=="Demo";
     let nav=|(key,label,icon):(&str,&str,i32)|format!("<button class=\"nav-item {}\" data-action=\"tab:{key}\">{}<span>{label}</span>{}</button>",if s.tab==key{"active"}else{""},image(icon),if key=="goals"{format!("<span class=\"nav-count\">{}</span>",s.pins().len())}else{String::new()});
@@ -1831,7 +1897,7 @@ fn render() {
         html.push_str(&raid_rooms(&s));
         html.push_str("</div>");
         if s.shared_setup.is_some(){html.push_str(&format!("<p class=\"notice\">Viewing a shared setup. Your saved bank is unchanged. {}</p>",button("use-bank","Rebuild using my items","text-button")));}
-        if s.shared_setup.is_none(){html.push_str(&switch_controls(&s));}
+        if s.shared_setup.is_none(){html.push_str(&switch_controls(&s,&plan));}
         html.push_str("<nav class=\"planner-tabs\" aria-label=\"Planner sections\">");
         for (view,label) in [("loadout","Gear"),("combat","Combat"),("prepare","Preparation")] {let disabled=if view=="combat"&&s.shared_setup.is_some(){"disabled title=\"Rebuild using your items to calculate combat stats\""}else{""};html.push_str(&format!("<button class=\"workspace-tab {}\" data-action=\"view:{view}\" aria-pressed=\"{}\" {disabled}>{label}{}</button>",if s.view==view{"active"}else{""},s.view==view,if view=="prepare"&&!plan.missing.is_empty(){format!(" <span class=\"issue-count\">{}</span>",plan.missing.len())}else{String::new()}));}
         html.push_str("</nav><section class=\"workspace-view\">");
@@ -1846,7 +1912,7 @@ fn render() {
     html.push_str("</div><footer><span>Ironbound — an unofficial OSRS fan site.</span><a href=\"https://oldschool.runescape.wiki/\" target=\"_blank\" rel=\"noreferrer\">OSRS Wiki ↗</a><a href=\"./assets/osrs/NOTICE.txt\" target=\"_blank\" rel=\"noreferrer\">Asset credits</a><span>Starter catalog · 9 Nov 2026</span></footer></main></div>");
     if s.edit_equipment.is_some(){html.push_str(&gear_picker(&s));}
     if let Some(index)=s.edit_inventory{html.push_str(&inventory_editor(&s,index));}
-    if let Some(el)=document().get_element_by_id("app"){el.set_inner_html(&html);}
+    if let Some(el)=document().get_element_by_id("app"){update_markup(&el,&html,edit);}
     if s.edit_equipment.is_some(){if let Ok(Some(main))=document().query_selector("main"){let _=main.set_attribute("inert","");}if let Some(search)=document().get_element_by_id("gear-search").and_then(|e|e.dyn_into::<web_sys::HtmlElement>().ok()){let _=search.focus();}}
     if s.edit_inventory.is_some(){if let Ok(Some(main))=document().query_selector("main"){let _=main.set_attribute("inert","");}if let Some(search)=document().get_element_by_id("inventory-search").and_then(|e|e.dyn_into::<web_sys::HtmlElement>().ok()){let _=search.focus();}}
 });
@@ -2992,12 +3058,12 @@ fn planned_style(s: &State, p: &Plan, style: &str) -> Vec<Option<i32>> {
         .map(|phase| phase.equipment.clone())
         .unwrap_or_else(|| planner::equipment_for_style(&s.saved.snapshot, &s.saved.options, style))
 }
-fn switch_controls(s: &State) -> String {
+fn switch_controls(s: &State, p: &Plan) -> String {
     if s.shared_setup.is_some() {
         return String::new();
     }
     let mut html = format!(
-        r#"<section class="flow-controls" aria-label="Switching preferences"><label>Switch limit<input id="max-switches" type="number" min="0" max="11" step="1" value="{}" placeholder="No limit" title="Leave empty for no limit"></label><details id="switch-preferences" {}><summary>Options</summary><div class="switch-preferences-fields"><label>Gear slots in bag<input id="switch-slots" type="number" min="0" max="20" value="{}"></label><label>Prioritize<select id="focus-style">"#,
+        r#"<section class="flow-controls" aria-label="Switching preferences"><label>Switch limit<input id="max-switches" type="number" min="0" max="11" step="1" value="{}" placeholder="No limit" title="Maximum changed slots per switch; leave empty for no limit" aria-describedby="switch-usage"></label><details id="switch-preferences" {}><summary>Options</summary><div class="switch-preferences-fields"><label>Gear slots in bag<input id="switch-slots" type="number" min="0" max="20" value="{}"></label><label>Prioritize<select id="focus-style">"#,
         s.saved
             .options
             .max_switches
@@ -3033,6 +3099,23 @@ fn switch_controls(s: &State) -> String {
     html.push_str(&ranking_controls(s, "plan-rank"));
     html.push_str("</details>");
     html.push_str("</details>");
+    let usage = if let Some(report) = &p.optimization {
+        if let Some(limit) = s.saved.options.max_switches {
+            format!(
+                "Uses {} of {limit} allowed changes per switch.",
+                report.max_changes
+            )
+        } else {
+            format!("Uses {} changes per switch.", report.max_changes)
+        }
+    } else if s.saved.options.max_switches.is_some() {
+        "No setup verified within this limit. Review Preparation.".into()
+    } else {
+        "Maximum changed slots per switch.".into()
+    };
+    html.push_str(&format!(
+        "<p id=\"switch-usage\" class=\"switch-usage\" role=\"status\">{usage}</p>"
+    ));
     let recommended = crate::recommendation::enabled(&s.saved.options);
     html.push_str(&format!(r#"<div class="recommendation-policy"><label>Gear approach<select id="recommendation-mode"><option value="recommended" {}>Recommended</option><option value="custom" {}>Custom weights</option></select></label><details><summary>Why this gear?</summary><p>{}</p>"#,if recommended{"selected"}else{""},if recommended{""}else{"selected"},esc(crate::recommendation::summary(&s.saved.options))));
     if recommended {

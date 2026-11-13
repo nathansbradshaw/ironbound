@@ -33,6 +33,36 @@ pub struct Report {
 struct Candidate {
     set: Set,
     cost: f64,
+    prayer: f64,
+}
+type SearchResult = (Vec<StyleSet>, f64, f64);
+fn prayer_usage(
+    m: &Member,
+    set: &Set,
+    style: &str,
+    o: &Options,
+    owned: &BTreeMap<i32, u32>,
+) -> f64 {
+    let drain = crate::prayer::drain_per_minute(crate::prayer::bonus(set), &o.combat);
+    if drain <= 0.0 {
+        return 0.0;
+    }
+    // Secondary estimate over supported attack windows only. It excludes
+    // travel, mechanics and encounter drains, and is not a full-trip forecast.
+    crate::recommendation::assess(m, set, style, o, owned)
+        .map(|r| r.time * drain / 60.0)
+        .unwrap_or(0.0)
+}
+fn better(candidate: &SearchResult, incumbent: &SearchResult, o: &Options) -> bool {
+    candidate
+        .1
+        .total_cmp(&incumbent.1)
+        .then_with(|| candidate.2.total_cmp(&incumbent.2))
+        .then_with(|| {
+            carried(&candidate.0, planner::primary_style(o))
+                .cmp(&carried(&incumbent.0, planner::primary_style(o)))
+        })
+        .is_lt()
 }
 pub fn changes(a: &Set, b: &Set) -> usize {
     a.iter().zip(b).filter(|(a, b)| a != b).count()
@@ -205,8 +235,13 @@ fn candidates(
             .collect::<BTreeSet<_>>()
             .len();
         let list = buckets.entry(slots).or_default();
-        list.push(Candidate { set, cost });
-        list.sort_by(|a, b| a.cost.total_cmp(&b.cost));
+        let prayer = prayer_usage(m, &set, &ideal.style, o, owned);
+        list.push(Candidate { set, cost, prayer });
+        list.sort_by(|a, b| {
+            a.cost
+                .total_cmp(&b.cost)
+                .then_with(|| a.prayer.total_cmp(&b.prayer))
+        });
         list.truncate(4);
     }
     buckets.into_values().flatten().collect()
@@ -220,12 +255,13 @@ fn evaluate(
     owned: &BTreeMap<i32, u32>,
     limit: usize,
     bag: usize,
-) -> Option<(Vec<StyleSet>, f64)> {
+) -> Option<SearchResult> {
     let mut choices = vec![];
     for (i, ideal) in ideals.iter().enumerate() {
         if i == anchor {
             choices.push(vec![Candidate {
                 set: base.clone(),
+                prayer: prayer_usage(m, base, &ideal.style, o, owned),
                 cost: match value(m, base, &ideal.equipment, &ideal.style, o, owned) {
                     Some(cost) => cost,
                     None if value(
@@ -255,11 +291,11 @@ fn evaluate(
         owned: &'a BTreeMap<i32, u32>,
         limit: usize,
         bag: usize,
-        best: Option<(Vec<StyleSet>, f64)>,
+        best: Option<SearchResult>,
         visited: usize,
     }
     impl Walk<'_> {
-        fn step(&mut self, index: usize, sets: &mut Vec<StyleSet>, cost: f64) {
+        fn step(&mut self, index: usize, sets: &mut Vec<StyleSet>, cost: f64, prayer: f64) {
             self.visited += 1;
             if self.visited > 50_000 {
                 return;
@@ -272,14 +308,14 @@ fn evaluate(
                 };
                 let cost = cost + adjustment;
                 let slots = carried(sets, planner::primary_style(self.o));
+                let candidate = (sets.clone(), cost, prayer);
                 if slots <= self.bag
-                    && self.best.as_ref().is_none_or(|(s, c)| {
-                        cost < *c - 1e-8
-                            || ((cost - *c).abs() < 1e-8
-                                && slots < carried(s, planner::primary_style(self.o)))
-                    })
+                    && self
+                        .best
+                        .as_ref()
+                        .is_none_or(|old| better(&candidate, old, self.o))
                 {
-                    self.best = Some((sets.clone(), cost));
+                    self.best = Some(candidate);
                 }
                 return;
             }
@@ -294,7 +330,12 @@ fn evaluate(
                     style: self.ideals[index].style.clone(),
                     equipment: candidate.set.clone(),
                 });
-                self.step(index + 1, sets, cost + candidate.cost);
+                self.step(
+                    index + 1,
+                    sets,
+                    cost + candidate.cost,
+                    prayer + candidate.prayer,
+                );
                 sets.pop();
             }
         }
@@ -310,7 +351,7 @@ fn evaluate(
         best: None,
         visited: 0,
     };
-    walk.step(0, &mut vec![], 0.0);
+    walk.step(0, &mut vec![], 0.0, 0.0);
     walk.best
 }
 pub fn solve(
@@ -346,12 +387,7 @@ pub fn solve(
                 trial[slot] = other.equipment[slot];
                 trial = normalize(trial);
                 if let Some(result) = evaluate(m, &trial, anchor, &ideals, o, owned, limit, bag) {
-                    if seed.as_ref().is_none_or(|(sets, cost)| {
-                        result.1 < *cost - 1e-8
-                            || ((result.1 - *cost).abs() < 1e-8
-                                && carried(&result.0, planner::primary_style(o))
-                                    < carried(sets, planner::primary_style(o)))
-                    }) {
+                    if seed.as_ref().is_none_or(|old| better(&result, old, o)) {
                         base = trial;
                         seed = Some(result);
                     }
@@ -380,11 +416,7 @@ pub fn solve(
                     if let Some(candidate) =
                         evaluate(m, &trial, anchor, &ideals, o, owned, limit, bag)
                     {
-                        if candidate.1 < best.1 - 1e-8
-                            || ((candidate.1 - best.1).abs() < 1e-8
-                                && carried(&candidate.0, planner::primary_style(o))
-                                    < carried(&best.0, planner::primary_style(o)))
-                        {
+                        if better(&candidate, &best, o) {
                             base = trial;
                             best = candidate;
                             improved = true;
@@ -470,7 +502,7 @@ pub fn solve(
             gear_slots,
             comparisons,
             note: format!(
-                "Best found in a bounded search over owned sets and hybrid anchor pieces. {} {} {}",
+                "Best found in a bounded search over owned sets and hybrid anchor pieces. Equal primary scores prefer lower prayer use across supported attack windows, then fewer carried items. Prayer timing excludes travel, mechanics and encounter drains; it is not a full-trip estimate. {} {} {}",
                 if crate::recommendation::enabled(o) {
                     "Recommended uses reviewed encounter gear roles and supported attack windows. Moons includes normal-attack damage and Blood healing, with a 15% time tolerance; other encounters compare supported damage only."
                 } else if o.focus_style == "Balanced" {

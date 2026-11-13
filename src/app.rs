@@ -277,7 +277,7 @@ fn efficient_result(s: &State) -> Option<crate::efficient::Suggestion> {
         .map(|rows| {
             crate::efficient::choose(
                 rows,
-                crate::efficient::TOLERANCE_PERCENT,
+                s.saved.options.switch_tolerance,
                 s.saved.options.max_switches.unwrap_or(11),
             )
         })
@@ -343,6 +343,7 @@ thread_local! {
 fn live_number(id: &str) -> bool {
     [
         "max-switches",
+        "switch-tolerance",
         "switch-slots",
         "food",
         "potions",
@@ -352,6 +353,7 @@ fn live_number(id: &str) -> bool {
         "spell-casts",
         "ammo-shots",
         "target-hp",
+        "current-hitpoints",
     ]
     .contains(&id)
         || id.starts_with("priority-")
@@ -381,10 +383,32 @@ fn apply_number(s: &mut State, id: &str, value: &str) -> bool {
         return true;
     }
     let o = &mut s.saved.options;
+    if id == "switch-tolerance" {
+        let Ok(number) = value.parse::<i64>() else {
+            return false;
+        };
+        let bounded = number.clamp(0, crate::efficient::MAX_TOLERANCE_PERCENT as i64) as u32;
+        o.switch_tolerance = bounded;
+        if number != bounded as i64 {
+            if let Some(input) = document()
+                .get_element_by_id(id)
+                .and_then(|e| e.dyn_into::<HtmlInputElement>().ok())
+            {
+                input.set_value(&bounded.to_string());
+            }
+        }
+        s.export_text = None;
+        return true;
+    }
     if id == "target-hp" && value.trim().is_empty() {
         if let Some(target) = target_id {
             o.combat.target_hp.remove(&target);
         }
+        s.export_text = None;
+        return true;
+    }
+    if id == "current-hitpoints" && value.trim().is_empty() {
+        o.combat.current_hitpoints = None;
         s.export_text = None;
         return true;
     }
@@ -420,6 +444,7 @@ fn apply_number(s: &mut State, id: &str, value: &str) -> bool {
                 o.combat.target_hp.insert(target, n.clamp(1, target_max));
             }
         }
+        "current-hitpoints" => o.combat.current_hitpoints = Some(n.clamp(1, 255)),
         "ammo-shots" => {
             let shots = n.clamp(1, 10_000);
             if o.combat.ammo_shots != shots {
@@ -1097,6 +1122,7 @@ pub fn start() -> Result<(), JsValue> {
             "reduction-accursed",
             "reduction-vulnerability",
             "kandarin-diary",
+            "allow-void",
             "safety",
             "prayer-weight",
             "member",
@@ -1217,6 +1243,11 @@ pub fn start() -> Result<(), JsValue> {
                     s.saved.options.combat.kandarin_diary = el
                         .dyn_ref::<HtmlInputElement>()
                         .is_some_and(|e| e.checked())
+                }
+                "allow-void" => {
+                    s.saved.options.exclude_void = !el
+                        .dyn_ref::<HtmlInputElement>()
+                        .is_some_and(|e| e.checked());
                 }
                 "safety" => {
                     if let Ok(sel) = el.dyn_into::<HtmlSelectElement>() {
@@ -1924,6 +1955,7 @@ fn act(action: &str) {
                             || (planner::gear(id)
                                 .is_some_and(|g| g.slot == planner::SLOT_KEYS[slot])
                                 && s.saved.snapshot.available(s.saved.options.shared).contains_key(&id)
+                                && !s.saved.options.item_excluded(id)
                                 && s.saved
                                     .snapshot
                                     .selected()
@@ -3408,7 +3440,7 @@ fn comparison_spell(
     target: &planner::Monster,
 ) -> &'static str {
     let mut owned = s.saved.snapshot.available(s.saved.options.shared);
-    owned.retain(|id, _| !s.saved.options.excluded.contains(id));
+    owned.retain(|id, _| !s.saved.options.item_excluded(*id));
     crate::rules::spell_name_for_target(
         member,
         set,
@@ -3525,6 +3557,8 @@ fn combat_assumptions(
         }
         html.push_str("</select></label>");
     }
+    html.push_str(&format!("<label>Current Hitpoints (Dharok's)<input id=\"current-hitpoints\" type=\"number\" min=\"1\" max=\"255\" placeholder=\"Full health\" value=\"{}\"></label>",
+        settings.current_hitpoints.map(|hp|hp.to_string()).unwrap_or_default()));
     let owned = s.saved.snapshot.available(s.saved.options.shared);
     let internal = set[3]
         .and_then(crate::rules::weapon)
@@ -3634,7 +3668,7 @@ fn combat_breakdown(
         html.push_str(&format!("</tbody></table><p class=\"small-note\">Your ammunition determines the category. Lower target defence improves accuracy; it does not increase the base max hit. Selected defence roll: {}.</p>",r.defence_roll));
     } else if r.attack_type == "magic" {
         let mut owned = s.saved.snapshot.available(s.saved.options.shared);
-        owned.retain(|id, _| !s.saved.options.excluded.contains(id));
+        owned.retain(|id, _| !s.saved.options.item_excluded(*id));
         let candidates =
             crate::rules::elemental_candidates(member, set, &owned, &s.saved.options.combat);
         html.push_str("<h3>Magic elements</h3><table class=\"wiki-table\"><thead><tr><th>Element</th><th>Target weakness</th><th>Spell</th><th>Max hit</th><th>Hit chance</th><th>DPS</th></tr></thead><tbody>");
@@ -3868,7 +3902,7 @@ fn magic_spell_book(s: &State, set: &[Option<i32>]) -> String {
         return html;
     };
     let mut owned = s.saved.snapshot.available(s.saved.options.shared);
-    owned.retain(|id, _| !s.saved.options.excluded.contains(id));
+    owned.retain(|id, _| !s.saved.options.item_excluded(*id));
     let selected = comparison_monster(s)
         .map(|target| comparison_spell(s, member, set, target))
         .unwrap_or("");
@@ -3995,7 +4029,7 @@ fn ranged_ammunition_card(s: &State, set: &[Option<i32>]) -> String {
         let ammo = set.get(13).copied().flatten().or_else(|| {
             s.saved.snapshot.selected().and_then(|m| {
                 let mut owned = s.saved.snapshot.available(s.saved.options.shared);
-                owned.retain(|id, _| !s.saved.options.excluded.contains(id));
+                owned.retain(|id, _| !s.saved.options.item_excluded(*id));
                 let member = planner::member_with_stock(m, &owned);
                 crate::rules::internal_ammo(&member, id, &s.saved.options.combat)
             })
@@ -4153,9 +4187,7 @@ fn combat_panel(s: &State, p: &Plan) -> String {
             ));
         }
         let mut stock = s.saved.snapshot.available(s.saved.options.shared);
-        for id in &s.saved.options.excluded {
-            stock.remove(id);
-        }
+        stock.retain(|id, _| !s.saved.options.item_excluded(*id));
         let stock_member = planner::member_with_stock(m, &stock);
         let m = &stock_member;
         html.push_str(&combat_assumptions(s, p, m, target, &set));
@@ -4199,6 +4231,12 @@ fn combat_panel(s: &State, p: &Plan) -> String {
                 html.push_str(&format!(r#"<dl class="combat-values"><div><dt>Outgoing DPS</dt><dd>{:.3}</dd></div><div><dt>Hit chance</dt><dd>{:.1}%</dd></div><div><dt>Max hit</dt><dd>{}</dd></div><div><dt>Attack speed</dt><dd>{} ticks</dd></div></dl><p>{} attacks · {:.1} seconds per attack</p>"#,r.dps,r.accuracy*100.0,r.max_hit,r.attack_ticks,esc(&r.attack_type),r.attack_ticks as f64*0.6));
                 html.push_str(&attack_window_budget(s, target, &set, &r));
                 html.push_str(&combat_breakdown(s, m, &set, target, &r));
+                if r.potential_healing_per_second > 0.0 {
+                    html.push_str(&format!("<p>Guthan's potential healing: {:.3} HP/s before overheal and remaining-target-HP limits. This is not subtracted from damage taken.</p>", r.potential_healing_per_second));
+                }
+                if crate::rules::set_effect(&set, "dharok") {
+                    html.push_str(&format!("<p>Dharok's uses {} current Hitpoints. Change this under Boosts, darts &amp; debuffs.</p>", s.saved.options.combat.current_hitpoints.map(|hp|hp.to_string()).unwrap_or_else(||"full-health".into())));
+                }
             }
             Err(e) => html.push_str(&format!(
                 "<p class=\"combat-unavailable\">DPS unavailable: {}</p>",
@@ -4447,6 +4485,7 @@ fn switch_controls(s: &State, p: &Plan) -> String {
         "<p id=\"switch-usage\" class=\"switch-usage\" role=\"status\">{usage}</p>"
     ));
     let recommended = crate::recommendation::enabled(&s.saved.options);
+    html.push_str(&format!("<label class=\"void-preference\"><input id=\"allow-void\" type=\"checkbox\" {}> Use Void armour <small>Normal and Elite Void · turn off to compare your other gear.</small></label>", if s.saved.options.exclude_void { "" } else { "checked" }));
     html.push_str(&format!(r#"<div class="recommendation-policy"><label>Gear approach<select id="recommendation-mode"><option value="recommended" {}>Recommended</option><option value="custom" {}>Custom weights</option></select></label><details><summary>Why this gear?</summary><p>{}</p>"#,if recommended{"selected"}else{""},if recommended{""}else{"selected"},esc(crate::recommendation::summary(&s.saved.options))));
     if recommended {
         if let Some(profile) = crate::guidance::profile(&s.saved.options) {
@@ -4477,15 +4516,23 @@ fn switch_controls(s: &State, p: &Plan) -> String {
 
 fn efficient_panel(s: &State, _plan: &Plan) -> String {
     ensure_efficient(s);
+    let tolerance = s.saved.options.switch_tolerance;
     let mut html = String::from(
         "<section class=\"panel efficient-panel\" aria-label=\"Compact setup recommendation\"><h3>Pack fewer switches</h3>",
     );
+    html.push_str(&format!("<label class=\"tolerance-control\">Tradeoff tolerance <span><input id=\"switch-tolerance\" type=\"number\" min=\"0\" max=\"{}\" step=\"1\" inputmode=\"numeric\" value=\"{tolerance}\" aria-describedby=\"tolerance-help\">%</span></label><p id=\"tolerance-help\" class=\"small-note\">Up to {tolerance}% more attack time, prayer use and known incoming damage.</p>",crate::efficient::MAX_TOLERANCE_PERCENT));
     let Some(result) = efficient_result(s) else {
         html.push_str("<p role=\"status\">Checking switch limits…</p></section>");
         return html;
     };
     let Some((selected, best)) = result.compact.zip(result.best) else {
-        html.push_str(&format!("<p>{}</p><p class=\"small-note\">Near-best target: within {}% of the fastest tested attack time and prayer use, with known incoming damage guarded.</p></section>",esc(result.reason.as_deref().unwrap_or("No comparison available.")),crate::efficient::TOLERANCE_PERCENT));
+        html.push_str(&format!(
+            "<p>{}</p></section>",
+            esc(result
+                .reason
+                .as_deref()
+                .unwrap_or("No comparison available."))
+        ));
         return html;
     };
     let chosen = &result.candidates[selected];
@@ -4529,7 +4576,7 @@ fn efficient_panel(s: &State, _plan: &Plan) -> String {
         && s.saved.options.inventory_overrides.is_empty()
         && s.saved.options.inventory_quantities.is_empty();
     html.push_str(&format!("<div class=\"efficient-actions\"><button class=\"phase\" data-action=\"efficient-apply\" {}>{}</button>{}</div>",if using {"disabled"}else{""},if using {"Using compact setup"}else if edited_inventory {"Repack & use compact setup"}else{"Use compact setup"},button("efficient-compare","Compare with fastest","text-button")));
-    html.push_str(&format!("<details><summary>Within {}% · how we choose</summary><p>Tests every cap from 0 to 11 using your bank, pins, combat settings and supply counts. Your current switch ceiling still limits the suggestion. The fastest tested setup remains the benchmark after applying a smaller cap.</p><p>Allows up to {}% more attack time, prayer use and known incoming damage. Keeps identical workload coverage. Prioritizes peak bag space, then carried gear and actual changes. Applying restores automatic packing, including manual inventory slots. This bounded search does not prove a global BIS.</p><p>Fastest tested: {}-change cap · {} gear pieces · {:.1}s · {:.1} prayer points. Suggested cap: {}.</p></details></section>",crate::efficient::TOLERANCE_PERCENT,crate::efficient::TOLERANCE_PERCENT,benchmark.budget.cap,benchmark.budget.carried_gear,b.seconds,b.prayer_points,chosen.budget.cap));
+    html.push_str(&format!("<details><summary>Within {tolerance}% · how we choose</summary><p>Tests every cap from 0 to 11 using your bank, pins, combat settings and supply counts. Your current switch ceiling still limits the suggestion. The fastest tested setup remains the benchmark after applying a smaller cap.</p><p>Allows up to {tolerance}% more attack time, prayer use and known incoming damage. Keeps identical workload coverage. Prioritizes peak bag space, then carried gear and actual changes. Applying restores automatic packing, including manual inventory slots. This bounded search does not prove a global BIS.</p><p>Fastest tested: {}-change cap · {} gear pieces · {:.1}s · {:.1} prayer points. Suggested cap: {}.</p></details></section>",benchmark.budget.cap,benchmark.budget.carried_gear,b.seconds,b.prayer_points,chosen.budget.cap));
     html
 }
 
@@ -5249,7 +5296,7 @@ fn ranked_gear(s: &State) -> (Vec<GearChoice>, Vec<&'static str>) {
                 });
             let usable = compatible
                 && planner::can_use(g.id, member)
-                && !s.saved.options.excluded.contains(&g.id)
+                && !s.saved.options.item_excluded(g.id)
                 && (slot != 13
                     || owned.get(&g.id).copied().unwrap_or(0) >= s.saved.options.combat.ammo_shots);
             let mut trial = set.clone();

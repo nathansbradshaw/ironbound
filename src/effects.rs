@@ -4,6 +4,49 @@ use crate::planner::Monster;
 use serde::Deserialize;
 use std::collections::BTreeMap;
 
+#[derive(Clone, Debug)]
+pub struct SetHitEffects {
+    pub npc_transform: crate::monster_rules::Transform,
+    pub damage_factor: [i64; 2],
+    pub critical: bool,
+    pub extra_half: bool,
+    pub final_divisor: i32,
+}
+impl Default for SetHitEffects {
+    fn default() -> Self {
+        Self {
+            npc_transform: Default::default(),
+            damage_factor: [1, 1],
+            critical: false,
+            extra_half: false,
+            final_divisor: 1,
+        }
+    }
+}
+/// Per-roll floors, not a multiplier of max hit or average damage. Retain
+/// Karil's second splat so accurate zeros and flat armour apply separately.
+pub fn set_hit_outcomes(hits: &[(i32, f64)], effects: &SetHitEffects) -> Vec<(Vec<i32>, f64)> {
+    let mut result = Vec::new();
+    for &(damage, p) in hits {
+        let critical = if effects.critical {
+            vec![(damage, 0.75), (damage * 13 / 10, 0.25)]
+        } else {
+            vec![(damage, 1.0)]
+        };
+        for (damage, q) in critical {
+            let damage =
+                (i64::from(damage) * effects.damage_factor[0] / effects.damage_factor[1]) as i32;
+            if effects.extra_half {
+                result.push((vec![damage.max(1)], p * q * 0.75));
+                result.push((vec![damage.max(1), (damage / 2).max(1)], p * q * 0.25));
+            } else {
+                result.push((vec![damage.max(1)], p * q));
+            }
+        }
+    }
+    result
+}
+
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct QuadraticPercent {

@@ -425,3 +425,51 @@ fn duke_uses_seventy_percent_demonbane_effectiveness_only_in_reviewed_awake_stat
     );
     assert!(encounters::limitation(planner::monster(5886).unwrap()).is_some());
 }
+
+#[test]
+fn npc_limiters_apply_to_each_hitsplat_before_multi_hit_totals() {
+    assert_eq!(
+        monster_rules::transform_splats(&[3, 3], 1.0, Transform::Corporeal),
+        vec![(2, 1.0)]
+    );
+    let capped = monster_rules::transform_splats(&[60, 30], 1.0, Transform::Zulrah);
+    assert_eq!(
+        capped.iter().map(|(d, _)| *d).collect::<Vec<_>>(),
+        [75, 76, 77, 78, 79, 80]
+    );
+    let torag = calc(319, 4747, None, "Crush");
+    assert_eq!(
+        (torag.attack_roll, torag.defence_roll, torag.max_hit),
+        (16390, 52316, 11)
+    );
+    near(
+        torag.dps,
+        (16390.0 / 104634.0) * (30.0 / 12.0 + 36.0 / 13.0) / 3.0,
+    );
+    let mut karil = set(4734, Some(4740));
+    for (slot, id) in [(0, 4732), (2, 12851), (4, 4736), (7, 4738)] {
+        karil[slot] = Some(id);
+    }
+    let kraken = combat::calculate(
+        &member(),
+        &karil,
+        "Ranged",
+        planner::monster(494).unwrap(),
+        "",
+    )
+    .unwrap();
+    assert_eq!(kraken.max_hit, 3);
+    near(kraken.dps, kraken.accuracy * (28.0 / 21.0 + 0.25) / 1.8);
+    let mut m = member();
+    m.level_overrides.insert("Ranged".into(), 200);
+    let zulrah =
+        combat::calculate(&m, &karil, "Ranged", planner::monster(2044).unwrap(), "").unwrap();
+    assert_eq!(
+        zulrah.max_hit, 58,
+        "39+19 stays below the cap on each splat"
+    );
+    near(
+        zulrah.dps,
+        zulrah.accuracy * (19.5 + 1.0 / 40.0 + 0.25 * 382.0 / 40.0) / 1.8,
+    );
+}

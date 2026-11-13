@@ -133,6 +133,7 @@ fn sharing_only_contains_an_explicit_public_allowlist() {
             "combat",
             "constraints",
             "equipment",
+            "exclude_void",
             "inventory",
             "raid_level",
             "ranking",

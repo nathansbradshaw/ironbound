@@ -212,6 +212,7 @@ pub struct Options {
     pub food: usize,
     pub prayer_potions: usize,
     pub excluded: BTreeSet<i32>,
+    pub exclude_void: bool,
     pub access_override: Option<bool>,
     pub started_barrows: Option<bool>,
     pub prayer_unlocks: bool,
@@ -221,6 +222,8 @@ pub struct Options {
     pub inventory_overrides: BTreeMap<usize, i32>,
     pub inventory_quantities: BTreeMap<usize, u32>,
     pub max_switches: Option<usize>,
+    #[serde(skip_serializing_if = "crate::efficient::is_default_tolerance")]
+    pub switch_tolerance: u32,
     pub switch_slots: usize,
     pub focus_style: String,
     pub phase_priorities: BTreeMap<i32, u32>,
@@ -238,6 +241,7 @@ impl Default for Options {
             food: 8,
             prayer_potions: 3,
             excluded: BTreeSet::new(),
+            exclude_void: false,
             access_override: None,
             started_barrows: None,
             prayer_unlocks: false,
@@ -247,10 +251,16 @@ impl Default for Options {
             inventory_overrides: BTreeMap::new(),
             inventory_quantities: BTreeMap::new(),
             max_switches: None,
+            switch_tolerance: crate::efficient::DEFAULT_TOLERANCE_PERCENT,
             switch_slots: 12,
             focus_style: "Balanced".into(),
             phase_priorities: BTreeMap::new(),
         }
+    }
+}
+impl Options {
+    pub fn item_excluded(&self, id: i32) -> bool {
+        self.excluded.contains(&id) || self.exclude_void && crate::rules::void_piece(id)
     }
 }
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
@@ -547,7 +557,7 @@ pub fn owned_tiers(
                         let set = equipment_for_style(snapshot, options, style);
                         crate::rules::ammo_ids(set[3].unwrap_or(0)).contains(id)
                     })),
-            excluded: options.excluded.contains(id),
+            excluded: options.item_excluded(*id),
         })
         .collect()
 }
@@ -574,9 +584,7 @@ pub fn equipment_for_style(
         return vec![None; 14];
     };
     let mut owned = snapshot.available(options.shared);
-    for id in &options.excluded {
-        owned.remove(id);
-    }
+    owned.retain(|id, _| !options.item_excluded(*id));
     let stock_member = member_with_stock(m, &owned);
     let m = &stock_member;
     let mut set = style_set(style, options.boss, m, &owned, equipment(), options);
@@ -630,7 +638,7 @@ pub fn recommend_encounter(
         return targets.to_vec();
     }
     let mut owned = snapshot.available(options.shared);
-    owned.retain(|id, _| !options.excluded.contains(id));
+    owned.retain(|id, _| !options.item_excluded(*id));
     let stock_member = member_with_stock(member, &owned);
     let member = &stock_member;
     let mut best = None::<(f64, String)>;
@@ -673,7 +681,7 @@ pub(crate) fn effective_options(o: &Options, m: &Member, owned: &BTreeMap<i32, u
         crate::rules::STYLES.contains(&style)
             && (*id == 0
                 || owned.get(id).copied().unwrap_or(0) > 0
-                    && !o.excluded.contains(id)
+                    && !o.item_excluded(*id)
                     && can_use(*id, m)
                     && gear(*id).is_some_and(|g| g.slot == SLOT_KEYS[slot]))
     });
@@ -884,20 +892,21 @@ fn refine_dps(
     catalog: &[Gear],
     options: &Options,
 ) {
-    // Refine ordinary armour and each complete Void setup independently. A
-    // one-slot search cannot enter or leave a four-piece set reliably.
-    let seeds = void_sets(set, style, m, owned, options);
+    // Refine ordinary armour and joint set/weapon combinations independently.
+    // A one-slot search cannot enter or leave interdependent effects reliably.
+    let seeds = crate::set_search::candidates(set, style, m, owned, options);
     refine_dps_seed(set, style, boss, m, owned, catalog, options);
     if seeds.is_empty() {
         return;
     }
     let mut trials = vec![set.clone()];
-    for mut seed in seeds {
+    for candidate in seeds {
+        let mut seed = candidate.equipment;
         let mut pinned = options.clone();
-        for slot in [0, 4, 7, 9] {
+        for slot in candidate.slots {
             pinned
                 .gear_overrides
-                .insert(format!("{style}:{slot}"), seed[slot].unwrap());
+                .insert(format!("{style}:{slot}"), seed[slot].unwrap_or(0));
         }
         refine_dps_seed(&mut seed, style, boss, m, owned, catalog, &pinned);
         trials.push(seed);
@@ -916,77 +925,6 @@ fn refine_dps(
         judge_magic.as_ref(),
     );
     *set = trials[chosen].clone();
-}
-
-/// Cosmetic variants share a search branch, but normal/elite pieces remain
-/// distinct. Every complete combination is eligible at every encounter.
-fn void_sets(
-    seed: &[Option<i32>],
-    style: &str,
-    m: &Member,
-    owned: &BTreeMap<i32, u32>,
-    options: &Options,
-) -> Vec<Vec<Option<i32>>> {
-    let suffix = match crate::rules::base_style(style) {
-        "Melee" => "melee",
-        "Ranged" => "ranged",
-        "Magic" => "magic",
-        _ => return Vec::new(),
-    };
-    let Some(rule) = crate::rules::registry()
-        .equipment_sets
-        .iter()
-        .find(|rule| rule.effect == format!("void_{suffix}"))
-    else {
-        return Vec::new();
-    };
-    let mut trials = vec![seed.to_vec()];
-    for piece in &rule.pieces {
-        let pin = options
-            .gear_overrides
-            .get(&format!("{style}:{}", piece.slot));
-        let mut seen = BTreeSet::new();
-        let ids: Vec<_> = piece
-            .ids
-            .iter()
-            .copied()
-            .filter(|id| {
-                pin.is_none_or(|pin| pin == id)
-                    && owned.get(id).copied().unwrap_or(0) > 0
-                    && !options.excluded.contains(id)
-                    && can_use(*id, m)
-                    && gear(*id).is_some_and(|g| g.slot == SLOT_KEYS[piece.slot])
-            })
-            .filter(|id| {
-                crate::combat::stats(*id).is_some_and(|stats| {
-                    let elite = crate::rules::registry().equipment_sets.iter().any(|set| {
-                        set.effect.starts_with("elite_void_")
-                            && set
-                                .pieces
-                                .iter()
-                                .any(|p| p.slot == piece.slot && p.ids.contains(id))
-                    });
-                    seen.insert((
-                        stats.offensive.clone(),
-                        stats.defensive.clone(),
-                        stats.bonuses.clone(),
-                        elite,
-                    ))
-                })
-            })
-            .collect();
-        trials = trials
-            .into_iter()
-            .flat_map(|set| {
-                ids.iter().map(move |id| {
-                    let mut set = set.clone();
-                    set[piece.slot] = Some(*id);
-                    set
-                })
-            })
-            .collect();
-    }
-    trials
 }
 
 fn refinement_target(style: &str, boss: Boss, options: &Options) -> Option<i32> {
@@ -1354,6 +1292,8 @@ pub fn plan(snapshot: &Snapshot, options: &Options) -> Plan {
     // Manual confirmations never influence gear selection or packing.
     let mut options = options.clone();
     options.confirmations.clear();
+    // Tolerance selects among plans; it does not change an individual plan.
+    options.switch_tolerance = crate::efficient::DEFAULT_TOLERANCE_PERCENT;
     let key = serde_json::to_string(&(snapshot, &options)).unwrap_or_default();
     thread_local! {static CACHE:std::cell::RefCell<std::collections::VecDeque<(String,Plan)>>=const{std::cell::RefCell::new(std::collections::VecDeque::new())};}
     if let Some(p) = CACHE.with(|c| {
@@ -1465,9 +1405,7 @@ fn plan_uncached(snapshot: &Snapshot, options: &Options) -> Plan {
         return out;
     }
     let mut owned = snapshot.available(options.shared);
-    for id in &options.excluded {
-        owned.remove(id);
-    }
+    owned.retain(|id, _| !options.item_excluded(*id));
     let catalog = equipment();
     let stock_member = member_with_stock(m, &owned);
     let m = &stock_member;

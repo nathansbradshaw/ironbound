@@ -112,6 +112,7 @@ pub fn validate_options(o: &Options) -> Result<(), String> {
         || o.prayer_potions > 12
         || o.raid_level > 150
         || o.max_switches.is_some_and(|n| n > 11)
+        || o.switch_tolerance > crate::efficient::MAX_TOLERANCE_PERCENT
         || o.switch_slots > 20
         || o.targets.len() > crate::rules::MAX_TARGETS
         || o.targets.iter().any(|t| !t.valid())

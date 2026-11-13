@@ -111,6 +111,7 @@ pub enum Transform {
     Identity,
     Zulrah,
     Kraken,
+    Corporeal,
 }
 impl Transform {
     pub fn outcomes(self, damage: i32, probability: f64) -> Vec<(i32, f64)> {
@@ -118,9 +119,37 @@ impl Transform {
             Self::Zulrah if damage > 50 => (45..=50).map(|d| (d, probability / 6.0)).collect(),
             // A positive hit stays at least one; an accuracy miss remains zero.
             Self::Kraken if damage > 0 => vec![((damage / 7).max(1), probability)],
+            Self::Corporeal => vec![(damage / 2, probability)],
             _ => vec![(damage, probability)],
         }
     }
+}
+pub fn transform_for(id: i32, weapon: i32, attack_type: &str) -> Transform {
+    match profile(id).map(|p| p.kind) {
+        Some(Kind::Zulrah) => Transform::Zulrah,
+        Some(Kind::Kraken) if ["light", "standard", "heavy"].contains(&attack_type) => {
+            Transform::Kraken
+        }
+        Some(Kind::Corporeal) if !corpbane(weapon, attack_type) => Transform::Corporeal,
+        _ => Transform::Identity,
+    }
+}
+/// Retain each hitsplat until NPC transformations finish; cap(60)+cap(30)
+/// differs from cap(90), just as floor(3/2)+floor(3/2) differs from floor(6/2).
+pub fn transform_splats(splats: &[i32], probability: f64, transform: Transform) -> Vec<(i32, f64)> {
+    if transform == Transform::Identity {
+        return vec![(splats.iter().sum(), probability)];
+    }
+    let mut totals = vec![(0, probability)];
+    for damage in splats {
+        let outcomes = transform.outcomes(*damage, 1.0);
+        totals = compact(
+            totals
+                .into_iter()
+                .flat_map(|(sum, p)| outcomes.iter().map(move |(d, q)| (sum + d, p * q))),
+        );
+    }
+    totals
 }
 fn compact(hits: impl IntoIterator<Item = (i32, f64)>) -> Vec<(i32, f64)> {
     let mut result = BTreeMap::<i32, f64>::new();
@@ -159,6 +188,7 @@ pub fn apply(
     attack_type: &str,
     distribution: &mut Vec<(i32, f64)>,
     ruby: &mut Option<combat::HpDependentHit>,
+    normal_already_transformed: bool,
 ) {
     let Some(p) = profile(id) else { return };
     let transform = match p.kind {
@@ -170,7 +200,11 @@ pub fn apply(
     let split = distribution.len() - suffix;
     let corp = p.kind == Kind::Corporeal && !corpbane(weapon, attack_type);
     let normal = distribution[..split].iter().flat_map(|(d, probability)| {
-        transform.outcomes(if corp { d / 2 } else { *d }, *probability)
+        if normal_already_transformed {
+            vec![(*d, *probability)]
+        } else {
+            transform.outcomes(if corp { d / 2 } else { *d }, *probability)
+        }
     });
     let mut result = compact(normal);
     if let Some(ruby) = ruby {

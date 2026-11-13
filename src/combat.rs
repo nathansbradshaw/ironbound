@@ -192,27 +192,9 @@ pub fn calculate_configured(
             _ => "void_melee",
         },
     );
-    let undead = monster
-        .attributes
-        .iter()
-        .any(|attribute| attribute == "undead");
-    let salve: (i64, i64) = if !undead {
-        (1, 1)
-    } else if style == "Melee" {
-        if rules::equipped_effect(set, "salve_enhanced_melee") {
-            (6, 5)
-        } else if rules::equipped_effect(set, "salve_melee") {
-            (7, 6)
-        } else {
-            (1, 1)
-        }
-    } else if rules::equipped_effect(set, "salve_enhanced_imbued") {
-        (6, 5)
-    } else if rules::equipped_effect(set, "salve_imbued") {
-        if style == "Magic" { (115, 100) } else { (7, 6) }
-    } else {
-        (1, 1)
-    };
+    let target_bonus = crate::effects::target_bonus(set, style, monster, settings);
+    let accuracy_bonus = target_bonus.map(|b| b.accuracy).unwrap_or([1, 1]);
+    let damage_bonus = target_bonus.map(|b| b.damage).unwrap_or([1, 1]);
     let prayer_attack = if prayer.style == style {
         prayer.attack
     } else {
@@ -277,7 +259,7 @@ pub fn calculate_configured(
         // Salve's magic damage is additive with other magic damage, and is not
         // multiplied by Shadow; melee/ranged Salve apply after the base max hit.
         *b.other.entry("magic_str".into()).or_default() +=
-            ((salve.0 - salve.1) * 1000 / salve.1) as i32;
+            target_bonus.map(|b| b.magic_damage_per_mille).unwrap_or(0);
     }
     let get = |m: &BTreeMap<String, i32>, k: &str| m.get(k).copied().unwrap_or(0);
     let level = |s: &str| {
@@ -328,12 +310,17 @@ pub fn calculate_configured(
                     return Err("This ammunition is compatible, but its enchanted-bolt effect is not modelled yet. Choose supported bolts for a DPS estimate.".into());
                 }
             }
-            let mut effective = level("Ranged")? * (100 + prayer_attack) / 100 + 8;
+            let stance_bonus = if settings.ranged_stance == "Accurate" {
+                3
+            } else {
+                0
+            };
+            let mut effective = level("Ranged")? * (100 + prayer_attack) / 100 + 8 + stance_bonus;
             if void {
                 effective = effective * 11 / 10;
             }
             let a = effective * (get(&b.offensive, "ranged") as i64 + 64);
-            let mut strength = level("Ranged")? * (100 + prayer_strength) / 100 + 8;
+            let mut strength = level("Ranged")? * (100 + prayer_strength) / 100 + 8 + stance_bonus;
             if rules::set_effect(set, "elite_void_ranged") {
                 strength = strength * 9 / 8;
             } else if void {
@@ -344,7 +331,8 @@ pub fn calculate_configured(
                 "ranged",
                 a,
                 max.max(0) as i32,
-                (stats.speed - i32::from(rule.family.rapid)).max(1),
+                (stats.speed - i32::from(rule.family.rapid && settings.ranged_stance == "Rapid"))
+                    .max(1),
                 get(&monster.skills, "def"),
                 get(&monster.defensive, &rule.family.attack_types[0]),
             )
@@ -410,12 +398,13 @@ pub fn calculate_configured(
                 _ => return Err("Spell or powered staff not supported.".into()),
             };
             let mut max = base + base * get(&b.other, "magic_str") as i64 / 1000;
+            max = max * damage_bonus[0] / damage_bonus[1];
             let mut effective = mage * (100 + prayer_attack) / 100 + rule.family.accuracy_bonus;
             if void {
                 effective = effective * 29 / 20;
             }
             let base_a = effective * (get(&b.offensive, "magic") as i64 + 64);
-            let mut a = base_a * salve.0 / salve.1;
+            let mut a = base_a * accuracy_bonus[0] / accuracy_bonus[1];
             if rule.family.formula == Formula::Wind {
                 if let Some(w) = &monster.weakness {
                     if w.element == "air" {
@@ -429,7 +418,17 @@ pub fn calculate_configured(
                 a,
                 max.max(0) as i32,
                 rule.family.ticks.unwrap_or(stats.speed).max(1),
-                get(&monster.skills, "magic"),
+                get(
+                    &monster.skills,
+                    if crate::encounters::mechanics()
+                        .magic_defence_uses_defence
+                        .contains(&crate::encounters::source_npc_id(monster.id))
+                    {
+                        "def"
+                    } else {
+                        "magic"
+                    },
+                ),
                 get(&monster.defensive, "magic"),
             )
         }
@@ -446,9 +445,23 @@ pub fn calculate_configured(
         attack += attack * percent / 100;
     }
     if style != "Magic" {
-        attack = attack * salve.0 / salve.1;
-        max_hit = (i64::from(max_hit) * salve.0 / salve.1) as i32;
+        attack = attack * accuracy_bonus[0] / accuracy_bonus[1];
+        // Shared additive groups are combined in the multiplier stage below.
+        if !target_bonus.is_some_and(|b| b.slayer_task)
+            || !rule.weapon.multipliers.iter().any(|m| {
+                m.damage && m.additive_with_task_damage && monster.attributes.contains(&m.attribute)
+            })
+        {
+            max_hit = (i64::from(max_hit) * damage_bonus[0] / damage_bonus[1]) as i32;
+        }
     }
+    let (attack, max_hit) = rule
+        .family
+        .target_scaling
+        .as_ref()
+        .map(|scaling| scaling.apply(monster, attack, max_hit))
+        .unwrap_or((attack, max_hit));
+    let (mut attack, mut max_hit) = (attack, max_hit);
     if rule.has(Effect::Demonbane)
         && monster
             .attributes
@@ -475,7 +488,17 @@ pub fn calculate_configured(
                 attack = attack * multiplier.numerator / multiplier.denominator;
             }
             if multiplier.damage {
-                max_hit = (max_hit as i64 * multiplier.numerator / multiplier.denominator) as i32;
+                max_hit = if multiplier.additive_with_task_damage
+                    && target_bonus.is_some_and(|b| b.slayer_task)
+                {
+                    crate::effects::combined_bonus(
+                        max_hit,
+                        damage_bonus,
+                        [multiplier.numerator, multiplier.denominator],
+                    )
+                } else {
+                    (max_hit as i64 * multiplier.numerator / multiplier.denominator) as i32
+                };
             }
         }
     }
@@ -534,6 +557,7 @@ pub fn calculate_configured(
     max_hit = ceiling;
     if style == "Ranged" && !rule.family.ammo.is_empty() {
         let zcb = rule.has(Effect::Zaryte);
+        let chance = rules::bolt_proc_chance(set[13].unwrap_or(0), settings.kandarin_diary);
         match rules::ammunition(set[13].unwrap_or(0)) {
             AmmoEffect::Ruby => {
                 let mut hp = monster.skills.get("hp").copied().unwrap_or(1);
@@ -545,12 +569,13 @@ pub fn calculate_configured(
                     }
                 }
                 let ruby = (hp * if zcb { 22 } else { 20 } / 100).min(if zcb { 110 } else { 100 });
-                expected = expected * 0.94 + ruby as f64 * 0.06;
+                expected = expected * (1.0 - chance) + ruby as f64 * chance;
                 max_hit = max_hit.max(ruby);
             }
             AmmoEffect::Diamond => {
                 let diamond = max_hit * if zcb { 126 } else { 115 } / 100;
-                expected = expected * 0.9 + diamond as f64 / 2.0 * 0.1;
+                expected = expected * (1.0 - chance)
+                    + crate::effects::accurate_uniform_mean(diamond) * chance;
                 max_hit = max_hit.max(diamond);
             }
             _ => {}

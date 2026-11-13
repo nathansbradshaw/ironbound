@@ -484,6 +484,9 @@ pub fn start() -> Result<(), JsValue> {
             "offensive-prayer",
             "preserve",
             "mark-darkness",
+            "ranged-stance",
+            "kandarin-diary",
+            "slayer-task",
             "safety",
             "prayer-weight",
             "member",
@@ -512,6 +515,9 @@ pub fn start() -> Result<(), JsValue> {
             "offensive-prayer"=>{if let Ok(sel)=el.dyn_into::<HtmlSelectElement>(){let value=sel.value();if crate::prayer::prayers().iter().any(|p|p.name==value){s.saved.options.combat.offensive=value;}}},
             "preserve"=>s.saved.options.combat.preserve=el.dyn_ref::<HtmlInputElement>().is_some_and(|e|e.checked()),
             "mark-darkness"=>s.saved.options.combat.mark_darkness=el.dyn_ref::<HtmlInputElement>().is_some_and(|e|e.checked()),
+            "ranged-stance"=>{if let Ok(sel)=el.dyn_into::<HtmlSelectElement>(){let value=sel.value();if ["Rapid","Accurate"].contains(&value.as_str()){s.saved.options.combat.ranged_stance=value;}}},
+            "kandarin-diary"=>s.saved.options.combat.kandarin_diary=el.dyn_ref::<HtmlInputElement>().is_some_and(|e|e.checked()),
+            "slayer-task"=>{if let Some(id)=comparison_monster(&s).map(|m|m.id){if el.dyn_ref::<HtmlInputElement>().is_some_and(|e|e.checked()){s.saved.options.combat.slayer_targets.insert(id);}else{s.saved.options.combat.slayer_targets.remove(&id);}}},
             "safety"=>{if let Ok(sel)=el.dyn_into::<HtmlSelectElement>(){s.saved.options.combat.safety=sel.value().parse::<u32>().unwrap_or(1).min(3);}},
             "prayer-weight"=>{if let Ok(sel)=el.dyn_into::<HtmlSelectElement>(){s.saved.options.combat.prayer_weight=sel.value().parse::<u32>().unwrap_or(0).min(3);}},
             "max-switches"=>{if let Ok(control)=el.dyn_into::<HtmlInputElement>(){let value=control.value();let limit=if value.trim().is_empty(){None}else if let Ok(n)=value.parse::<usize>(){Some(n.min(11))}else{return;};s.saved.options.max_switches=limit;s.saved.options.fewer_switches=false;s.saved.options.inventory_overrides.clear();s.saved.options.inventory_quantities.clear();}},
@@ -2317,6 +2323,26 @@ fn combat_panel(s: &State, p: &Plan) -> String {
     }
     html.push_str("</select></label>");
     if let (Some(m), Some(target)) = (s.saved.snapshot.selected(), comparison_monster(s)) {
+        if crate::encounters::slayer_eligible(target.id) {
+            html.push_str(&format!("<label><input id=\"slayer-task\" type=\"checkbox\" {}> This target is my Slayer task</label>", if s.saved.options.combat.slayer_targets.contains(&target.id) { "checked" } else { "" }));
+        }
+        if style == "Ranged" {
+            html.push_str("<label>Ranged stance<select id=\"ranged-stance\">");
+            for stance in ["Rapid", "Accurate"] {
+                html.push_str(&format!(
+                    "<option {}>{stance}</option>",
+                    if s.saved.options.combat.ranged_stance == stance {
+                        "selected"
+                    } else {
+                        ""
+                    }
+                ));
+            }
+            html.push_str("</select></label>");
+            if set[3].is_some_and(|id| crate::rules::ammo_ids(id).contains(&9243)) {
+                html.push_str(&format!("<label><input id=\"kandarin-diary\" type=\"checkbox\" {}> Kandarin diary bolt bonus</label>", if s.saved.options.combat.kandarin_diary { "checked" } else { "" }));
+            }
+        }
         if crate::guidance::profile(&s.saved.options)
             .is_some_and(|profile| profile.recommended_mark_darkness)
         {
@@ -2374,7 +2400,7 @@ fn combat_panel(s: &State, p: &Plan) -> String {
         "<tr><th>Magic damage</th><td>{:.1}%</td></tr>",
         bonus.other.get("magic_str").copied().unwrap_or(0) as f64 / 10.0
     ));
-    html.push_str("</tbody></table></details><details><summary>DPS assumptions</summary><p class=\"small-note\">Unboosted levels with the selected stat prayer; no specials or recoil. ToA assumes solo, path level 0, raid levels 0–150. Bolt effects use full target HP without Kandarin diary bonuses. Outgoing DPS covers uninterrupted attacks while vulnerable. Incoming scenarios are separate and their coverage notes apply. Movement, special-phase uptime, curses and eating are not a full encounter simulation. Unsupported mechanics show no DPS.</p></details></div></section>");
+    html.push_str("</tbody></table></details><details><summary>DPS assumptions</summary><p class=\"small-note\">Unboosted levels with the selected stat prayer; no specials or recoil. ToA assumes solo, path level 0, raid levels 0–150. Bolt effects use full target HP and the selected Kandarin diary setting. Outgoing DPS covers uninterrupted attacks while vulnerable. Incoming scenarios are separate and their coverage notes apply. Movement, special-phase uptime, curses and eating are not a full encounter simulation. Unsupported mechanics show no DPS.</p></details></div></section>");
     html
 }
 fn tier_table(s: &State) -> String {
@@ -2535,7 +2561,11 @@ fn switch_controls(s: &State) -> String {
 }
 
 fn switch_panel(s: &State, p: &Plan) -> String {
-    if s.shared_setup.is_some() {
+    if s.shared_setup.is_some()
+        || p.optimization.is_none()
+            && s.saved.options.max_switches.is_none()
+            && encounter_targets(s).len() <= 1
+    {
         return String::new();
     }
     let mut html = String::from(

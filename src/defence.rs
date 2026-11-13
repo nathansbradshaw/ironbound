@@ -12,6 +12,9 @@ pub struct Settings {
     pub preserve: bool,
     pub prayer_weight: u32,
     pub mark_darkness: bool,
+    pub ranged_stance: String,
+    pub kandarin_diary: bool,
+    pub slayer_targets: std::collections::BTreeSet<i32>,
 }
 impl Default for Settings {
     fn default() -> Self {
@@ -22,12 +25,18 @@ impl Default for Settings {
             preserve: false,
             prayer_weight: 0,
             mark_darkness: false,
+            ranged_stance: "Rapid".into(),
+            kandarin_diary: false,
+            slayer_targets: Default::default(),
         }
     }
 }
 impl Settings {
     pub fn valid(&self) -> bool {
         self.safety <= 3
+            && self.slayer_targets.len() <= crate::rules::MAX_TARGETS
+            && self.slayer_targets.iter().all(|id| *id > 0)
+            && ["Rapid", "Accurate"].contains(&self.ranged_stance.as_str())
             && self.prayer_weight <= 3
             && crate::prayer::prayers()
                 .iter()

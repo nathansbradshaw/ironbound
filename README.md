@@ -22,6 +22,7 @@ Your account stays on that browser. Import it again when using a different devic
 - **Plan a trip:** boss and raid templates, or your own group of monsters. Select your CoX rooms or choose each Fractured Archive fork.
 - **Switch less:** limit changed items and carried gear; favour one style or phase.
 - **Compare gear:** outgoing DPS, supported incoming damage, defence and prayer drain.
+- **Check the maths:** [live Wiki comparisons and update guide](docs/combat-validation.md). Run `cargo run --locked --bin validate_combat` to check the pinned reference loadouts.
 - **Pack your inventory:** click any slot, search owned items by type, and keep your chosen positions when exporting.
 - **Compare supplies:** food by potential healing per slot; potions by restoration or boost within each role, with fuller bottles first on ties.
 - **Plan longer trips:** weigh prayer efficiency against damage and see a prayer-supply estimate.

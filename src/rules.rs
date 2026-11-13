@@ -90,6 +90,8 @@ pub struct Multiplier {
     pub accuracy: bool,
     #[serde(default)]
     pub damage: bool,
+    #[serde(default)]
+    pub additive_with_task_damage: bool,
 }
 /// Add equipped-piece weights before applying a single floored multiplier.
 #[derive(Debug, Deserialize)]
@@ -100,6 +102,8 @@ pub struct EquipmentScaling {
 }
 #[derive(Debug, Deserialize)]
 pub struct Family {
+    #[serde(default)]
+    pub target_scaling: Option<crate::effects::TargetScaling>,
     pub style: String,
     pub attack_types: Vec<String>,
     #[serde(default)]
@@ -187,9 +191,13 @@ pub enum AmmoEffect {
 pub struct Ammunition {
     pub ids: Vec<i32>,
     pub effect: AmmoEffect,
+    #[serde(default)]
+    pub proc_chance: f64,
 }
 #[derive(Debug, Deserialize)]
 pub struct Registry {
+    #[serde(default)]
+    pub target_bonuses: Vec<crate::effects::TargetBonus>,
     pub families: BTreeMap<String, Family>,
     pub weapons: Vec<Weapon>,
     pub ammunition: Vec<Ammunition>,
@@ -202,12 +210,22 @@ pub struct Registry {
 }
 impl Registry {
     pub fn validate(&self) -> Result<(), String> {
+        if self.target_bonuses.iter().any(|b| {
+            !b.valid()
+                || !self
+                    .equipment_effects
+                    .iter()
+                    .any(|e| e.effect == b.equipment_effect)
+        }) {
+            return Err("Invalid target-bonus condition or factor".into());
+        }
         let mut ids = std::collections::BTreeSet::new();
         for (name, family) in &self.families {
             if !["Melee", "Ranged", "Magic"].contains(&family.style.as_str())
                 || family.attack_types.is_empty()
                 || family.denominator <= 0
                 || family.ticks.is_some_and(|n| n <= 0)
+                || family.target_scaling.as_ref().is_some_and(|s| !s.valid())
             {
                 return Err(format!("Invalid weapon family {name}"));
             }
@@ -240,6 +258,15 @@ impl Registry {
             }
         }
         for weapon in &self.weapons {
+            if weapon
+                .multipliers
+                .iter()
+                .filter(|m| m.additive_with_task_damage)
+                .count()
+                > 1
+            {
+                return Err("Multiple additive task groups need an explicit combined stage".into());
+            }
             if !self.families.contains_key(&weapon.family)
                 || weapon.ids.is_empty()
                 || weapon.ids.iter().any(|id| *id <= 0 || !ids.insert(*id))
@@ -263,7 +290,13 @@ impl Registry {
         }
         let mut ammo_ids = std::collections::BTreeSet::new();
         for ammo in &self.ammunition {
-            if ammo.ids.is_empty() || ammo.ids.iter().any(|id| *id <= 0 || !ammo_ids.insert(*id)) {
+            if !ammo.proc_chance.is_finite()
+                || !(0.0..=1.0).contains(&ammo.proc_chance)
+                || (matches!(ammo.effect, AmmoEffect::Ruby | AmmoEffect::Diamond)
+                    && ammo.proc_chance == 0.0)
+                || ammo.ids.is_empty()
+                || ammo.ids.iter().any(|id| *id <= 0 || !ammo_ids.insert(*id))
+            {
                 return Err("Invalid or duplicate ammunition ID".into());
             }
         }
@@ -439,6 +472,15 @@ pub fn ammunition(id: i32) -> AmmoEffect {
         .find(|a| a.ids.contains(&id))
         .map(|a| a.effect)
         .unwrap_or(AmmoEffect::None)
+}
+pub fn bolt_proc_chance(id: i32, diary: bool) -> f64 {
+    let base = registry()
+        .ammunition
+        .iter()
+        .find(|a| a.ids.contains(&id))
+        .map(|a| a.proc_chance)
+        .unwrap_or(0.0);
+    (base * if diary { 1.1 } else { 1.0 }).clamp(0.0, 1.0)
 }
 pub fn weapon_ids(style: &str, allow_spells: bool) -> Vec<i32> {
     registry()

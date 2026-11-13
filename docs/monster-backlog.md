@@ -163,3 +163,7 @@ across chemical states; Vardorvis accuracy and finite-HP budget changing at
 700 versus 350 HP; KQ magic accuracy 100% and zero protected HP damage; Muspah
 three of four supported outgoing windows, the prayer shield still unavailable,
 and a 127-HP final allocation. No browser console errors were observed.
+
+Integrated with the merged armour, fight-simulator and wilderness work: 505 Rust
+tests pass, alongside all 24 standalone reference cases and the release Wasm
+build. Deployment verification is recorded in the release PR.

@@ -19,7 +19,10 @@ independent references, browser verification, then gameplay verification.
 - [ ] Corporeal Beast full fight: dark core, actual drains, incoming attacks and timing.
 - [x] Dagannoth Kings outgoing: reviewed ordinary windows for Rex, Prime and
   Supreme; preserve their actual defences without inventing style immunity.
-- [ ] Dagannoth Kings full fight: overlapping aggro, Spinolyps, respawns and incoming damage.
+- [ ] Dagannoth Kings full fight: overlapping aggro, Spinolyps, respawns and the
+  combined incoming attack sequence.
+- [x] Dagannoth Kings selected incoming: Supreme ranged, Prime magic and Rex
+  slash scenarios with matching protection prayers. Full attack overlap remains open.
 - [x] Kree'arra outgoing: reachable-style restrictions and ordinary outgoing damage.
 - [ ] Kree'arra full fight: bodyguards, movement, chinchompas and incoming attacks.
 - [x] Grotesque Guardians outgoing: Dawn reach restrictions, Dusk ranged/magic
@@ -28,8 +31,10 @@ independent references, browser verification, then gameplay verification.
   lightning, orbs/healing, transitions and incoming damage.
 - [x] Kalphite Queen outgoing: both forms and supported Keris effects use
   recorded defences; overheads do not grant complete style immunity.
-- [ ] Kalphite Queen full fight: guaranteed incoming ranged/magic accuracy,
-  workers, prayer drain, movement, respawn and supplies.
+- [ ] Kalphite Queen full fight: attack mixtures, workers, prayer drain,
+  movement, respawn and supplies.
+- [x] Kalphite Queen selected incoming: ordinary stab accuracy, guaranteed
+  ranged/magic accuracy, zero rolls and matching protection. No attack mixture is assumed.
 
 ## 2. Other dedicated boss models
 
@@ -38,16 +43,24 @@ independent references, browser verification, then gameplay verification.
   body stages with explicit 425→210→140→0 comparison allocations.
 - [ ] Abyssal Sire full fight: stun/shadow spells, protected vents, regeneration,
   transition reduction, overshoot/reset rules, spawns, movement and incoming damage.
-- [ ] Alchemical Hydra: chemical weakening, 75/50/25% phase budgets, vents,
-  protection rotations, poison/fire and incoming damage.
-- [ ] Phantom Muspah: melee/ranged forms, shield prayer damage, reductions,
-  step-back timing, teleport/spike phases and incoming damage.
+- [x] Alchemical Hydra outgoing: four 275-HP stages, phase-bounded current HP
+  and three before-chemical comparisons with per-hitsplat 75% reduction, including
+  bolt procs and multi-hit weapons.
+- [ ] Alchemical Hydra full fight: actual vent timing, wrong-vent attack boosts,
+  transition overshoot, protection rotations, poison/fire and incoming damage.
+- [x] Phantom Muspah unshielded outgoing: recorded form defences/air weakness,
+  125 Defence floor, shared 723-HP comparison allocation and 127-HP final stand.
+- [ ] Phantom Muspah full fight: prayer-shield damage, damage/four-hit form
+  thresholds, freezes, step-back timing, teleport/spikes, healing and incoming damage.
 - [x] Duke Sucellus outgoing: normal post-quest awake window with 70% Demonbane
   effectiveness; retain quest/awakened gates.
 - [ ] Duke Sucellus full fight: preparation, poison, gaze, gas, enrage cadence,
   movement and incoming damage.
-- [ ] Vardorvis: current-HP-dependent stats, defence reductions, axes, head,
-  entangle and incoming damage; recompute distributions as HP changes.
+- [x] Vardorvis outgoing: exact normal HP-dependent Defence/Strength, stat-drain
+  ordering/floor, current-HP comparisons and a finite-HP recurrence that recomputes
+  the complete outgoing distribution/cooldown at every remaining HP.
+- [ ] Vardorvis full fight: axes, head, entangle, lifesteal, movement and incoming
+  damage. Quest and awakened variants require separate validation.
 - [ ] Leviathan: reach restrictions, stun/rear bonuses, enrage and incoming damage.
 - [ ] Whisperer: specials, shadow realm, enrage, sanity and incoming damage.
 - [ ] Nightmare / Phosani: shield/HP phases, magic totem multiplier, husks,
@@ -135,3 +148,22 @@ reviewed outgoing windows. Merge/publication evidence follows in the PR.
 Gameplay, physical RuneLite import, player movement and full-fight supply
 validation remain open. A checked outgoing item does not close its full-fight
 follow-up.
+
+Second batch, 13 November 2026: 11 additional outgoing states (seven Hydra,
+three Muspah, one normal Vardorvis) and selected incoming scenarios for both KQ
+forms and all three Kings. Thirteen focused regressions independently check
+rounding, bolt procs, Scythe splats, phase bounds, interpolation, drain ordering,
+finite-HP miss loops/overkill, source-ID Slayer assignments and incoming protection.
+The integrated build retains Moon follow-up reductions and rejects delayed burn
+in finite-HP and fight-timeline models that cannot account for it.
+
+Browser checks on the merged preview: Hydra before-chemical ruby maximum 25,
+electric-state HP 551–825 and lower-bound clamping; matching Slayer assignment
+across chemical states; Vardorvis accuracy and finite-HP budget changing at
+700 versus 350 HP; KQ magic accuracy 100% and zero protected HP damage; Muspah
+three of four supported outgoing windows, the prayer shield still unavailable,
+and a 127-HP final allocation. No browser console errors were observed.
+
+Integrated with the merged armour, fight-simulator and wilderness work: 504 Rust
+tests pass, alongside all 24 standalone reference cases and the release Wasm
+build. Deployment verification is recorded in the release PR.

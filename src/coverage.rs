@@ -53,10 +53,34 @@ pub fn export_note(options: &Options) -> String {
         .filter(|r| !r.supported)
         .map(|r| format!("{} ({})", r.name, r.style))
         .collect();
+    let dynamic: Vec<_> = crate::recommendation::targets(options)
+        .into_iter()
+        .map(|(id, _)| id)
+        .collect::<std::collections::BTreeSet<_>>()
+        .into_iter()
+        .filter_map(|id| {
+            let target = planner::monster(id)?;
+            let window = crate::encounters::window(target.id)?;
+            (window.hp_scaling.is_some() || window.min_hp.is_some()).then(|| {
+                match crate::combat::current_target_hp(target, options.raid_level, &options.combat)
+                {
+                    Ok(hp) => format!("{} starts this comparison at {hp} HP", target.name),
+                    Err(reason) => format!("{}: {reason}", target.name),
+                }
+            })
+        })
+        .collect();
     format!(
         "{} {}{}",
         summary(options),
-        LIMITS,
+        format!(
+            "{LIMITS}{}",
+            if dynamic.is_empty() {
+                String::new()
+            } else {
+                format!(" Phase/HP assumptions: {}.", dynamic.join("; "))
+            }
+        ),
         if unsupported.is_empty() {
             String::new()
         } else {

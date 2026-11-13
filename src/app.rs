@@ -396,6 +396,10 @@ fn apply_number(s: &mut State, id: &str, value: &str) -> bool {
             .is_some_and(|n| s.saved.options.simulation.set(key, n));
     }
     let target_id = comparison_monster(s).map(|m| m.id);
+    let target_min = comparison_monster(s)
+        .and_then(|m| combat::target_hp_bounds(m, s.saved.options.raid_level).ok())
+        .map(|(min, _)| min)
+        .unwrap_or(1);
     let target_max = comparison_monster(s)
         .and_then(|m| {
             crate::encounters::window(m.id)
@@ -475,7 +479,9 @@ fn apply_number(s: &mut State, id: &str, value: &str) -> bool {
         "spell-casts" => o.combat.spell_casts = n.clamp(1, 10_000),
         "target-hp" => {
             if let Some(target) = target_id {
-                o.combat.target_hp.insert(target, n.clamp(1, target_max));
+                o.combat
+                    .target_hp
+                    .insert(target, n.clamp(target_min, target_max));
             }
         }
         "current-hitpoints" => o.combat.current_hitpoints = Some(n.clamp(1, 255)),
@@ -3595,6 +3601,14 @@ fn encounter_targets(s: &State) -> Vec<i32> {
     if targets.contains(&14176) || targets.contains(&100011) {
         targets.push(100030);
     }
+    let sources = targets.clone();
+    targets.extend(
+        crate::encounters::mechanics()
+            .windows
+            .iter()
+            .filter(|w| w.comparison_alternative && sources.contains(&w.npc_id))
+            .map(|w| w.id),
+    );
     targets
 }
 fn comparison_style(s: &State) -> &str {
@@ -4344,7 +4358,7 @@ fn combat_style_controls(s: &State, set: &[Option<i32>], style: &str) -> String 
     html
 }
 fn task_buttons(s: &State, target: &planner::Monster) -> String {
-    let on_task = s.saved.options.combat.slayer_targets.contains(&target.id);
+    let on_task = crate::slayer::on_task(&s.saved.options.combat, target.id);
     let mut html = format!(
         "<div class=\"slayer-target\" role=\"group\" aria-label=\"Slayer task for {}\"><strong>{}</strong><div class=\"combat-subtype-options\">",
         esc(&target.name),
@@ -4361,6 +4375,7 @@ fn slayer_tasks(s: &State) -> String {
     let mut seen = std::collections::BTreeSet::new();
     let targets: Vec<_> = encounter_targets(s)
         .into_iter()
+        .map(crate::encounters::source_npc_id)
         .filter(|id| seen.insert(*id) && crate::encounters::slayer_eligible(*id))
         .filter_map(planner::monster)
         .collect();
@@ -4550,7 +4565,7 @@ fn combat_panel(s: &State, p: &Plan) -> String {
         "<tr><th>Magic damage</th><td>{:.1}%</td></tr>",
         bonus.other.get("magic_str").copied().unwrap_or(0) as f64 / 10.0
     ));
-    html.push_str("</tbody></table></details><details><summary>DPS assumptions</summary><p class=\"small-note\">Selected current-level boosts and stat prayer; no boost decay, special-attack damage, venom or recoil. ToA assumes solo, path level 0, raid levels 0–150. Ruby bolts use selected target HP (full by default) and the selected Kandarin diary setting. Outgoing DPS covers uninterrupted attacks while vulnerable. Incoming scenarios are separate and their coverage notes apply. Movement, special-phase uptime, curses and eating are not a full encounter simulation. Unsupported mechanics show no DPS.</p></details></div></section>");
+    html.push_str("</tbody></table></details><details><summary>DPS assumptions</summary><p class=\"small-note\">Selected current-level boosts and stat prayer; no boost decay, special-attack damage, venom or recoil. ToA assumes solo, path level 0, raid levels 0–150. Ruby bolts use selected target HP (phase start by default) and the selected Kandarin diary setting. Outgoing DPS covers uninterrupted attacks while vulnerable. Incoming scenarios are separate and their coverage notes apply. Movement, special-phase uptime, curses and eating are not a full encounter simulation. Unsupported mechanics show no DPS.</p></details></div></section>");
     html.insert_str(results_index, &headline);
     html
 }
@@ -4560,12 +4575,7 @@ fn attack_window_budget(
     set: &[Option<i32>],
     result: &combat::ResultStats,
 ) -> String {
-    let max = crate::encounters::window(target.id)
-        .and_then(|w| w.start_hp)
-        .or_else(|| {
-            combat::target_hitpoints(target, s.saved.options.raid_level).map(|hp| hp as u32)
-        })
-        .unwrap_or(1);
+    let (min, max) = combat::target_hp_bounds(target, s.saved.options.raid_level).unwrap_or((1, 1));
     let current = s
         .saved
         .options
@@ -4575,13 +4585,31 @@ fn attack_window_budget(
         .map(u32::to_string)
         .unwrap_or_default();
     let mut html = format!(
-        "<details id=\"attack-budget\" class=\"attack-budget\" {}><summary>Attack window & supply budget</summary><label>Current target HP<input id=\"target-hp\" type=\"number\" min=\"1\" max=\"{max}\" placeholder=\"{max}\" value=\"{current}\"></label><p class=\"small-note\">Leave empty for this window's starting HP. Ruby bolts use this HP; the attack budget recalculates their procs as HP falls.</p>",
+        "<details id=\"attack-budget\" class=\"attack-budget\" {}><summary>Attack window & supply budget</summary><label>Current target HP<input id=\"target-hp\" type=\"number\" min=\"{min}\" max=\"{max}\" placeholder=\"{max}\" value=\"{current}\"></label><p class=\"small-note\">Leave empty for this window's starting HP. Ruby bolts and HP-dependent NPC stats use this HP; the attack budget recalculates them as HP falls.</p>",
         if s.attack_budget_open { "open" } else { "" }
     );
     if let Some(window) = crate::encounters::window(target.id) {
         html.push_str(&format!("<p>{}</p>", esc(&window.description)));
     }
-    match crate::attack_budget::for_window(target, result, &s.saved.options, set) {
+    let budget = if crate::encounters::window(target.id).is_some_and(|w| w.hp_scaling.is_some()) {
+        s.saved
+            .snapshot
+            .selected()
+            .ok_or_else(|| "Select an account first.".to_string())
+            .and_then(|m| {
+                crate::attack_budget::for_dynamic_window(
+                    m,
+                    set,
+                    comparison_style(s),
+                    target,
+                    comparison_spell(s, m, set, target),
+                    &s.saved.options,
+                )
+            })
+    } else {
+        crate::attack_budget::for_window(target, result, &s.saved.options, set)
+    };
+    match budget {
         Ok(budget) => html.push_str(&format!("<dl class=\"combat-values\"><div><dt>Expected attacks</dt><dd>{:.1}</dd></div><div><dt>Attack cooldown budget</dt><dd>{:.1}s</dd></div><div><dt>HP window · each of {} target(s)</dt><dd>{} → {}</dd></div></dl><p class=\"small-note\">Includes misses, overkill and the finishing cooldown. This is an expectation, not a safe supply minimum or kill-time prediction. Compare with your {}-cast / {}-projectile packing budgets; projectile recovery, ruby self-damage, movement, specials, regeneration and eating are excluded.</p>", budget.attacks, budget.seconds, budget.entities, budget.start_hp, budget.stop_hp, s.saved.options.combat.spell_casts, s.saved.options.combat.ammo_shots)),
         Err(reason) => html.push_str(&format!("<p class=\"small-note\">{}</p>", esc(&reason))),
     }

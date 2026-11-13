@@ -69,6 +69,14 @@ pub fn profile(id: i32) -> Option<&'static Profile> {
     let source = encounters::source_npc_id(id);
     registry().profiles.iter().find(|p| p.ids.contains(&source))
 }
+pub fn hp_scaled(target: &planner::Monster, hp: u32) -> Result<Option<planner::Monster>, String> {
+    let Some(curve) = encounters::window(target.id).and_then(|w| w.hp_scaling.as_ref()) else {
+        return Ok(None);
+    };
+    let mut result = target.clone();
+    result.skills.extend(curve.levels(hp)?);
+    Ok(Some(result))
+}
 pub fn style_limitation(id: i32, style: &str) -> Option<&'static str> {
     let p = profile(id)?;
     let style = rules::base_style(style);

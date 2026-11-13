@@ -170,7 +170,28 @@ pub struct Weakness {
 pub fn monsters() -> &'static [Monster] {
     static MONSTERS: std::sync::OnceLock<Vec<Monster>> = std::sync::OnceLock::new();
     MONSTERS.get_or_init(|| {
-        serde_json::from_str(include_str!("../assets/monsters.json")).expect("monster catalog")
+        let mut monsters: Vec<Monster> =
+            serde_json::from_str(include_str!("../assets/monsters.json")).expect("monster catalog");
+        for window in &crate::encounters::mechanics().windows {
+            if let Some(index) = monsters.iter().position(|m| m.id == window.id) {
+                if let Some(curve) = &window.hp_scaling {
+                    monsters[index]
+                        .skills
+                        .extend(curve.levels(curve.hitpoints).expect("NPC full-HP stats"));
+                }
+            } else {
+                let mut monster = monsters
+                    .iter()
+                    .find(|m| m.id == window.npc_id)
+                    .expect("window source NPC")
+                    .clone();
+                monster.id = window.id;
+                monster.name = format!("{} · {}", monster.name, window.label);
+                monsters.push(monster);
+            }
+        }
+        monsters.sort_by_key(|m| m.id);
+        monsters
     })
 }
 pub fn monster(id: i32) -> Option<&'static Monster> {

@@ -351,7 +351,7 @@ fn profile(name: &str) -> Option<Profile> {
         ),
         "The Hueycoatl" => (
             80,
-            &["Crush"],
+            &["Melee"],
             0,
             "Unboosted body/head/tail gear screen. Pillar uptime, team contribution, phase transitions, movement, incoming damage and full-trip supplies are not scored.",
         ),

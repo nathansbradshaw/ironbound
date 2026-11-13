@@ -557,7 +557,12 @@ fn huey_and_titans_have_scoped_gear_screens_separate_from_access() {
         assert_ne!(row.readiness, Readiness::Unknown);
         assert_eq!(
             row.requirements.status,
-            bestiary::RequirementStatus::Unverified
+            bestiary::RequirementStatus::NoLevelGate
+        );
+        assert!(
+            row.reason.contains("basic DPS") && !row.reason.contains("No usable"),
+            "{name}: {}",
+            row.reason
         );
         assert!(row.detail.contains("incoming") && row.detail.contains("not scored"));
     }

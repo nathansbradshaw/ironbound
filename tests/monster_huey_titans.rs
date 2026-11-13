@@ -301,6 +301,16 @@ fn new_windows_preserve_shared_pools_bounds_and_unsupported_burn_gates() {
         .find(|e| e.name == "The Royal Titans")
         .unwrap();
     assert_eq!(titans.targets.len(), 6);
+    let labels: std::collections::BTreeSet<_> = titans
+        .targets
+        .iter()
+        .map(|t| encounters::window(t.id).unwrap().label.as_str())
+        .collect();
+    assert_eq!(
+        labels.len(),
+        6,
+        "Each Titan preview identifies its actual target"
+    );
     let o = Options {
         boss: Boss::Custom,
         targets: vec![
@@ -323,6 +333,38 @@ fn new_windows_preserve_shared_pools_bounds_and_unsupported_burn_gates() {
     assert_eq!(
         combat::target_hp_bounds(planner::monster(100161).unwrap(), 0).unwrap(),
         (1, 300)
+    );
+    let mut shared_options = Options {
+        boss: Boss::Custom,
+        targets: vec![
+            Target {
+                id: 100161,
+                style: "Crush".into(),
+            },
+            Target {
+                id: 100162,
+                style: "Ranged".into(),
+            },
+            Target {
+                id: 14150,
+                style: "Magic".into(),
+            },
+        ],
+        ..Default::default()
+    };
+    shared_options.combat.target_hp.insert(100161, 150);
+    let snapshot = account::demo();
+    let plan = planner::plan(&snapshot, &shared_options);
+    let setup = ironbound::share::Setup::from_plan(&plan, &shared_options);
+    let restored = ironbound::share::Setup::parse(&setup.fragment().unwrap())
+        .unwrap()
+        .options();
+    assert_eq!(restored.targets, shared_options.targets);
+    assert_eq!(restored.combat.target_hp[&100161], 150);
+    let exported = coverage::export_note(&restored);
+    assert!(
+        exported.contains("pillars lit") && exported.contains("150 HP"),
+        "{exported}"
     );
     let mut s = gear(29000, Some(28991));
     for (slot, item) in [(0, 29055), (4, 29049), (7, 29052)] {

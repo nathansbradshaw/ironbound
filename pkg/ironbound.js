@@ -431,6 +431,9 @@ function __wbg_get_imports() {
         __wbg_revokeObjectURL_709bc205d98c34ba: function() { return handleError(function (arg0, arg1) {
             URL.revokeObjectURL(getStringFromWasm0(arg0, arg1));
         }, arguments); },
+        __wbg_scrollIntoView_0aff8d1f5d0a7576: function(arg0) {
+            arg0.scrollIntoView();
+        },
         __wbg_scrollTo_ebc3153048c8e24e: function(arg0, arg1, arg2) {
             arg0.scrollTo(arg1, arg2);
         },

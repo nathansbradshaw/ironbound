@@ -2,7 +2,7 @@
 
 All 23 quest entries have ordinary outgoing damage and gear ratings. **Quest bosses** lists them separately; **Hide quest bosses** excludes them from any category without changing gear or requirements filters. Clear filters restores the default list. Farmable post-quest versions retain their separate entries.
 
-Ratings screen owned, usable equipment, runes, ammunition and combat levels. Missing flails or ice gloves produce **A struggle** with the missing item named. A stronger incompatible weapon cannot earn a good rating. Multi-body fights use the weakest body's DPS for a single valid style.
+Ratings screen usable equipment, runes, ammunition and combat levels. Drakan's final-fight baseline includes the quest-provided Hallowed flail even if it has not appeared in the imported bank. Other gear still comes from observed stock; missing flails for other quests or ice gloves produce **A struggle** with the missing item named. A stronger incompatible weapon cannot earn a good rating. Multi-body fights use the weakest body's DPS for a single valid style.
 
 These are gear guidelines, not completion probabilities. The recommended levels and 1.5/3.0 DPS bands are planner policy. Quest access, player execution, movement, incoming attacks, food and prayer endurance remain separate checks. Missing combat levels produce **Not assessed**.
 
@@ -24,7 +24,7 @@ These are gear guidelines, not completion probabilities. The recommended levels 
 
 Vampyre damage is applied to rolled hits, preserving flooring: Efaritay's 10% damage first, then the flail bonus. Its 15% accuracy follows the flail's accuracy modifier. Misses remain zero. The reviewed quest routes deliberately use the weapon available for that quest; other later vampyrebane routes are outside these baselines.
 
-Drakan's final quest fight uses the **Hallowed flail**, created during the quest. The [Sunspear](https://oldschool.runescape.wiki/w/Sunspear) is Drakan's weapon and is awarded after defeating him. If a required flail is absent, excluded or below the player's level, the automatic plan leaves the weapon slot empty, names the requirement beside the equipment, and blocks export. It never substitutes an ordinary weapon or assumes unobserved quest gear is owned. Explicit weapon pins remain visible but still receive the requirement warning and cannot make an invalid plan exportable.
+Drakan's final quest fight uses the **Hallowed flail**, created during the quest. The [Sunspear](https://oldschool.runescape.wiki/w/Sunspear) is Drakan's weapon and is awarded after defeating him. The planner includes one Hallowed flail in temporary planning stock for Drakan, labels it **quest-provided**, and uses it for damage, readiness and the planned kit. It does not modify the saved bank or make it available in unrelated encounters. Attack 50, exclusions and manual weapon pins still apply. A required flail that is excluded or unusable leaves the automatic weapon slot empty and blocks export; an invalid manual pin also blocks export. Other quests retain their observed-stock requirements.
 
 The Drakan Wiki guide specifies a 26–28 cap without the server's full roll implementation. This model preserves hits up to 28 and rerolls overflow uniformly to 26–28. That distribution is an explicit modelling assumption, not gameplay calibration. Counter-attack damage is excluded.
 

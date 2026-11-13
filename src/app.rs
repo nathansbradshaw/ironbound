@@ -3285,13 +3285,17 @@ fn phase_navigation(s: &State, p: &Plan) -> String {
 fn loadout_panel(s: &State, p: &Plan) -> String {
     let current = s.phase.and_then(|i| p.phases.get(i));
     let set = current.map(|p| &p.equipment).unwrap_or(&p.equipment);
-    let quest_requirement = s
+    let target = s
         .saved
         .options
         .targets
         .get(s.phase.unwrap_or(0))
-        .filter(|_| s.saved.options.boss == Boss::Custom)
+        .filter(|_| s.saved.options.boss == Boss::Custom);
+    let provided_note = target.and_then(|target| crate::quest_bosses::provided_weapon_note(
+        target.id, set, &s.saved.snapshot.available(s.saved.options.shared)));
+    let quest_requirement = target
         .and_then(|target| crate::quest_bosses::weapon_requirement(target.id, set, &target.style))
+        .or_else(|| provided_note.map(str::to_owned))
         .map(|message| {
             format!(
                 "<p class=\"connection-warning\" role=\"status\">{}</p>",
@@ -3306,6 +3310,8 @@ fn loadout_panel(s: &State, p: &Plan) -> String {
         badge(
             if s.shared_setup.is_some() {
                 "SHARED SETUP"
+            } else if provided_note.is_some() {
+                "BANK + QUEST GEAR"
             } else {
                 "FROM YOUR BANK"
             },
@@ -5364,8 +5370,7 @@ fn combat_panel(s: &State, p: &Plan) -> String {
                 button("reset-target-hp", "Reset target HP", "text-button")
             ));
         }
-        let mut stock = s.saved.snapshot.available(s.saved.options.shared);
-        stock.retain(|id, _| !s.saved.options.item_excluded(*id));
+        let stock = planner::planning_stock(&s.saved.snapshot, &s.saved.options);
         let stock_member = planner::member_with_stock(m, &stock);
         let m = &stock_member;
         html.push_str(&combat_assumptions(s, p, m, target, &set));
@@ -5396,6 +5401,11 @@ fn combat_panel(s: &State, p: &Plan) -> String {
             html.push_str(&format!("<label><input id=\"mark-darkness\" type=\"checkbox\" {}> Mark of Darkness active</label>", if s.saved.options.combat.mark_darkness { "checked" } else { "" }));
         }
         let spell = comparison_spell(s, m, &set, target);
+        if let Some(note) = crate::quest_bosses::provided_weapon_note(
+            target.id, &set, &s.saved.snapshot.available(s.saved.options.shared))
+        {
+            html.push_str(&format!("<p class=\"small-note\">{}</p>", esc(note)));
+        }
         match combat::calculate_configured(
             m,
             &set,

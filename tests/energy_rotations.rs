@@ -62,7 +62,7 @@ fn close(a: f64, b: f64) {
 }
 fn conserved(r: &Report, initial_energy: u32, hp: u32) {
     close(
-        initial_energy as f64 + r.energy_restored,
+        initial_energy as f64 + r.energy_restored + r.external_energy,
         r.energy_spent + r.energy_remaining,
     );
     close(r.effective_damage + r.remaining_hp, hp as f64);
@@ -332,4 +332,384 @@ fn rotation_is_opt_in_serializable_and_does_not_change_normal_calculations() {
             .contains("not verified")
         );
     }
+}
+
+#[test]
+fn swapping_preserves_previous_cooldowns_and_charges_each_real_setup_change() {
+    let set = gear(4151);
+    let mut s = settings(17, 100);
+    s.rotation.swap_weapon = Some(33631);
+    s.rotation.swap_style = "Crush".into();
+    s.rotation.swap_delay = 2;
+    let r = rotation::evaluate(&member(), &set, "Slash", &target(), 0, &s).unwrap();
+    let actions: Vec<_> = r
+        .trace
+        .iter()
+        .filter(|e| e.attack != "Swap")
+        .map(|e| (e.tick, e.attack.as_str(), e.weapon))
+        .collect();
+    assert_eq!(
+        actions,
+        vec![
+            (2, "Special", Some(33631)),
+            (6, "Special", Some(33631)),
+            (12, "Normal", Some(4151)),
+            (16, "Normal", Some(4151))
+        ]
+    );
+    assert_eq!(
+        r.trace
+            .iter()
+            .filter(|e| e.attack == "Swap")
+            .map(|e| e.tick)
+            .collect::<Vec<_>>(),
+        vec![0, 10]
+    );
+    close(r.switches, 2.0);
+    close(r.energy_spent, 100.0);
+    conserved(&r, 100, 10000);
+    s.rotation.window_ticks = 2;
+    let r = rotation::evaluate(&member(), &set, "Slash", &target(), 0, &s).unwrap();
+    close(r.special_activations, 0.0);
+    close(r.energy_spent, 0.0);
+    close(r.switches, 1.0);
+}
+
+#[test]
+fn zorya_swap_removes_offhand_and_finishes_buffs_before_returning_to_filler() {
+    let mut set = gear(4151);
+    set[5] = Some(22322);
+    let mut s = settings(10, 50);
+    s.rotation.swap_weapon = Some(34725);
+    let (special, style) = rotation::special_loadout(&set, "Slash", &s.rotation).unwrap();
+    assert_eq!(special[5], None);
+    assert_eq!(set[5], Some(22322));
+    assert_eq!(style, "Magic");
+    let mut t = target();
+    t.defensive.insert("magic".into(), -64);
+    let r = rotation::evaluate(&member(), &set, "Slash", &t, 0, &s).unwrap();
+    assert_eq!(
+        r.trace
+            .iter()
+            .filter(|e| e.attack != "Swap")
+            .map(|e| (e.tick, e.attack.as_str(), e.weapon))
+            .collect::<Vec<_>>(),
+        vec![
+            (0, "Special", Some(34725)),
+            (3, "Empowered", Some(34725)),
+            (5, "Empowered", Some(34725)),
+            (7, "Empowered", Some(34725)),
+            (9, "Normal", Some(4151))
+        ]
+    );
+    close(r.switches, 2.0);
+    close(r.empowered_remaining, 0.0);
+    conserved(&r, 50, 10000);
+    let normal = combat::calculate_configured(&member(), &set, "Slash", &t, "", 0, &s).unwrap();
+    let mut unshielded = set.clone();
+    unshielded[5] = None;
+    assert!(
+        normal.attack_roll
+            > combat::calculate_configured(&member(), &unshielded, "Slash", &t, "", 0, &s)
+                .unwrap()
+                .attack_roll
+    );
+}
+
+#[test]
+fn surge_during_cooldown_funds_the_next_action_without_resetting_natural_progress() {
+    let mut s = settings(51, 40);
+    s.rotation.surge_tick = Some(3);
+    let r = run(&gear(33631), &s);
+    let dose = r.trace.iter().find(|e| e.attack == "Surge dose").unwrap();
+    assert_eq!(
+        (dose.tick, dose.energy_before, dose.energy_after),
+        (3, 40, 65)
+    );
+    assert_eq!(
+        (r.trace[2].tick, r.trace[2].attack.as_str()),
+        (4, "Special")
+    );
+    close(r.surge_doses, 1.0);
+    close(r.external_energy, 25.0);
+    close(r.energy_restored, 10.0);
+    close(r.energy_remaining, 25.0);
+    close(r.surge_cooldown_remaining, 452.0);
+    conserved(&r, 40, 10000);
+}
+
+#[test]
+fn restore_at_deadline_updates_energy_without_starting_an_extra_attack() {
+    let mut s = settings(4, 40);
+    s.rotation.surge_tick = Some(4);
+    let r = run(&gear(33631), &s);
+    close(r.special_activations, 0.0);
+    close(r.normal_attacks, 1.0);
+    close(r.energy_remaining, 65.0);
+    assert_eq!(r.trace.last().unwrap().attack, "Surge dose");
+    s.rotation.surge_tick = Some(5);
+    let r = run(&gear(33631), &s);
+    close(r.external_energy, 0.0);
+    close(r.energy_remaining, 40.0);
+    s.rotation.surge_tick = Some(0);
+    s.special_energy = 100;
+    let r = run(&gear(33631), &s);
+    close(r.surge_doses, 0.0);
+    close(r.external_energy, 0.0);
+    assert_eq!(r.trace[0].attack, "Surge skipped · full energy");
+}
+
+#[test]
+fn simultaneous_restores_follow_natural_surge_transfer_order_and_cap_actual_energy() {
+    let mut s = settings(53, 40);
+    s.rotation.surge_tick = Some(50);
+    s.rotation.transfer_tick = Some(50);
+    let r = run(&gear(33631), &s);
+    let arrivals: Vec<_> = r
+        .trace
+        .iter()
+        .filter(|e| e.tick == 50)
+        .map(|e| (e.attack.as_str(), e.energy_before, e.energy_after))
+        .collect();
+    assert_eq!(
+        arrivals,
+        vec![("Surge dose", 50, 75), ("Energy Transfer arrival", 75, 100)]
+    );
+    close(r.energy_restored, 10.0);
+    close(r.external_energy, 50.0);
+    close(r.special_activations, 1.0);
+    close(r.energy_remaining, 50.0);
+    conserved(&r, 40, 10000);
+    let mut clock = EnergyClock::new(90, 1, false).unwrap();
+    assert_eq!(clock.restore(5), 5);
+    assert_eq!(clock.next_pulse, 1);
+    assert_eq!(clock.restore(25), 5);
+    assert_eq!(clock.next_pulse, 50);
+    clock.advance(49);
+    clock.spend(50);
+    assert_eq!(clock.advance(49), 0);
+    assert_eq!(clock.advance(1), 10);
+}
+
+#[test]
+fn external_arrivals_run_during_declared_swap_overhead() {
+    let mut s = settings(10, 100);
+    s.rotation.swap_weapon = Some(34725);
+    s.rotation.swap_delay = 5;
+    s.rotation.transfer_tick = Some(2);
+    s.rotation.surge_tick = Some(3);
+    let r = run(&gear(33631), &s);
+    assert_eq!(
+        r.trace
+            .iter()
+            .take(4)
+            .map(|e| (e.tick, e.attack.as_str()))
+            .collect::<Vec<_>>(),
+        vec![
+            (0, "Swap"),
+            (2, "Energy Transfer arrival"),
+            (3, "Surge skipped · full energy"),
+            (5, "Special")
+        ]
+    );
+    close(r.external_energy, 0.0);
+    close(r.surge_doses, 0.0);
+    close(r.transfer_events, 1.0);
+    conserved(&r, 100, 10000);
+}
+
+#[test]
+fn death_charge_applies_only_at_an_eligible_kill_before_expiry() {
+    let set = gear(33631);
+    let t = planner::monster(9466).unwrap();
+    let mut s = settings(500, 100);
+    s.target_hp.insert(9466, 1);
+    s.rotation.death_charge = Some(100);
+    s.rotation.surge_tick = Some(2);
+    s.rotation.transfer_tick = Some(3);
+    let r = rotation::evaluate(&member(), &set, "Crush", t, 0, &s).unwrap();
+    close(r.kill_chance, 1.0);
+    close(r.death_charge_triggers, 1.0);
+    close(r.external_energy, 15.0);
+    close(r.energy_remaining, 65.0);
+    close(r.surge_doses, 0.0);
+    close(r.transfer_events, 0.0);
+    assert_eq!(
+        r.trace
+            .iter()
+            .map(|e| e.attack.as_str())
+            .collect::<Vec<_>>(),
+        vec!["Special", "Death Charge"]
+    );
+    conserved(&r, 100, 1);
+    s.rotation.policy = Policy::NormalOnly;
+    let r = rotation::evaluate(&member(), &set, "Crush", t, 0, &s).unwrap();
+    close(r.death_charge_triggers, 1.0);
+    close(r.external_energy, 0.0);
+    close(r.energy_remaining, 100.0);
+    // A weapon/stance change delays the guaranteed killing special until expiry.
+    s.rotation.policy = Policy::SpecialsWhenReady;
+    s.rotation.swap_weapon = Some(33631);
+    s.rotation.swap_style = "Stab".into();
+    s.rotation.swap_delay = 1;
+    s.rotation.death_charge = Some(1);
+    let r = rotation::evaluate(&member(), &set, "Crush", t, 0, &s).unwrap();
+    assert_eq!(r.trace.last().unwrap().tick, 1);
+    close(r.death_charge_triggers, 0.0);
+    let mut low = member();
+    low.level_overrides.insert("Magic".into(), 79);
+    assert!(
+        rotation::evaluate(&low, &set, "Crush", t, 0, &s)
+            .unwrap_err()
+            .contains("80 Magic")
+    );
+    for id in [13011, 13012, 13013, 7550, 7552] {
+        assert!(!rotation::death_charge_eligible(
+            planner::monster(id).unwrap()
+        ));
+    }
+}
+
+#[test]
+fn resource_availability_rejects_unowned_excluded_and_noted_comparison_items() {
+    let mut options = planner::Options::default();
+    options.combat.rotation.swap_weapon = Some(34725);
+    let mut stock = std::collections::BTreeMap::new();
+    assert!(rotation::validate_available(&stock, &options).is_err());
+    stock.insert(34725, 1);
+    assert!(rotation::validate_available(&stock, &options).is_ok());
+    options.combat.rotation.surge_tick = Some(1);
+    stock.insert(30876, 10);
+    assert!(rotation::validate_available(&stock, &options).is_err());
+    stock.insert(30884, 1);
+    assert!(rotation::validate_available(&stock, &options).is_ok());
+    options.excluded.insert(30884);
+    assert!(rotation::validate_available(&stock, &options).is_err());
+}
+
+#[test]
+fn cooldown_and_swap_validation_preserve_old_defaults_and_normal_gear_scores() {
+    let mut s = settings(100, 50);
+    s.rotation.surge_tick = Some(10);
+    s.rotation.surge_ready = 11;
+    assert!(
+        rotation::evaluate(&member(), &gear(33631), "Crush", &target(), 0, &s)
+            .unwrap_err()
+            .contains("cooldown")
+    );
+    for id in [34727, 4151, -1] {
+        s.rotation.swap_weapon = Some(id);
+        assert!(!s.valid());
+    }
+    s.rotation.swap_weapon = Some(34725);
+    s.rotation.surge_ready = 0;
+    s.rotation.swap_style = "Slash".into();
+    assert!(rotation::evaluate(&member(), &gear(33631), "Crush", &target(), 0, &s).is_err());
+    let old: rotation::Settings = serde_json::from_str("{}").unwrap();
+    assert!(
+        old.swap_weapon.is_none()
+            && old.surge_tick.is_none()
+            && old.transfer_tick.is_none()
+            && old.death_charge.is_none()
+    );
+    s.rotation.swap_style.clear();
+    let normal = |cfg: &Settings| {
+        combat::calculate_configured(&member(), &gear(33631), "Crush", &target(), "", 0, cfg)
+            .unwrap()
+    };
+    assert_eq!(
+        serde_json::to_value(normal(&s)).unwrap(),
+        serde_json::to_value(normal(&Settings::default())).unwrap()
+    );
+}
+
+#[test]
+fn standard_spell_fillers_keep_the_selected_spell_and_its_cooldown_after_a_swap() {
+    let set = gear(1381); // Standard casting air staff, not a powered weapon.
+    let mut s = settings(10, 50);
+    s.rotation.swap_weapon = Some(33631);
+    let r = rotation::evaluate_with_spell(&member(), &set, "Magic", &target(), 0, &s, "Fire Wave")
+        .unwrap();
+    assert_eq!(
+        r.trace
+            .iter()
+            .filter(|e| e.attack != "Swap")
+            .map(|e| (e.tick, e.attack.as_str(), e.weapon))
+            .collect::<Vec<_>>(),
+        vec![
+            (0, "Special", Some(33631)),
+            (4, "Normal", Some(1381)),
+            (9, "Normal", Some(1381))
+        ]
+    );
+    close(r.normal_attacks, 2.0);
+    close(r.special_activations, 1.0);
+    conserved(&r, 50, 10000);
+    assert!(
+        rotation::evaluate_with_spell(
+            &member(),
+            &set,
+            "Magic",
+            &target(),
+            0,
+            &s,
+            "Unavailable spell"
+        )
+        .is_err()
+    );
+}
+
+#[test]
+fn stateful_fillers_are_withheld_instead_of_crediting_stationary_effects_across_swaps() {
+    let mut s = settings(100, 50);
+    s.rotation.swap_weapon = Some(33631);
+    let mut blood = gear(28997);
+    blood[0] = Some(29028);
+    blood[4] = Some(29022);
+    blood[7] = Some(29025);
+    assert!(
+        rotation::evaluate(&member(), &blood, "Crush", &target(), 0, &s)
+            .unwrap_err()
+            .contains("variable cooldown")
+    );
+    let mut eclipse = gear(29000);
+    eclipse[13] = Some(28991);
+    eclipse[0] = Some(29010);
+    eclipse[4] = Some(29004);
+    eclipse[7] = Some(29007);
+    assert!(
+        rotation::evaluate(&member(), &eclipse, "Ranged", &target(), 0, &s)
+            .unwrap_err()
+            .contains("delayed damage")
+    );
+}
+
+#[test]
+fn restore_time_edits_use_bounded_live_inputs_without_reenabling_disabled_effects() {
+    let mut cfg = rotation::Settings::default();
+    assert!(!cfg.update_time("surge-tick", "3"));
+    cfg.surge_tick = Some(0);
+    cfg.transfer_tick = Some(0);
+    cfg.death_charge = Some(100);
+    assert!(cfg.update_time("surge-tick", "3"));
+    assert_eq!(cfg.surge_tick, Some(3));
+    assert!(cfg.update_time("surge-ready", "2"));
+    assert_eq!(cfg.surge_ready, 2);
+    assert!(cfg.update_time("transfer-tick", "20"));
+    assert_eq!(cfg.transfer_tick, Some(20));
+    assert!(cfg.update_time("death-expiry", "30"));
+    assert_eq!(cfg.death_charge, Some(30));
+    let before = cfg.clone();
+    for (key, v) in [
+        ("surge-tick", "-1"),
+        ("transfer-tick", "501"),
+        ("death-expiry", "0"),
+        ("death-expiry", "101"),
+        ("death-expiry", ""),
+        ("unknown", "5"),
+    ] {
+        assert!(!cfg.update_time(key, v));
+    }
+    assert_eq!(cfg, before);
+    assert!(!cfg.update_time("surge-tick", "3"));
 }

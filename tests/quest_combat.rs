@@ -59,37 +59,70 @@ fn quest_weapon_fallback_never_recommends_ordinary_weapons_or_later_rewards() {
         let mut a = strong();
         // Reproduce opening the encounter's generic Melee route, with stronger
         // ordinary weapons and even the later Sunspear reward available.
-        a.members[0].bank.as_mut().unwrap().extend([29577, 1, 33722, 1]);
+        a.members[0]
+            .bank
+            .as_mut()
+            .unwrap()
+            .extend([29577, 1, 33722, 1]);
         let mut options = Options {
             boss: Boss::Custom,
-            targets: vec![planner::Target { id, style: "Melee".into() }],
+            targets: vec![planner::Target {
+                id,
+                style: "Melee".into(),
+            }],
             ..Default::default()
         };
         options.gear_overrides.insert("Melee:9".into(), 7462);
         let plan = planner::plan(&a, &options);
         assert_eq!(plan.equipment[3], Some(required));
         assert!(plan.phases.iter().all(|p| p.equipment[3] == Some(required)));
-        assert!(!plan.missing.iter().any(|s| s.contains("requires")), "{:?}", plan.missing);
+        assert!(
+            !plan.missing.iter().any(|s| s.contains("requires")),
+            "{:?}",
+            plan.missing
+        );
 
         for case in ["absent", "excluded", "level"] {
             let mut missing = a.clone();
             let mut trial = options.clone();
             match case {
-                "absent" => { missing.members[0].bank = Some(vec![29577, 1, 33722, 1, 4151, 1, 7462, 1]); }
-                "excluded" => { trial.excluded.insert(required); }
-                _ => { missing.members[0].level_overrides.insert("Attack".into(), 1); }
+                "absent" => {
+                    missing.members[0].bank = Some(vec![29577, 1, 33722, 1, 4151, 1, 7462, 1]);
+                }
+                "excluded" => {
+                    trial.excluded.insert(required);
+                }
+                _ => {
+                    missing.members[0]
+                        .level_overrides
+                        .insert("Attack".into(), 1);
+                }
             }
             let p = planner::plan(&missing, &trial);
             assert_eq!(p.equipment[3], None, "{id}: {case}");
-            assert!(p.phases.iter().all(|p| p.equipment[3].is_none()), "{id}: {case}");
-            assert!(p.missing.iter().any(|s| s.contains(&planner::item_name(required))), "{id}: {case}: {:?}", p.missing);
+            assert!(
+                p.phases.iter().all(|p| p.equipment[3].is_none()),
+                "{id}: {case}"
+            );
+            assert!(
+                p.missing
+                    .iter()
+                    .any(|s| s.contains(&planner::item_name(required))),
+                "{id}: {case}: {:?}",
+                p.missing
+            );
             assert!(!p.exportable(), "{id}: {case}");
         }
         // User pins remain reviewable, but cannot bypass quest requirements.
         options.gear_overrides.insert("Melee:3".into(), 29577);
         let pinned = planner::plan(&a, &options);
         assert_eq!(pinned.equipment[3], Some(29577));
-        assert!(pinned.missing.iter().any(|s| s.contains(&planner::item_name(required))));
+        assert!(
+            pinned
+                .missing
+                .iter()
+                .any(|s| s.contains(&planner::item_name(required)))
+        );
         assert!(!pinned.exportable());
     }
     let issue = quest_bosses::weapon_requirement(16204, &set(33722), "Melee").unwrap();

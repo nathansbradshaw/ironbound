@@ -411,7 +411,7 @@ impl Entry {
             "Tombs of Amascut: Expert Mode" => "Tombs_of_Amascut",
             name => name.strip_suffix(" (Quest)").unwrap_or(name),
         };
-        let suffix = if self.quest().is_some() {
+        let suffix = if self.quest().is_some() || self.name=="Theatre of Blood: Hard Mode" {
             ""
         } else {
             "/Strategies"

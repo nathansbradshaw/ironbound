@@ -504,6 +504,13 @@ fn special_settings_do_not_change_normal_damage_ranking_or_packing() {
     options.combat.rotation.window_ticks = 250;
     options.combat.rotation.next_pulse = 9;
     options.combat.rotation.policy = ironbound::rotation::Policy::NormalOnly;
+    options.combat.rotation.swap_weapon = Some(34725);
+    options.combat.rotation.swap_style = "Magic".into();
+    options.combat.rotation.swap_delay = 2;
+    options.combat.rotation.surge_tick = Some(25);
+    options.combat.rotation.surge_ready = 10;
+    options.combat.rotation.transfer_tick = Some(50);
+    options.combat.rotation.death_charge = Some(80);
     let plan = planner::plan(&snapshot, &options);
     assert!(plan.exportable(), "{:?}", plan.missing);
     let setup = ironbound::share::Setup::from_plan(&plan, &options);
@@ -516,6 +523,10 @@ fn special_settings_do_not_change_normal_damage_ranking_or_packing() {
     assert!(export.contains("0% energy available"));
     assert!(export.contains("Normal attacks only"));
     assert!(export.contains("250 ticks"));
+    assert!(export.contains("Surge: one owned dose at tick 25"));
+    assert!(export.contains("Energy Transfer: one confirmed cooperative arrival at tick 50"));
+    assert!(export.contains("Death Charge: confirmed already active for 80"));
+    assert!(export.contains("2 extra ticks per setup change"));
     let old: Settings = serde_json::from_str("{}").unwrap();
     assert_eq!((old.special_energy, old.zorya_empowered_hits), (50, 0));
 }

@@ -37,12 +37,17 @@ pub fn weapon_requirement(id: i32, set: &[Option<i32>], style: &str) -> Option<S
     let p = target(id)?;
     if p.weapons.is_empty()
         || rules::base_style(style) == "Melee"
-            && set.get(3).copied().flatten()
+            && set
+                .get(3)
+                .copied()
+                .flatten()
                 .is_some_and(|w| p.weapons.contains(&w))
     {
         return None;
     }
-    let weapons = p.weapons.iter()
+    let weapons = p
+        .weapons
+        .iter()
         .map(|id| planner::item_name(*id))
         .collect::<Vec<_>>()
         .join(" or ");

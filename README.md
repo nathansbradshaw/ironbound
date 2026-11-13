@@ -165,7 +165,7 @@ Never commit private banks, account snapshots or screenshots. `.local/`, `target
 
 [Data sources and attribution](SOURCES.md). Game artwork © Jagex. Independent fan project, not affiliated with Jagex or RuneLite. App logic, calculations and tools are Rust/WebAssembly.
 
-**Boss bestiary:** open **Change encounter** below your encounter name. **For you** puts well-equipped fights first; filter by **Well equipped**, **Doable** or **A struggle** to find your next goal. Cards include real boss artwork, recorded target stats and the owned setup behind the rating. Choose **Not assessed**, then expand **Readiness & encounter notes** to see which phase, mode or equipment model is still missing. Ratings screen gear and levels; a good rating does not verify access or predict a kill.
+**Boss bestiary:** open **Change encounter** below your encounter name. **For you** puts well-equipped fights first; filter by **Well equipped**, **Doable** or **A struggle** to find your next goal. Cards include real boss artwork, recorded target stats and the owned setup behind the rating. Choose **Not assessed**, then expand **Details & readiness** to see which phase, mode or equipment model is still missing. Ratings screen gear and levels; a good rating does not verify access or predict a kill.
 
 Readiness now includes Brutus, Mimic, Skotizo, Corporeal Beast, Prime/Supreme and the full Dagannoth Kings group, Jad/Fight Caves, base ToA and hybrid Yama. Mixed-style encounters use the weakest required setup. ToA uses a solo raid-level-0 baseline; Yama screens melee on the boss plus melee/magic for the Judge and magic for flares. Wave endurance, fast flare clearing, full supplies and player execution need separate checks. Lunar Chests shares the Moons of Peril guideline.
 

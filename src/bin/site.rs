@@ -599,14 +599,16 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             let version = format!("{version:016x}");
             // This tiny JavaScript bridge must run before Rust/Wasm is available.
             // Keep the raw module for browsers without streaming decompression.
-            let startup = format!(r#"init({{module_or_path: (async () => {{
+            let startup = format!(
+                r#"init({{module_or_path: (async () => {{
                 if (typeof DecompressionStream !== 'function') {{
                     return fetch(new URL('./pkg/ironbound_bg.wasm?v={version}', location.href));
                 }}
                 const response = await fetch(new URL('./pkg/ironbound_bg.wasm.gz?v={version}', location.href));
                 if (!response.ok || !response.body) throw new Error('Startup download failed');
                 return new Response(response.body.pipeThrough(new DecompressionStream('gzip')), {{headers: {{'Content-Type': 'application/wasm'}}}});
-            }})()}}).catch"#);
+            }})()}}).catch"#
+            );
             let index=fs::read_to_string("index.html")?
                 .replace("./style.css",&format!("./style.css?v={version}"))
                 .replace("./workspace.css",&format!("./workspace.css?v={version}"))

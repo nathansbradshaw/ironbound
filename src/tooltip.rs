@@ -23,7 +23,9 @@ pub fn item_icon(id: i32) -> String {
         Some(data) => {
             format!(r#"<img src="data:image/png;base64,{data}" alt="" width="32" height="32">"#)
         }
-        None => format!(r#"<span class="unknown-item" data-item-icon="{id}" aria-hidden="true">?</span>"#),
+        None => format!(
+            r#"<span class="unknown-item" data-item-icon="{id}" aria-hidden="true">?</span>"#
+        ),
     }
 }
 

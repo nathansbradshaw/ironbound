@@ -1657,6 +1657,8 @@ fn act(action: &str) {
                             s.budget_comparison_open=true;
                         } else {
                             apply_number(&mut s,"max-switches",&cap.to_string());
+                            s.saved.options.inventory_overrides.clear();
+                            s.saved.options.inventory_quantities.clear();
                             s.phase=None; s.view="loadout".into();
                             s.notice("Compact setup applied. Automatic inventory packing restored.",false);
                         }
@@ -4300,10 +4302,15 @@ fn efficient_panel(s: &State, _plan: &Plan) -> String {
     if a.incoming_damage.is_none() || b.incoming_damage.is_none() {
         html.push_str("<p class=\"efficient-unknown\">Incoming damage remains unverified.</p>");
     }
+    let edited_inventory = !s.saved.options.inventory_overrides.is_empty()
+        || !s.saved.options.inventory_quantities.is_empty();
+    if edited_inventory {
+        html.push_str("<p class=\"small-note\">This suggestion uses automatic packing. Applying replaces your manual inventory slots.</p>");
+    }
     let using = s.saved.options.max_switches == Some(chosen.budget.cap)
         && s.saved.options.inventory_overrides.is_empty()
         && s.saved.options.inventory_quantities.is_empty();
-    html.push_str(&format!("<div class=\"efficient-actions\"><button class=\"phase\" data-action=\"efficient-apply\" {}>{}</button>{}</div>",if using {"disabled"}else{""},if using {"Using compact setup"}else{"Use compact setup"},button("efficient-compare","Compare with fastest","text-button")));
+    html.push_str(&format!("<div class=\"efficient-actions\"><button class=\"phase\" data-action=\"efficient-apply\" {}>{}</button>{}</div>",if using {"disabled"}else{""},if using {"Using compact setup"}else if edited_inventory {"Repack & use compact setup"}else{"Use compact setup"},button("efficient-compare","Compare with fastest","text-button")));
     html.push_str(&format!("<details><summary>Within {}% · how we choose</summary><p>Tests every cap from 0 to 11 using your bank, pins, combat settings and supply counts. Your current switch ceiling still limits the suggestion. The fastest tested setup remains the benchmark after applying a smaller cap.</p><p>Allows up to {}% more attack time, prayer use and known incoming damage. Keeps identical workload coverage. Prioritizes peak bag space, then carried gear and actual changes. Applying restores automatic packing, including manual inventory slots. This bounded search does not prove a global BIS.</p><p>Fastest tested: {}-change cap · {} gear pieces · {:.1}s · {:.1} prayer points. Suggested cap: {}.</p></details></section>",crate::efficient::TOLERANCE_PERCENT,crate::efficient::TOLERANCE_PERCENT,benchmark.budget.cap,benchmark.budget.carried_gear,b.seconds,b.prayer_points,chosen.budget.cap));
     html
 }

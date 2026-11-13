@@ -15,11 +15,11 @@ pub fn notes(set: &[Option<i32>], settings: &Settings) -> Vec<String> {
             notes.push("Dual macuahuitl: the second hit requires the first accuracy roll to succeed. Full Blood Moon uses expected sustained attack timing; specials are excluded.".into());
         }
         if weapon.has(rules::Effect::StrengthRanged) {
-            notes.push("Atlatl: Ranged accuracy, Strength level and melee strength bonuses for damage. Full Eclipse Moon burn stacks/timing remain unavailable.".into());
+            notes.push("Atlatl: Ranged accuracy/prayers, Strength level and melee strength bonuses for damage. Full Eclipse Moon uses delayed sustained burn DPS with five-stack limits; finite-HP burn timing remains unavailable.".into());
         }
     }
     if set.get(3) == Some(&Some(28988)) {
-        notes.push("Blue Moon spear: supported elemental casts only. Melee, binding spells and Blue Moon follow-up attacks remain unmodelled.".into());
+        notes.push(format!("Blue Moon spear: elemental, binding, Ice and Grasp spells, plus melee. Free melee: {} (requires the in-game automatic melee option and melee range).",settings.blue_moon_melee));
     }
     if rules::equipped_effect(set, "bulwark") {
         notes.push(format!("Dinh's Block: {}. Active Block prevents attacks. Only settled ordinary unprotected incoming hits are supported; activation delay and offensive defence scaling are excluded.", if settings.bulwark_block { "active" } else { "inactive" }));
@@ -58,7 +58,7 @@ pub fn incoming_hit(hit: i32, defence_bonus: i32, set: &[Option<i32>], settings:
             damage = damage * 4 / 5;
         }
         if rules::set_effect(set, "justiciar") {
-            damage = (i64::from(damage) * i64::from(3000 - defence_bonus) / 3000).max(0) as i32;
+            damage = crate::defence::justiciar_hit(damage, i64::from(defence_bonus));
         }
         if rules::equipped_effect(set, "rondache") {
             damage = (damage - 2).max(0);

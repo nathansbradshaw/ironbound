@@ -698,6 +698,7 @@ footer{font-size:10px;padding:9px 4px 0}footer>span:last-child{display:none}
 .planner-tabs{max-width:504px;gap:7px;border:0;margin-bottom:12px}.workspace-tab{flex:1;min-height:39px;white-space:nowrap}
 .phase-tabs .phase{font-size:16px;min-height:32px;padding:4px 6px}.phase-select-label{font:18px Scape,monospace;gap:8px;width:100%}.phase-select-label select{min-width:0;flex:1}
 .flow-controls{max-width:504px;padding:10px 12px;gap:14px;grid-template-columns:120px minmax(0,1fr);margin-bottom:12px}
+.switch-usage{grid-column:1/-1;margin:0;font:18px/1.2 Scape,monospace;color:#ddd1b8}
 .flow-controls label,.flow-controls>details>summary,.switch-preferences-fields label{font:18px/1.2 Scape,monospace;color:#fff}.flow-controls>details>summary{color:#ff981f;padding:6px 0}
 .flow-controls input,.flow-controls select,.panel input:not([type=checkbox]),.panel select,.panel textarea,.gear-picker input,.gear-picker select{font:18px/1.2 Scape,monospace;text-shadow:1px 1px #000;min-height:32px;padding:5px 7px;background:#372e22;color:#ff981f;border:0;border-radius:4px;box-shadow:inset 3px 3px 3px #261d11}
 .flow-controls input::placeholder,.panel input::placeholder,.panel textarea::placeholder,.gear-picker input::placeholder{color:#ff981f;opacity:.9}

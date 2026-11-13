@@ -372,6 +372,20 @@ fn special_npc_caps_halving_and_guaranteed_maxima_follow_the_special_distributio
 fn burst_energy_bounds_requirements_and_unreviewed_windows_are_explicit() {
     for (weapon, style) in [(34725, "Magic"), (33631, "Crush")] {
         let s = set(&[(3, weapon)]);
+        for id in [100180, 100181, 100185] {
+            assert!(
+                special_attacks::evaluate(
+                    &member(),
+                    &s,
+                    style,
+                    planner::monster(id).unwrap(),
+                    0,
+                    &Settings::default()
+                )
+                .unwrap_err()
+                .contains("not verified")
+            );
+        }
         assert!(
             special_attacks::evaluate(
                 &member(),

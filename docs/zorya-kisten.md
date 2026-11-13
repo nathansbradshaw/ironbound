@@ -50,7 +50,8 @@ cooldown. Four independent accuracy rolls determine its damage band:
 
 The chance of exactly k successful rolls is the independent binomial probability,
 not four damage splats. Attack bonuses and stance use the selected supported
-attack type; target defence is always crush. Inquisitor modifiers therefore still
+attack type (the current planner maps Crush to Accurate and Stab to Controlled);
+target defence is always crush. Inquisitor modifiers therefore still
 follow the selected crush style. Accurate zeros become one before ordinary flat
 armour; NPC caps, rerolls and final division apply to the single resulting hit.
 Reviewed guaranteed-maximum Phosani minions replace it with the final maximum.

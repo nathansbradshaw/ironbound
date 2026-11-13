@@ -4973,8 +4973,8 @@ fn combat_panel(s: &State, p: &Plan) -> String {
                 if crate::rules::set_effect(&set, "blue_moon") {
                     html.push_str(&format!("<p>Blue Moon free melee: {}. Only accurate binding, Ice and Grasp spells can trigger Frostweaver.</p>", esc(&s.saved.options.combat.blue_moon_melee)));
                 }
-                html.push_str(&combat_breakdown(s, m, &set, target, &r));
                 html.push_str(&special_attack_panel(s, m, &set, style, target));
+                html.push_str(&combat_breakdown(s, m, &set, target, &r));
                 if r.potential_healing_per_second > 0.0 {
                     html.push_str(&format!("<p>Guthan's potential healing: {:.3} HP/s before overheal and remaining-target-HP limits. This is not subtracted from damage taken.</p>", r.potential_healing_per_second));
                 }

@@ -12,6 +12,7 @@ pub struct Incoming {
     pub attack: String,
     pub dps: Option<f64>,
     pub reason: Option<String>,
+    pub healing_per_second: Option<f64>,
 }
 #[derive(Clone, Debug)]
 pub struct Metrics {
@@ -20,6 +21,7 @@ pub struct Metrics {
     pub defence: BTreeMap<String, i32>,
     pub prayer_per_minute: f64,
     pub incoming: Vec<Incoming>,
+    pub attack: Option<combat::ResultStats>,
 }
 #[derive(Clone, Debug)]
 pub struct Window {
@@ -44,6 +46,7 @@ pub struct Budget {
     pub prep_blockers: Vec<String>,
     pub windows: Vec<Window>,
     pub notes: Vec<String>,
+    pub unmodelled_phases: Vec<String>,
 }
 #[derive(Clone, Debug)]
 pub struct Comparison {
@@ -81,6 +84,7 @@ pub fn measure(
         defence: equipment_defence,
         prayer_per_minute: prayer::drain_per_minute(prayer::bonus(set), &o.combat),
         incoming: vec![],
+        attack: None,
     };
     let Some(target) = planner::monster(target_id) else {
         let why = "This target's combat model is unavailable.".to_string();
@@ -89,6 +93,7 @@ pub fn measure(
             attack: "Unverified attacks".into(),
             dps: None,
             reason: Some(why),
+            healing_per_second: None,
         });
         return result;
     };
@@ -105,6 +110,7 @@ pub fn measure(
                 attack,
                 dps: None,
                 reason: Some(why.clone()),
+                healing_per_second: None,
             });
         }
         return result;
@@ -150,10 +156,12 @@ pub fn measure(
             o.raid_level,
             &o.combat,
         )
-        .map(|r| r.dps)
     };
     match outgoing {
-        Ok(dps) => result.dps = Some(dps),
+        Ok(attack) => {
+            result.dps = Some(attack.dps);
+            result.attack = Some(attack);
+        }
         Err(reason) => result.dps_reason = Some(reason),
     }
     let attacks = defence::attacks(target);
@@ -164,6 +172,7 @@ pub fn measure(
             reason: Some(
                 "No verified incoming attack scenarios are available for this target.".into(),
             ),
+            healing_per_second: None,
         });
     }
     for attack in attacks {
@@ -172,14 +181,15 @@ pub fn measure(
         } else {
             Err("Equipment combat stats or base wear requirements are unavailable or unmet.".into())
         };
-        let (dps, reason) = match measured {
-            Ok(r) => (Some(r.damage_per_second), None),
-            Err(reason) => (None, Some(reason)),
+        let (dps, healing_per_second, reason) = match measured {
+            Ok(r) => (Some(r.damage_per_second), Some(r.healing_per_second), None),
+            Err(reason) => (None, None, Some(reason)),
         };
         result.incoming.push(Incoming {
             attack,
             dps,
             reason,
+            healing_per_second,
         });
     }
     result
@@ -312,10 +322,11 @@ fn budget(snapshot: &Snapshot, o: &Options, requested_cap: usize) -> Budget {
         let mut metrics=measure(snapshot,&options,&equipment,style,target_id);
         if !feasible||set.is_none() {
             let why=if feasible {"No actual planned equipment set supports this attack window."}else{"No verified setup satisfies this budget; fallback damage is not a comparison result."};
-            metrics.dps=None;metrics.dps_reason=Some(why.into());metrics.defence.clear();for incoming in &mut metrics.incoming {incoming.dps=None;incoming.reason=Some(why.into());}
+            metrics.dps=None;metrics.attack=None;metrics.dps_reason=Some(why.into());metrics.defence.clear();for incoming in &mut metrics.incoming {incoming.dps=None;incoming.healing_per_second=None;incoming.reason=Some(why.into());}
         }
         Window {target_id,name:planner::monster(target_id).map(|m|m.name.clone()).unwrap_or_else(||"Unknown target".into()),style:style.into(),equipment,metrics}
     }).collect();
+    let mut unmodelled_phases = Vec::new();
     for phase in &plan.phases {
         if !windows.iter().any(|window| {
             phase
@@ -330,6 +341,7 @@ fn budget(snapshot: &Snapshot, o: &Options, requested_cap: usize) -> Budget {
                         .starts_with(&label.to_lowercase())
                 })
         }) {
+            unmodelled_phases.push(phase.name.clone());
             notes.push(format!("{}: no comparison target is registered; this phase's damage and incoming mechanics are not estimated.",phase.name));
         }
     }
@@ -345,6 +357,7 @@ fn budget(snapshot: &Snapshot, o: &Options, requested_cap: usize) -> Budget {
         prep_blockers,
         windows,
         notes,
+        unmodelled_phases,
     }
 }
 pub fn compare(snapshot: &Snapshot, o: &Options, left_cap: usize, right_cap: usize) -> Comparison {

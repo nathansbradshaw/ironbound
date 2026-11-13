@@ -99,6 +99,18 @@ pub struct ElementalStats {
     pub weakness_accuracy: i64,
     pub tome: bool,
 }
+/// Catalog HP under the same solo/path-zero ToA scaling used by bolt effects.
+pub fn target_hitpoints(monster: &Monster, invocation: u32) -> Option<i32> {
+    let mut hp = monster.skills.get("hp").copied().filter(|hp| *hp > 0)?;
+    if crate::encounters::mechanics().toa_ids.contains(&monster.id) {
+        hp += hp * (4 * invocation.min(150) as i32 / 10) / 100;
+        if hp > 100 {
+            let round = if hp > 300 { 10 } else { 5 };
+            hp = (hp + round / 2) / round * round;
+        }
+    }
+    Some(hp)
+}
 /// Normal accuracy includes negative attack/defence rolls.
 pub fn accuracy(mut a: i64, mut d: i64) -> f64 {
     if a < 0 {
@@ -606,14 +618,7 @@ pub fn calculate_configured(
         let chance = rules::bolt_proc_chance(set[13].unwrap_or(0), settings.kandarin_diary);
         match rules::ammunition(set[13].unwrap_or(0)) {
             AmmoEffect::Ruby => {
-                let mut hp = monster.skills.get("hp").copied().unwrap_or(1);
-                if toa {
-                    hp += hp * (4 * invocation.min(150) as i32 / 10) / 100;
-                    if hp > 100 {
-                        let round = if hp > 300 { 10 } else { 5 };
-                        hp = (hp + round / 2) / round * round;
-                    }
-                }
+                let hp = target_hitpoints(monster, invocation).unwrap_or(1);
                 let ruby = (hp * if zcb { 22 } else { 20 } / 100).min(if zcb { 110 } else { 100 });
                 expected = expected * (1.0 - chance) + ruby as f64 * chance;
                 max_hit = max_hit.max(ruby);

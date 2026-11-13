@@ -5,6 +5,7 @@ mod app;
 pub mod combat;
 pub mod defence;
 pub mod effects;
+pub mod encounter_summary;
 pub mod encounters;
 pub mod explanations;
 pub mod export;

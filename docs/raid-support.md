@@ -56,8 +56,11 @@ newly selecting the Xarth fork includes both reviewed body windows.
   Xarth has separate phase-1 Magic and phase-2 melee route suggestions at 80%
   Demonbane effectiveness; corpse healing/cast-speed changes are excluded.
   Ezekiel uses the pinned ordinary formula; reported special-state Magic caps
-  are not inferred from it. Bork stun uses the pinned defence reduction without
-  assuming an additional guaranteed-hit effect.
+  are not inferred from it. Bork stun guarantees melee accuracy as described by the Wiki strategy;
+  ranged and Magic retain normal accuracy. Ascension bolts and ordinary
+  Eclipse burn buildup are supported on Bork, Smorks and Xarth body probes
+  where applicable; flat armour leaves burn pulses unchanged. See
+  [Archive DPS verification](archive-dps.md).
 - **Expert ToA:** solo-300 HP/rounding and defence-roll scale, existing ToA
   Fang/Shadow behaviour, style-restricted Akkha and reviewed Wardens hit models.
   Legacy ToA's invocation controls retain their existing supported range.

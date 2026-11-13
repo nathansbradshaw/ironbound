@@ -110,7 +110,7 @@ pub fn instant_defeat(id: i32, weapon: i32) -> Option<i32> {
         .flatten()
 }
 pub fn guaranteed_accuracy(id: i32, attack_type: &str) -> bool {
-    encounters::window(id).is_some_and(|w| w.guaranteed_accuracy)
+    encounters::window(id).is_some_and(|w| w.guaranteed_accuracy || w.guaranteed_melee_accuracy && ["stab", "slash", "crush"].contains(&attack_type))
         || profile(id).is_some_and(|p| p.kind == Kind::Totem && attack_type == "magic")
 }
 /// Elemental accuracy bypasses normal rolls, weakness accuracy and reroll gear.

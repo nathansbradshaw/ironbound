@@ -349,9 +349,9 @@ fn bestiary_screen_requires_two_owned_styles_but_does_not_check_quest_access() {
     };
     let pair = &ironbound::bestiary::assess_catalog(&snapshot, &two)[index];
     assert!(
-        pair.reason.contains("Melee")
-            && pair.reason.contains("Ranged")
-            && !pair.reason.contains("Magic"),
+        pair.reason.contains("· Slash ·")
+            && pair.reason.contains("· Ranged ·")
+            && !pair.reason.contains("· Magic ·"),
         "{}",
         pair.reason
     );

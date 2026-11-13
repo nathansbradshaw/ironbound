@@ -144,6 +144,11 @@ fn charged_tomes_apply_after_weakness_and_empty_tomes_do_not() {
         gear[5] = Some(charged);
         let r = combat::calculate(&member(99), &gear, "Magic", &weak(element, 50), spell).unwrap();
         assert_eq!(r.max_hit, 33); // floor((20+10)*1.10).
+        if element == "water" {
+            // Current PvM tome: +10% accuracy, not the old/PvP +20%.
+            // floor(8856*1.10)+floor(8856*.50)=9741+4428.
+            assert_eq!(r.attack_roll, 14169);
+        }
         assert!(r.elemental.unwrap().tome);
         assert!(
             !rules::rune_supplies_for_set(spell, 150, &gear)
@@ -153,6 +158,9 @@ fn charged_tomes_apply_after_weakness_and_empty_tomes_do_not() {
         gear[5] = Some(empty);
         let e = combat::calculate(&member(99), &gear, "Magic", &weak(element, 50), spell).unwrap();
         assert_eq!(e.max_hit, 30);
+        if element == "water" {
+            assert_eq!(e.attack_roll, 13284); // Empty tome grants no passive.
+        }
         assert!(
             rules::rune_supplies_for_set(spell, 150, &gear)
                 .iter()
@@ -267,4 +275,49 @@ fn best_owned_spell_and_trip_runes_follow_each_targets_element() {
         );
     }
     assert!(!plan.inventory.iter().any(|p| p.id == 556));
+}
+
+#[test]
+fn missing_element_rows_distinguish_runes_levels_and_weapon_mechanics() {
+    let demo = account::demo();
+    let member = demo.selected().unwrap();
+    let staff = set(1381);
+    let settings = Settings::default();
+    let available = rules::elemental_candidates(member, &staff, &demo.available(false), &settings);
+    for element in ["water", "earth"] {
+        assert!(
+            !available
+                .iter()
+                .any(|s| s.element.as_deref() == Some(element))
+        );
+        assert_eq!(
+            rules::elemental_unavailability(member, &staff, &settings, element),
+            "Insufficient runes for 150 casts."
+        );
+    }
+    let mut low = member.clone();
+    low.level_overrides.insert("Magic".into(), 1);
+    assert_eq!(
+        rules::elemental_unavailability(&low, &staff, &settings, "water"),
+        "Requires at least 5 Magic."
+    );
+    assert_eq!(
+        rules::elemental_unavailability(member, &set(11907), &settings, "air"),
+        "Powered staff: no elemental spell bonus."
+    );
+    assert_eq!(
+        rules::elemental_unavailability(member, &set(12658), &settings, "fire"),
+        "This weapon uses a non-elemental spell."
+    );
+    assert_eq!(
+        rules::elemental_unavailability(&Member::default(), &staff, &settings, "water"),
+        "Enter your Magic level."
+    );
+    low.level_overrides.insert("Magic".into(), 1);
+    let mut boosted = settings.clone();
+    boosted.boosts.magic = "Magic potion".into();
+    assert_eq!(
+        rules::elemental_unavailability(&low, &staff, &boosted, "water"),
+        "Insufficient runes for 150 casts."
+    );
 }

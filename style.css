@@ -764,3 +764,5 @@ footer{font-size:10px;padding:9px 4px 0}footer>span:last-child{display:none}
 .budget-gear p{display:flex;align-items:center;flex-wrap:wrap;gap:4px}.budget-gear img{vertical-align:middle}
 .budget-defence .bonus-table{width:100%}.budget-defence .bonus-table td{text-align:right;white-space:nowrap}
 @media(max-width:580px){.budget-body{padding:0 9px 9px}.budget-cap-fields,.budget-sides,.budget-metrics{gap:7px}.budget-side{padding:7px}.budget-side h3{font-size:20px}.budget-side dl{font-size:16px}.budget-stat>strong{font-size:21px}.budget-comparison>summary{font-size:19px}.budget-body .bonus-table th,.budget-body .bonus-table td{padding:6px 3px}}
+.analysis-layout { grid-template-columns: minmax(0, 1fr); }
+.combat-breakdown .wiki-table { min-width: 540px; }

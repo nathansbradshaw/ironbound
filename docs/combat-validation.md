@@ -51,6 +51,8 @@ For example, 99 Magic with an air staff gives a Wave base max of 20 and an accur
 
 Supported elemental staves declare free runes in weapon data. Recipes contain the full cost, and both affordability checks and packing subtract staff/tome rune supply. Target-aware selection compares the strongest affordable spell per element; equal DPS preserves recipe preference. Combination runes, additional autocasting weapons, elemental amulets, sunfire runes, minimum-hit effects and full charge/page accounting remain outside this extension.
 
+**Water tome reference discrepancy:** the pinned engine still applies 20% accuracy to offensive Water spells. Ironbound uses the current PvM **10% accuracy and 10% damage**, consistent with [Jagex's rebalance](https://secure.runescape.com/m=news/project-rebalance-combat-changes?oldschool=1) and the [current item effects](https://oldschool.runescape.wiki/w/Tome_of_water#Effects). The 20% accuracy for binding/curse spells and PvP is outside this PvM damage calculation. A charged tome/air staff/50% weakness regression asserts the independent roll `floor(8,856 × 1.10) + floor(8,856 × 0.50) = 14,169`; an empty tome has no passive. This is an intentional difference from that calculator revision.
+
 ## Updating after a game change
 
 1. Reproduce the change with identical stats, gear, target version, stance, prayers and options in the reference calculator. Its defaults can differ: the Wiki currently enables the Kandarin diary bonus.

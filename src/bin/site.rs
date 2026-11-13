@@ -26,7 +26,7 @@ fn copy_tree(from: &Path, to: &Path) -> std::io::Result<()> {
 fn copy_runtime_assets() -> Result<(), Box<dyn std::error::Error>> {
     // Icons and data tables are embedded in Wasm. Publish only referenced files.
     let mut assets = std::collections::BTreeSet::new();
-    for source in ["index.html", "style.css"] {
+    for source in ["index.html", "style.css", "workspace.css"] {
         let text = fs::read_to_string(source)?;
         for reference in text.split("./assets/").skip(1) {
             let relative = reference
@@ -569,6 +569,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 "dist/pkg/ironbound_bg.wasm",
                 "dist/pkg/ironbound.js",
                 "style.css",
+                "workspace.css",
             ] {
                 for byte in fs::read(file)? {
                     version = (version ^ byte as u64).wrapping_mul(0x100000001b3);
@@ -577,6 +578,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             let version = format!("{version:016x}");
             let index=fs::read_to_string("index.html")?
                 .replace("./style.css",&format!("./style.css?v={version}"))
+                .replace("./workspace.css",&format!("./workspace.css?v={version}"))
                 .replace("./pkg/ironbound.js",&format!("./pkg/ironbound.js?v={version}"))
                 .replace("init().catch",&format!("init({{module_or_path: new URL('./pkg/ironbound_bg.wasm?v={version}', location.href)}}).catch"));
             if !index.contains("module_or_path") {
@@ -587,6 +589,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
             fs::write("dist/index.html", index)?;
             fs::copy("style.css", "dist/style.css")?;
+            fs::copy("workspace.css", "dist/workspace.css")?;
             copy_runtime_assets()?;
             let revision = Command::new("git").args(["rev-parse", "HEAD"]).output()?;
             if !revision.status.success() {

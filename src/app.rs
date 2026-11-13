@@ -394,9 +394,109 @@ fn badge(label: &str, class: &str) -> String {
     format!("<span class=\"badge {class}\">{}</span>", esc(label))
 }
 
+fn hide_item_tooltip() {
+    if let Some(tooltip) = document().get_element_by_id("item-explanation") {
+        if tooltip.has_attribute("hidden") {
+            return;
+        }
+        let _ = tooltip.set_attribute("hidden", "");
+        tooltip.set_text_content(None);
+    }
+}
+
+fn show_item_tooltip(item: &Element) {
+    let Some(text) = item.get_attribute("data-explanation") else {
+        return;
+    };
+    let Some(tooltip) = document().get_element_by_id("item-explanation") else {
+        return;
+    };
+    let anchor = item.get_bounding_client_rect();
+    let width = window()
+        .inner_width()
+        .ok()
+        .and_then(|v| v.as_f64())
+        .unwrap_or(320.0);
+    let height = window()
+        .inner_height()
+        .ok()
+        .and_then(|v| v.as_f64())
+        .unwrap_or(480.0);
+    let layout = format!("{}:{}:{width}:{height}:{text}", anchor.left(), anchor.top());
+    if !tooltip.has_attribute("hidden")
+        && tooltip.get_attribute("data-layout").as_deref() == Some(&layout)
+    {
+        return;
+    }
+    let _ = tooltip.set_attribute("data-layout", &layout);
+    tooltip.set_text_content(Some(&text));
+    let _ = tooltip.remove_attribute("hidden");
+    let _ = tooltip.set_attribute("style", "left:0;top:0");
+    let bounds = tooltip.get_bounding_client_rect();
+    let left = (anchor.left() + (anchor.width() - bounds.width()) / 2.0)
+        .clamp(8.0, (width - bounds.width() - 8.0).max(8.0));
+    let top = if anchor.top() >= bounds.height() + 8.0 {
+        anchor.top() - bounds.height() - 6.0
+    } else {
+        anchor.bottom() + 6.0
+    }
+    .clamp(8.0, (height - bounds.height() - 8.0).max(8.0));
+    let _ = tooltip.set_attribute("style", &format!("left:{left}px;top:{top}px"));
+}
+
 #[wasm_bindgen(start)]
 pub fn start() -> Result<(), JsValue> {
     render();
+    let explain = Closure::<dyn FnMut(web_sys::Event)>::new(|event: web_sys::Event| {
+        let item = event
+            .target()
+            .and_then(|t| t.dyn_into::<Element>().ok())
+            .and_then(|e| e.closest("[data-explanation]").ok().flatten());
+        if let Some(item) = item {
+            show_item_tooltip(&item);
+        } else if event.type_() == "mousemove" {
+            if let Some(item) = document()
+                .active_element()
+                .and_then(|e| e.closest("[data-explanation]").ok().flatten())
+            {
+                show_item_tooltip(&item);
+            } else {
+                hide_item_tooltip();
+            }
+        } else {
+            hide_item_tooltip();
+        }
+    });
+    // Pointer movement owns hover, while scroll-generated mouseover events
+    // must not overwrite the explanation for a keyboard-focused item.
+    for event in ["mousemove", "focusin"] {
+        document().add_event_listener_with_callback(event, explain.as_ref().unchecked_ref())?;
+    }
+    explain.forget();
+    let dismiss = Closure::<dyn FnMut(web_sys::Event)>::new(|event: web_sys::Event| {
+        if let Some(mouse) = event.dyn_ref::<web_sys::MouseEvent>() {
+            let item = event
+                .target()
+                .and_then(|t| t.dyn_into::<Element>().ok())
+                .and_then(|e| e.closest("[data-explanation]").ok().flatten());
+            let Some(item) = item else { return };
+            let related = mouse
+                .related_target()
+                .and_then(|t| t.dyn_into::<web_sys::Node>().ok());
+            if related.is_some_and(|related| item.contains(Some(&related)))
+                || document()
+                    .active_element()
+                    .is_some_and(|active| item.contains(Some(&active)))
+            {
+                return;
+            }
+        }
+        hide_item_tooltip();
+    });
+    for event in ["mouseout", "focusout"] {
+        document().add_event_listener_with_callback(event, dismiss.as_ref().unchecked_ref())?;
+    }
+    dismiss.forget();
     let click = Closure::<dyn FnMut(web_sys::Event)>::new(|e: web_sys::Event| {
         let target = e
             .target()
@@ -488,6 +588,9 @@ pub fn start() -> Result<(), JsValue> {
             .ok()
             .and_then(|v| v.as_string())
             .unwrap_or_default();
+        if key == "Escape" {
+            hide_item_tooltip();
+        }
         if key == "Tab"
             && STATE.with(|s| {
                 let s = s.borrow();
@@ -1910,6 +2013,7 @@ fn render_with_edit(edit: Option<&str>) {
         if s.view=="loadout" && s.shared_setup.is_none(){html.push_str("<details class=\"secondary-section\"><summary>All owned gear</summary>");html.push_str(&tier_table(&s));html.push_str("</details>");}
     }
     html.push_str("</div><footer><span>Ironbound — an unofficial OSRS fan site.</span><a href=\"https://oldschool.runescape.wiki/\" target=\"_blank\" rel=\"noreferrer\">OSRS Wiki ↗</a><a href=\"./assets/osrs/NOTICE.txt\" target=\"_blank\" rel=\"noreferrer\">Asset credits</a><span>Starter catalog · 9 Nov 2026</span></footer></main></div>");
+    html.push_str("<div id=\"item-explanation\" class=\"item-explanation-tooltip\" role=\"tooltip\" hidden></div>");
     if s.edit_equipment.is_some(){html.push_str(&gear_picker(&s));}
     if let Some(index)=s.edit_inventory{html.push_str(&inventory_editor(&s,index));}
     if let Some(el)=document().get_element_by_id("app"){update_markup(&el,&html,edit);}
@@ -2011,9 +2115,8 @@ fn slot(id: Option<i32>, label: &str, class: &str, quantity: Option<u32>) -> Str
         })
         .unwrap_or_else(|| format!("{label} · empty"));
     format!(
-        "<div class=\"item-slot {class} {}\" title=\"{}\" aria-label=\"{}\">{}{}<span class=\"slot-caption\">{}</span></div>",
+        "<div class=\"item-slot {class} {}\" aria-label=\"{}\">{}{}<span class=\"slot-caption\">{}</span></div>",
         if id.is_some() { "filled" } else { "empty" },
-        esc(&title),
         esc(&title),
         id.map(image)
             .unwrap_or_else(|| "<span class=\"empty-symbol\">·</span>".into()),
@@ -2065,7 +2168,15 @@ fn loadout_panel(s: &State, p: &Plan) -> String {
                 .map(planner::item_name)
                 .unwrap_or_else(|| "Empty".into())
         );
-        html.push_str(&format!(r#"<button class="equipment-edit {class}" data-action="edit-equipment:{slot_index}" data-tooltip="{}" aria-label="Change {}">{}</button>"#,esc(&tooltip),esc(&tooltip),slot(set[slot_index],planner::SLOTS[slot_index],"",None)));
+        let reason = crate::explanations::equipment(
+            &s.saved.snapshot,
+            &s.saved.options,
+            p,
+            s.phase,
+            slot_index,
+        );
+        let explanation = format!("{tooltip}\n{reason}");
+        html.push_str(&format!(r#"<button class="equipment-edit {class}" data-action="edit-equipment:{slot_index}" data-explanation="{}" aria-describedby="item-explanation" aria-label="Change {}">{}</button>"#,esc(&explanation),esc(&tooltip),slot(set[slot_index],planner::SLOTS[slot_index],"",None)));
     }
     html.push_str(
         "</div></div><details class=\"loadout-notes\"><summary>Spell & exclusions</summary>",
@@ -2159,7 +2270,17 @@ fn inventory_panel(s: &State, p: &Plan) -> String {
     );
     for i in 0..28 {
         let item = inventory.get(i).filter(|p| p.id > 0 && p.quantity > 0);
-        html.push_str(&format!("<button class=\"inventory-edit\" data-action=\"edit-inventory:{i}\" aria-label=\"Inventory slot {}\" {}>",i+1,if phase.is_some() { "disabled" } else { "" }));
+        let explanation = item
+            .map(|item| {
+                format!(
+                    "{} × {}\n{}",
+                    planner::item_name(item.id),
+                    item.quantity,
+                    crate::explanations::packed(&s.saved.snapshot, &s.saved.options, p, item)
+                )
+            })
+            .unwrap_or_else(|| format!("Inventory slot {}: Empty\nChoose an owned item.", i + 1));
+        html.push_str(&format!("<button class=\"inventory-edit\" data-action=\"edit-inventory:{i}\" data-explanation=\"{}\" aria-describedby=\"item-explanation\" aria-label=\"Inventory slot {}\" {}>",esc(&explanation),i+1,if phase.is_some() { "disabled" } else { "" }));
         html.push_str(&slot(
             item.map(|p| p.id),
             &format!(
@@ -3102,11 +3223,20 @@ fn switch_controls(s: &State, p: &Plan) -> String {
     let usage = if let Some(report) = &p.optimization {
         if let Some(limit) = s.saved.options.max_switches {
             format!(
-                "Uses {} of {limit} allowed changes per switch.",
-                report.max_changes
+                "Uses {} of {limit} allowed {} per switch.",
+                report.max_changes,
+                if limit == 1 { "change" } else { "changes" }
             )
         } else {
-            format!("Uses {} changes per switch.", report.max_changes)
+            format!(
+                "Uses {} {} per switch.",
+                report.max_changes,
+                if report.max_changes == 1 {
+                    "change"
+                } else {
+                    "changes"
+                }
+            )
         }
     } else if s.saved.options.max_switches.is_some() {
         "No setup verified within this limit. Review Preparation.".into()

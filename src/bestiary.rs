@@ -65,6 +65,7 @@ fn unknown(reason: &str) -> Assessment {
 }
 struct Profile {
     level: u32,
+    prayer: u32,
     styles: &'static [&'static str],
     slayer: u32,
     note: &'static str,
@@ -227,6 +228,18 @@ fn profile(name: &str) -> Option<Profile> {
             0,
             "Quest access, sanity and movement are outside this screening.",
         ),
+        "Nightmare" | "The Nightmare" => (
+            90,
+            &["Melee", "Magic"],
+            0,
+            "Base one-to-five-player shield/totem gear screen. Both melee and Magic are needed. Team support, protection, stat recovery, parasites, special attacks and full-trip supplies are not scored.",
+        ),
+        "Phosani's Nightmare" => (
+            95,
+            &["Melee", "Magic"],
+            0,
+            "Solo shield/totem gear screen. Both melee and Magic are needed; bring Sanfew serum or Relicym's balm for parasites. Maximum crush damage does not guarantee killing an add in one hit. Spores, movement, protection and full-trip supplies are not scored.",
+        ),
         "Grotesque Guardians" => (
             75,
             &["Melee", "Ranged"],
@@ -268,6 +281,11 @@ fn profile(name: &str) -> Option<Profile> {
     };
     Some(Profile {
         level,
+        prayer: if matches!(name, "Nightmare" | "The Nightmare" | "Phosani's Nightmare") {
+            70
+        } else {
+            43
+        },
         styles,
         slayer,
         note,
@@ -284,6 +302,9 @@ fn requires_all(name: &str) -> bool {
             | "Dagannoth Kings"
             | "Tombs of Amascut"
             | "Yama"
+            | "Nightmare"
+            | "The Nightmare"
+            | "Phosani's Nightmare"
     )
 }
 
@@ -367,7 +388,7 @@ pub fn assess_catalog(snapshot: &Snapshot, preferences: &Options) -> Vec<Assessm
         let prayer = member.level("Prayer").unwrap();
         for (dps, _, _, level, armour) in &choices {
             let band = if *dps < 1.5 || *level + 15 < p.level || hp + 20 < p.level || *armour < 2 || prayer < 37 { Readiness::Struggle }
-                else if *dps < 3.0 || *level < p.level || hp < p.level || def + 10 < p.level || *armour < 4 || prayer < 43 { Readiness::Doable }
+                else if *dps < 3.0 || *level < p.level || hp < p.level || def + 10 < p.level || *armour < 4 || prayer < p.prayer { Readiness::Doable }
                 else { Readiness::WellEquipped };
             readiness = readiness.max(band);
         }
@@ -377,10 +398,12 @@ pub fn assess_catalog(snapshot: &Snapshot, preferences: &Options) -> Vec<Assessm
             "Yama" => "Melee-boss hybrid",
             "Corporeal Beast" => "Undrained baseline",
             "Fight Caves" => "Ranged gear baseline",
+            "Nightmare" | "The Nightmare" => "Base 1–5-player gear",
+            "Phosani's Nightmare" => "Solo shield/totem gear",
             _ => "",
         };
         let reason = if scope.is_empty() { setup_reason } else { format!("{scope}: {setup_reason}") };
-        let gaps = if readiness == Readiness::WellEquipped { "Levels and owned gear meet this screening baseline.".into() } else { format!("Guideline: {} offensive level / HP, {} Defence, 43 Prayer; 3+ basic DPS and four armour slots for the top band. Yours: {} HP, {} Defence, {} Prayer.", p.level, p.level.saturating_sub(10), hp, def, prayer) };
+        let gaps = if readiness == Readiness::WellEquipped { "Levels and owned gear meet this screening baseline.".into() } else { format!("Guideline: {} offensive level / HP, {} Defence, {} Prayer; 3+ basic DPS and four armour slots for the top band. Yours: {} HP, {} Defence, {} Prayer.", p.level, p.level.saturating_sub(10), p.prayer, hp, def, prayer) };
         Assessment { readiness, reason, detail: format!("{gaps} {}", p.note), wilderness: false, preview: None }
     }).collect()
 }

@@ -436,3 +436,22 @@ fn moon_followups_apply_each_targets_transform_to_the_correct_attack_style() {
         assert_eq!(on.max_hit, off.max_hit + melee.max_hit);
     }
 }
+
+#[test]
+fn new_special_and_counter_states_do_not_inherit_unverified_burn_pulses() {
+    let mut s = gear(29000, Some(28991));
+    for (slot, id) in [(0, 29010), (4, 29004), (7, 29007)] {
+        s[slot] = Some(id);
+    }
+    for id in [100130, 100135, 100136, 9425, 9416, 9435, 100150] {
+        let err = combat::calculate(&member(), &s, "Ranged", planner::monster(id).unwrap(), "")
+            .unwrap_err();
+        assert!(
+            err.contains("pulse reductions") && err.contains("unverified"),
+            "{id}: {err}"
+        );
+    }
+    let ordinary =
+        combat::calculate(&member(), &s, "Ranged", planner::monster(26).unwrap(), "").unwrap();
+    assert!(ordinary.burn.is_some());
+}

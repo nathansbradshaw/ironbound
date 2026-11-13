@@ -315,8 +315,7 @@ pub fn report(plan: &Plan, declared: &Settings) -> Report {
         // A full, GE-tradeable variant no longer describes the carried object
         // once its declared contents differ. Do not reuse its protection price.
         let changed_full_state = rule.is_some_and(|r| {
-            r.full_ids.contains(&id)
-                && input.charges.is_some_and(|n| n != r.max.saturating_mul(q))
+            r.full_ids.contains(&id) && input.charges.is_some_and(|n| n != r.max.saturating_mul(q))
         });
         let protection = input.protection.or_else(|| {
             (!changed_full_state)

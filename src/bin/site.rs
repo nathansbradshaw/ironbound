@@ -527,7 +527,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
         Some("build") => {
             let profile = args.get(2).map(String::as_str).unwrap_or("release");
-            if !["release", "verify-release", "simulation-release", "calibration-release"].contains(&profile) {
+            if ![
+                "release",
+                "verify-release",
+                "simulation-release",
+                "calibration-release",
+            ]
+            .contains(&profile)
+            {
                 return Err(
                     "Build profile must be release, verify-release, simulation-release or calibration-release".into(),
                 );

@@ -218,6 +218,39 @@ fn all_reviewed_bank_combat_entries_have_a_readiness_guideline() {
 }
 
 #[test]
+fn nightmare_screens_require_both_melee_and_magic_and_keep_encounter_scope() {
+    let account = strong_account();
+    for name in ["Nightmare", "Phosani's Nightmare"] {
+        let row = result(name, &account, &Options::default());
+        assert_ne!(row.readiness, Readiness::Unknown, "{name}: {}", row.reason);
+        assert!(
+            ["Melee", "Stab", "Slash", "Crush"]
+                .iter()
+                .any(|style| row.reason.contains(style))
+                && row.reason.contains("Magic"),
+            "{}",
+            row.reason
+        );
+        assert!(row.detail.contains("full-trip supplies"));
+    }
+    let mut options = Options::default();
+    for id in account.available(false).keys() {
+        if ironbound::rules::weapon(*id).is_some_and(|w| w.family.style == "Magic") {
+            options.excluded.insert(*id);
+        }
+    }
+    for name in ["Nightmare", "Phosani's Nightmare"] {
+        let row = result(name, &account, &options);
+        assert_eq!(row.readiness, Readiness::Struggle);
+        assert!(
+            row.reason.contains("No usable owned Magic"),
+            "{}",
+            row.reason
+        );
+    }
+}
+
+#[test]
 fn tribrid_and_yama_ratings_require_every_mandatory_style() {
     let account = strong_account();
     for (style, bosses) in [
@@ -341,7 +374,11 @@ fn aliases_agree_and_unreviewed_modes_explain_the_blocker() {
             .contains("scaling")
     );
     assert!(row("Tombs of Amascut").detail.contains("raid-level-0"));
-    assert!(row("Tombs of Amascut").reason.contains("Solo · raid level 0"));
+    assert!(
+        row("Tombs of Amascut")
+            .reason
+            .contains("Solo · raid level 0")
+    );
     assert!(row("Fight Caves").detail.contains("63 waves"));
     assert!(row("Yama").detail.contains("Hybrid baseline"));
     assert!(row("Yama").reason.contains("Melee-boss hybrid"));

@@ -32,6 +32,8 @@ pub const SKILLS: [&str; 24] = [
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 pub struct Member {
+    #[serde(default)]
+    pub sailing_owned: crate::sailing_owned::Fleet,
     pub name: String,
     #[serde(default)]
     pub item_names: BTreeMap<i32, String>,
@@ -162,6 +164,9 @@ impl Snapshot {
         }
         let mut names = std::collections::BTreeSet::new();
         for m in &members {
+            if !m.sailing_owned.valid() {
+                return Err("Invalid Sailing availability.".into());
+            }
             if m.quest_overrides.len() > 500
                 || m.quest_overrides
                     .iter()

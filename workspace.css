@@ -159,3 +159,6 @@
 .loadout-preview>.phase-tabs{display:flex;align-items:center;flex-wrap:wrap;gap:8px;width:100%;padding:0}
 .encounter-picker>summary>.wide-label{float:none;margin-left:0}
 @media(max-width:580px){.loadout-layout{grid-template-columns:minmax(0,1fr)}.plan-actions{max-width:100%}}
+
+/* Owned Sailing scenarios reuse the shipyard's direct icon controls. */
+.ship-fleet,.ship-forecast,.ship-recommendation{margin:18px 0;padding:16px;border:2px solid #77613e;background:#211f18;border-radius:4px}.ship-fleet .actions{display:flex;flex-wrap:wrap;gap:8px}.ship-fleet .ship-picker{margin-top:16px}.ship-fleet h4{margin:18px 0 8px}.ship-forecast .ship-budget{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px}.ship-recommendation .ship-choice-grid{margin-bottom:14px}.ship-recommendation span.ship-choice{min-width:0}.ship-recommendation .ship-choice small{overflow-wrap:anywhere}

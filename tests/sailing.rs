@@ -82,23 +82,25 @@ fn hull_and_keel_health_and_flat_reduction_use_boat_specific_tables() {
     );
 }
 #[test]
-fn crew_max_hits_use_sailing_privateering_and_rounding_not_worn_gear() {
+fn crew_max_hits_use_privateering_and_ignore_player_levels_and_boosts() {
     let mut boat = gunboat();
-    // floor((99*(26+201+64)+320)/640)=45; floor(45*17/20)=38.
-    assert_eq!(boat.crew_max(&member(99), 0).unwrap(), 38);
-    boat.perildance = true; // floor(46*.85)=39.
-    assert_eq!(boat.crew_max(&member(99), 0).unwrap(), 39);
-    boat.visible_sailing = Some(112); // floor((112*291+320)/640)=51, +1; floor52*.85=44.
-    assert_eq!(boat.crew_max(&member(99), 1).unwrap(), 44);
+    // Privateering 4: floor(0.5 + (4*12+8)*(26+201+64)/640) = 25.
+    assert_eq!(boat.crew_max(&member(99), 0).unwrap(), 25);
+    boat.perildance = true;
+    assert_eq!(boat.crew_max(&member(99), 0).unwrap(), 26);
+    boat.visible_sailing = Some(112);
+    assert_eq!(boat.crew_max(&member(99), 1).unwrap(), 26);
     let mut low_ranged = member(99);
     low_ranged.level_overrides.insert("Ranged".into(), 1);
-    assert_eq!(boat.crew_max(&low_ranged, 1).unwrap(), 44);
+    assert_eq!(boat.crew_max(&low_ranged, 1).unwrap(), 26);
+    boat.visible_sailing = None;
     assert!(
         boat.crew_max(&member(79), 1)
             .unwrap_err()
             .contains("80 Sailing")
     );
 }
+
 #[test]
 fn crew_and_player_cannot_double_operate_cannons_and_small_boats_have_real_limits() {
     let mut boat = gunboat();

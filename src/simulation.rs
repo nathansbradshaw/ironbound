@@ -405,6 +405,16 @@ fn consumption_rules() -> &'static ConsumptionRules {
             .expect("reviewed consumption rules")
     })
 }
+/// Shared conservative resource classification for other trip simulators.
+pub fn charged_weapon(weapon: i32, style: &str, projectile: Option<i32>) -> bool {
+    let Some(rule) = rules::weapon(weapon) else {
+        return false;
+    };
+    !consumption_rules().charge_free_weapons.contains(&weapon)
+        && (rule.family.formula == rules::Formula::Powered
+            || consumption_rules().charge_on_damage.contains(&weapon)
+            || (style == "Ranged" && projectile.is_none() && rule.family.ammo.is_empty()))
+}
 fn attack(
     snapshot: &Snapshot,
     o: &Options,
@@ -482,10 +492,7 @@ fn attack(
         (!rule.family.ammo.is_empty()).then_some(set[13]).flatten()
     };
     let runes = rules::rune_supplies_for_set(spell, 1, set);
-    let charge = !consumption_rules().charge_free_weapons.contains(&weapon)
-        && (rule.family.formula == rules::Formula::Powered
-            || consumption_rules().charge_on_damage.contains(&weapon)
-            || (style == "Ranged" && projectile.is_none() && rule.family.ammo.is_empty()));
+    let charge = charged_weapon(weapon, style, projectile);
     Ok(Attack {
         hits,
         weapon,

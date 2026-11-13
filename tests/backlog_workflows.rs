@@ -12,6 +12,7 @@ use std::collections::BTreeMap;
 
 fn saved(options: Options) -> Saved {
     Saved {
+        death_risk: Default::default(),
         version: 1,
         snapshot: account::demo(),
         options,

@@ -17,6 +17,18 @@ pub fn notes(set: &[Option<i32>], settings: &Settings) -> Vec<String> {
         if weapon.has(rules::Effect::StrengthRanged) {
             notes.push("Atlatl: Ranged accuracy/prayers, Strength level and melee strength bonuses for damage. Full Eclipse Moon finite-HP timing starts empty and simulates buildup, timed pulses, five-stack blocking, expiry and target death. Full-fight phase clearing is an explicit scenario assumption.".into());
         }
+        if weapon.has(rules::Effect::Twinflame) {
+            notes.push("Twinflame: six-tick standard casts, 10% standard-spell accuracy/damage and a correlated 40% second hit for elemental Bolt/Blast/Wave spells. Strike, Surge and binding spells receive no second hit. Guaranteed-hit/P2 extra-hit transforms remain unavailable.".into());
+        }
+        if ["ayak", "zorya"].contains(&weapon.weapon.family.as_str()) {
+            notes.push("Charged powered weapon: normal attacks only. Verify loaded charges; special attacks, empowered follow-ups and energy rotations are excluded.".into());
+        }
+        if weapon.weapon.family == "dragon_wand" {
+            notes.push("Dragon hunter wand: standard and supported Ice casts; dragonbane applies before elemental weakness. Spell rune costs are packed normally; no free runes are inferred.".into());
+        }
+    }
+    if rules::equipped_effect(set, "charged_quiver") {
+        notes.push("Charged Dizana quiver: +10 Ranged accuracy and +1 Ranged strength only while firing compatible arrows/bolts. Self-ammunition bows, blowpipes, atlatls and bolt racks receive no charged passive. Verify sunfire charges.".into());
     }
     if set.get(3) == Some(&Some(28988)) {
         notes.push(format!("Blue Moon spear: elemental, binding, Ice and Grasp spells, plus melee. Free melee: {} (requires the in-game automatic melee option and melee range).",settings.blue_moon_melee));

@@ -180,8 +180,51 @@ pub fn estimate_phases(
     trials: u32,
     seed: u64,
 ) -> Result<Estimate, String> {
-    if !attack.valid()
-        || !(1..=20).contains(&ticks)
+    if !attack.valid() {
+        return Err("Invalid finite-HP burn outcomes.".into());
+    }
+    estimate_timeline(|_| attack, ticks, start, phases, trials, seed)
+}
+
+/// One profile for each HP in stop+1..=start, in ascending HP order. Both
+/// direct-hit/proc probabilities and pulse reductions follow the current HP.
+pub fn estimate_dynamic(
+    attacks: &[BurnAttack],
+    ticks: u32,
+    start: u32,
+    stop: u32,
+    trials: u32,
+    seed: u64,
+) -> Result<Estimate, String> {
+    if stop >= start
+        || attacks.len() != (start - stop) as usize
+        || attacks.iter().any(|a| !a.valid())
+    {
+        return Err("Invalid HP-dependent burn outcomes.".into());
+    }
+    estimate_timeline(
+        |hp| &attacks[(hp - stop - 1) as usize],
+        ticks,
+        start,
+        &[Phase {
+            stop_hp: stop,
+            downtime: 0,
+            clear_burns: true,
+        }],
+        trials,
+        seed,
+    )
+}
+
+fn estimate_timeline<'a>(
+    attack_at: impl Fn(u32) -> &'a BurnAttack,
+    ticks: u32,
+    start: u32,
+    phases: &[Phase],
+    trials: u32,
+    seed: u64,
+) -> Result<Estimate, String> {
+    if !(1..=20).contains(&ticks)
         || !(1..=10_000).contains(&start)
         || !(1..=16_384).contains(&trials)
         || phases.is_empty()
@@ -212,7 +255,7 @@ pub fn estimate_phases(
                     return Err("Burn timing exceeds the bounded simulation budget; no partial-completion estimate is returned.".into());
                 }
                 if now >= ready {
-                    let hit = attack.sample(random.unit());
+                    let hit = attack_at(hp).sample(random.unit());
                     shots += 1;
                     ready = now + ticks;
                     hp = hp.saturating_sub(hit.damage as u32);
@@ -229,7 +272,7 @@ pub fn estimate_phases(
                 } else {
                     hp
                 };
-                let n = attack.pulse.damage(burns.tick()).min(remaining);
+                let n = attack_at(hp).pulse.damage(burns.tick()).min(remaining);
                 hp -= n;
                 damage += n;
             }

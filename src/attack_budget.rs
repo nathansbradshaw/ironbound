@@ -5,7 +5,7 @@ use crate::{
     planner::{Monster, Options},
 };
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct Budget {
     pub attacks: f64,
     pub seconds: f64,
@@ -196,6 +196,36 @@ pub fn for_dynamic_window(
     spell: &str,
     o: &Options,
 ) -> Result<Budget, String> {
+    let key = serde_json::to_vec(&(member, set, style, target, spell, o.raid_level, &o.combat))
+        .map_err(|e| e.to_string())?;
+    thread_local! {static CACHE:std::cell::RefCell<std::collections::VecDeque<(Vec<u8>,Budget)>>=const{std::cell::RefCell::new(std::collections::VecDeque::new())};}
+    if let Some(value) = CACHE.with(|c| {
+        c.borrow()
+            .iter()
+            .find(|(k, _)| *k == key)
+            .map(|(_, v)| v.clone())
+    }) {
+        return Ok(value);
+    }
+    let value = dynamic_window(member, set, style, target, spell, o)?;
+    CACHE.with(|c| {
+        let mut c = c.borrow_mut();
+        if c.len() >= 16 {
+            c.pop_front();
+        }
+        c.push_back((key, value.clone()));
+    });
+    Ok(value)
+}
+
+fn dynamic_window(
+    member: &crate::account::Member,
+    set: &[Option<i32>],
+    style: &str,
+    target: &Monster,
+    spell: &str,
+    o: &Options,
+) -> Result<Budget, String> {
     let window = crate::encounters::window(target.id).ok_or("Dynamic window unavailable.")?;
     if window.hp_scaling.is_none() || window.comparison_probe || window.cycle.is_some() {
         return Err("This window has no reviewed dynamic HP workload.".into());
@@ -219,6 +249,8 @@ pub fn for_dynamic_window(
     let mut attacks = vec![0.0; start as usize + 1];
     let mut seconds = attacks.clone();
     let mut settings = o.combat.clone();
+    let mut burn_profiles = Vec::new();
+    let mut burn_ticks = None;
     for hp in stop + 1..=start {
         settings.target_hp.insert(target.id, hp);
         let r = combat::calculate_configured(
@@ -230,8 +262,19 @@ pub fn for_dynamic_window(
             o.raid_level,
             &settings,
         )?;
-        if r.burn_dps > 0.0 {
-            return Err("Finite Eclipse burn timing with HP-dependent NPC accuracy is unverified; a fixed snapshot cannot replace that changing accuracy.".into());
+        if let Some(burn) = &r.burn {
+            if !burn.matches(&r.hit_distribution)
+                || r.hp_dependent.is_some()
+                || r.expected_attack_ticks != f64::from(r.attack_ticks)
+                || burn_ticks.is_some_and(|t| t != r.attack_ticks)
+            {
+                return Err("Invalid HP-dependent Eclipse attack timing/outcomes.".into());
+            }
+            burn_ticks = Some(r.attack_ticks);
+            burn_profiles.push(burn.clone());
+            continue;
+        } else if r.burn_dps > 0.0 {
+            return Err("Missing joint Eclipse burn outcomes.".into());
         }
         let mut a = 1.0;
         let mut time = r.expected_attack_ticks * 0.6;
@@ -260,6 +303,24 @@ pub fn for_dynamic_window(
         if !attacks[hp as usize].is_finite() || !seconds[hp as usize].is_finite() {
             return Err("Dynamic attack expectation is unbounded.".into());
         }
+    }
+    if let Some(ticks) = burn_ticks {
+        let burn = crate::burn::estimate_dynamic(
+            &burn_profiles,
+            ticks as u32,
+            start,
+            stop,
+            4096,
+            0xecc11e5e,
+        )?;
+        return Ok(Budget {
+            attacks: burn.attacks * f64::from(window.entity_count),
+            seconds: burn.cooldown_ticks * 0.6 * f64::from(window.entity_count),
+            start_hp: start,
+            stop_hp: stop,
+            entities: window.entity_count,
+            burn: Some(burn),
+        });
     }
     Ok(Budget {
         attacks: attacks[start as usize] * f64::from(window.entity_count),

@@ -148,11 +148,17 @@ pub fn choose(candidates: Vec<Candidate>, tolerance: u32, ceiling: usize) -> Sug
         })
         .map(|(i, _)| i);
     let best = &result.candidates[result.best.unwrap()];
+    // Also preserve known defensive gains in the most flexible comparable plan;
+    // a fast but fragile benchmark must not erase the value of that equipment.
     result.compact = result
         .candidates
         .iter()
         .enumerate()
-        .filter(|(_, c)| c.budget.cap <= ceiling.min(11) && qualifies(c, best, tolerance))
+        .filter(|(_, c)| {
+            c.budget.cap <= ceiling.min(11)
+                && qualifies(c, best, tolerance)
+                && incoming_guard(c, &result.candidates[basis], tolerance)
+        })
         .min_by(|(_, a), (_, b)| {
             (
                 a.budget.max_inventory_space,
@@ -176,9 +182,15 @@ pub fn choose(candidates: Vec<Candidate>, tolerance: u32, ceiling: usize) -> Sug
         })
         .map(|(i, _)| i);
     if result.compact.is_none() {
-        result.reason = Some(format!(
-            "No setup within your {ceiling}-change limit meets the {tolerance}% time, prayer and known-damage tolerance. Raise the limit to consider more switches."
-        ));
+        result.reason = Some(if ceiling < 11 {
+            format!(
+                "No setup within your {ceiling}-change limit meets the {tolerance}% time, prayer and known-damage tolerance. Raise the limit to consider more switches."
+            )
+        } else {
+            format!(
+                "No setup meets the combined {tolerance}% time, prayer and defensive targets. Compare switches to review the tradeoffs."
+            )
+        });
     }
     result
 }

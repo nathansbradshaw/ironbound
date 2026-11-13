@@ -33,6 +33,20 @@ fn chooses_compact_near_best_instead_of_filling_the_largest_ceiling() {
     assert_eq!(result.compact, Some(1));
 }
 #[test]
+fn a_fast_but_fragile_benchmark_cannot_erase_the_full_budget_defensive_gain() {
+    let mut compact = candidate(2, 3, 18, 101.0, 101.0);
+    let mut fastest = candidate(5, 5, 20, 100.0, 100.0);
+    let mut defensive = candidate(11, 8, 23, 102.0, 100.0);
+    for row in [&mut compact, &mut fastest] {
+        row.budget.windows[0].metrics.incoming[0].dps = Some(1.0);
+    }
+    defensive.budget.windows[0].metrics.incoming[0].dps = Some(0.5);
+    let result = efficient::choose(vec![compact, fastest, defensive], 3, 11);
+    assert_eq!(result.best, Some(1));
+    assert_eq!(result.compact, Some(2));
+}
+
+#[test]
 fn prayer_cost_is_guarded_alongside_attack_time() {
     let result = efficient::choose(
         vec![

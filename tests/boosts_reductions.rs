@@ -21,11 +21,9 @@ fn member(level: u32) -> Member {
     m
 }
 fn target() -> planner::Monster {
-    let mut m = planner::monsters()
-        .iter()
-        .find(|m| m.name.starts_with("Vorkath"))
-        .unwrap()
-        .clone();
+    // Synthetic reduction arithmetic needs the reviewed post-quest target;
+    // the explicitly gated quest version must not depend on catalog ordering.
+    let mut m = planner::monster(8059).unwrap().clone();
     m.skills = [
         ("def", 100),
         ("str", 70),

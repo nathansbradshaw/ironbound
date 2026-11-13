@@ -157,3 +157,75 @@ pub fn render(
     html.push_str("</div>");
     html
 }
+
+/// Keep interactive comparisons beside their source, or scroll them into the
+/// available vertical space. Clamping a full-size panel can cover its trigger
+/// and intercept the click that should open the equipment/inventory picker.
+#[derive(Debug)]
+pub struct Position {
+    pub left: f64,
+    pub top: f64,
+    pub max_height: f64,
+}
+pub fn position(anchor: (f64, f64, f64, f64), viewport: (f64, f64), size: (f64, f64)) -> Position {
+    let (x, y, w, h) = anchor;
+    let (vw, vh) = viewport;
+    let (tw, th) = size;
+    let gap = 8.0;
+    let screen_height = (vh - gap * 2.0).max(1.0);
+    let right = x + w + gap;
+    let left = x - tw - gap;
+    if right + tw <= vw - gap || left >= gap {
+        let max_height = th.min(screen_height);
+        return Position {
+            left: if right + tw <= vw - gap { right } else { left },
+            top: y.clamp(gap, (vh - max_height - gap).max(gap)),
+            max_height,
+        };
+    }
+    let above = (y - gap * 2.0).max(1.0);
+    let below = (vh - y - h - gap * 2.0).max(1.0);
+    let use_above = above >= th || above >= below;
+    let max_height = th.min(if use_above { above } else { below });
+    Position {
+        left: (x + (w - tw) / 2.0).clamp(gap, (vw - tw - gap).max(gap)),
+        top: if use_above {
+            (y - gap - max_height).max(gap)
+        } else {
+            y + h + gap
+        },
+        max_height,
+    }
+}
+
+#[cfg(test)]
+mod placement_tests {
+    use super::*;
+    fn assert_accessible(a: (f64, f64, f64, f64), v: (f64, f64), s: (f64, f64)) {
+        let p = position(a, v, s);
+        assert!(p.left >= 8.0 && p.top >= 8.0);
+        assert!(p.left + s.0 <= v.0 - 8.0 + 0.01 && p.top + p.max_height <= v.1 - 8.0 + 0.01);
+        assert!(
+            p.left >= a.0 + a.2
+                || p.left + s.0 <= a.0
+                || p.top >= a.1 + a.3
+                || p.top + p.max_height <= a.1,
+            "comparison must not cover the clickable source: {p:?}"
+        );
+    }
+    #[test]
+    fn desktop_prefers_space_beside_the_item() {
+        let a = (365.0, 350.0, 48.0, 48.0);
+        let p = position(a, (1280.0, 720.0), (360.0, 420.0));
+        assert_eq!(p.left, 421.0);
+        assert_accessible(a, (1280.0, 720.0), (360.0, 420.0));
+        assert_accessible((1100.0, 650.0, 48.0, 48.0), (1280.0, 720.0), (360.0, 420.0));
+    }
+    #[test]
+    fn mobile_limits_height_instead_of_covering_the_item() {
+        for y in [20.0, 200.0, 350.0, 700.0] {
+            assert_accessible((160.0, y, 48.0, 48.0), (390.0, 844.0), (360.0, 700.0));
+        }
+        assert_accessible((120.0, 100.0, 48.0, 48.0), (320.0, 320.0), (300.0, 500.0));
+    }
+}

@@ -154,9 +154,34 @@ fn eclipse_burn_death_stops_projectiles_and_new_fights_have_no_old_stacks() {
 }
 
 #[test]
+fn vorkath_burns_carried_into_acid_can_finish_the_target_without_another_shot() {
+    let mut m = model(Encounter::Vorkath, 1);
+    m.hp[0] = 29;
+    m.attacks = vec![burning(0, 4); 2];
+    m.settings.acid_ticks = 8;
+    m.settings.acid_uptime = 0;
+    let report = simulation::simulate(&m).unwrap();
+    let acid_first: Vec<_> = report
+        .runs
+        .iter()
+        .filter(|r| r.usage.acid == 1 && r.usage.freeze == 0)
+        .collect();
+    assert!(!acid_first.is_empty());
+    for run in acid_first {
+        assert!(run.completed);
+        // Normal pulses at 5,9,13,17,21,25,29 deal 25. Acid pulses
+        // at 33 and 37 deal floor(5/2)=2 each; no acid attack is used.
+        assert_eq!(
+            (run.usage.ticks, run.usage.attacks, run.usage.burn_damage),
+            (37, 8, 29)
+        );
+        assert_eq!(run.usage.burns_cleared, 0);
+    }
+}
+#[test]
 fn full_fight_phase_clearing_is_explicit_and_changes_the_actual_burn_timeline() {
     let mut m = model(Encounter::Vorkath, 1);
-    m.hp[0] = 100;
+    m.hp[0] = 300;
     m.attacks = vec![burning(1, 3); 2];
     let reset = simulation::simulate(&m).unwrap();
     assert!(

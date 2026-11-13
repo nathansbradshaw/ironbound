@@ -4890,11 +4890,17 @@ fn simulation_panel(s: &State, p: &Plan) -> String {
             true
         };
         if relevant && key == "burn_phase_resets" {
-            html.push_str("<div role=\"group\" aria-label=\"Burn stacks at phase changes\"><span>Burn stacks at phase changes</span><div class=\"combat-subtype-options\">");
+            html.push_str("<div role=\"group\" aria-label=\"Burn stacks at unverified phase changes\"><span>Burn stacks at unverified phase changes</span><div class=\"combat-subtype-options\">");
             for (n, label) in [(1, "Clear stacks"), (0, "Keep aging stacks")] {
                 html.push_str(&format!("<button class=\"phase {}\" data-action=\"simulation-burn-reset:{n}\" aria-pressed=\"{}\">{label}</button>",if value==n {"active"}else{""},value==n));
             }
-            html.push_str("</div><p class=\"small-note\">Scenario assumption: confirm phase clearing for this encounter. Retained burns expire during invulnerable downtime without damaging the target.</p></div>");
+            html.push_str("</div><p class=\"small-note\">");
+            if encounter == Encounter::Vorkath {
+                html.push_str("Freeze/spawn only; clearing remains an assumption. Retained burns expire during immunity without dealing damage.");
+            } else {
+                html.push_str("Scenario assumption: confirm phase clearing for this encounter. Retained burns expire during invulnerable downtime without damaging the target.");
+            }
+            html.push_str("</p></div>");
         } else if relevant && key == "warden" {
             html.push_str("<div role=\"group\" aria-label=\"P2 Warden\"><span>Fight in P2</span><div class=\"combat-subtype-options\">");
             for (n, label) in [(0, "Elidinis"), (1, "Tumeken")] {
@@ -4905,7 +4911,11 @@ fn simulation_panel(s: &State, p: &Plan) -> String {
             html.push_str(&format!("<label>{}<input id=\"sim-{key}\" type=\"number\" min=\"{min}\" max=\"{max}\" value=\"{value}\"></label>",esc(label)));
         }
     }
-    html.push_str("</div><p class=\"small-note\">A tick is 0.6 seconds. Residual incoming HP/min is after protection and excludes failed mechanics added separately. Recovery and loaded charges are assumptions you must verify. Wardens uses supplies at room entry, excludes the earlier raid rooms and mechanic-changing invocations, and supports solo raid levels 0–150.</p>");
+    html.push_str("</div>");
+    if encounter == Encounter::Vorkath {
+        html.push_str("<p class=\"small-note\">Vorkath acid entry/exit retain Eclipse burns regardless of the freeze/spawn control, following inspected 2024 gameplay. Current-patch confirmation is still needed.</p>");
+    }
+    html.push_str("<p class=\"small-note\">A tick is 0.6 seconds. Residual incoming HP/min is after protection and excludes failed mechanics added separately. Recovery and loaded charges are assumptions you must verify. Wardens uses supplies at room entry, excludes the earlier raid rooms and mechanic-changing invocations, and supports solo raid levels 0–150.</p>");
     html.push_str(&button(
         "simulate-fight",
         "Run fight & trip simulation",

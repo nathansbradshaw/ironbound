@@ -11,7 +11,7 @@ use std::collections::BTreeMap;
 
 /// Bump when fight timeline or consumption semantics change. A fitted worksheet
 /// must not silently validate another version of the simulation engine.
-pub const MODEL_REVISION: u32 = 2;
+pub const MODEL_REVISION: u32 = 3;
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(default, deny_unknown_fields)]
@@ -87,7 +87,7 @@ impl Settings {
         vec![
             (
                 "burn_phase_resets",
-                "Clear burns at phase boundaries (0 no, 1 yes)",
+                "Clear burns at unverified boundaries, excluding Vorkath acid (0 no, 1 yes)",
                 self.burn_phase_resets,
                 0,
                 1,
@@ -604,7 +604,7 @@ impl Model {
         foods.sort_by_key(|(_, heal, _)| std::cmp::Reverse(*heal));
         notes.push("Incoming HP/min applies during exposed attack phases after protection, excluding separate failed mechanics. It is not inferred from unverified attack mixtures. Yama prioritizes killing all flares rather than glyph-skipping them; melee-range autos can spawn extra final flares.".into());
         notes.push("Timing, uptime, missed mechanics, flare healing/regeneration, skull damage and recovery are editable scenario inputs. Defaults are illustrative, not measured player performance.".into());
-        notes.push(format!("Eclipse burns use target-local timed stacks, not steady-state DPS. Phase-boundary clearing: {}. This is an explicit scenario assumption; confirm it for the encounter. Invulnerable downtime ages retained stacks without damage, new targets/fights start empty, and dead targets receive no more pulses or attacks.",if o.simulation.burn_phase_resets==1 {"on"} else {"off"}));
+        notes.push(format!("Eclipse burns use target-local timed stacks, not steady-state DPS. Unverified phase-boundary clearing: {}. This is an explicit scenario assumption; confirm it for the encounter. Vorkath acid entry/exit retain stacks independently of this setting, following inspected 2024 Eclipse gameplay; current-patch confirmation and other boundaries remain open. Invulnerable downtime ages retained stacks without damage, new targets/fights start empty, and dead targets receive no more pulses or attacks.",if o.simulation.burn_phase_resets==1 {"on"} else {"off"}));
         notes.push("Every fight starts with full boss HP. The comparison panel's current-target-HP and fixed-player-HP assumptions are not fight starting conditions. Player HP/Prayer and supplies carry between fights.".into());
         notes.push("No special attacks, passive healing, boost decay, combo eating, projectile travel, armour degradation, tome pages, poison/venom or potion protection expiry. Keep protection/boosts maintained manually. Weapon charges and blowpipe scales are reported separately.".into());
         if encounter == Encounter::Wardens {
@@ -996,6 +996,14 @@ impl<'a> Runner<'a> {
             self.clear_burns();
         }
     }
+    fn vorkath_boundary(&mut self, acid: bool) {
+        // Eclipse burns persist into and out of acid in the inspected footage.
+        // Freeze/spawn reset semantics remain an explicit scenario assumption.
+        // See docs/eclipse-burn-gameplay.md for observations and version limits.
+        if !acid {
+            self.phase_reset();
+        }
+    }
     fn attack_until(&mut self, hp: &mut u32, stop: u32, index: usize, phase: &str) -> bool {
         while *hp > stop {
             if !self.tick(phase, index, true) {
@@ -1030,7 +1038,7 @@ impl<'a> Runner<'a> {
                     return true;
                 }
             }
-            self.phase_reset();
+            self.vorkath_boundary(acid);
             if acid {
                 self.usage.acid += 1;
                 for _ in 0..self.m.settings.acid_ticks {
@@ -1068,8 +1076,8 @@ impl<'a> Runner<'a> {
                 }
                 self.fail(60);
             }
+            self.vorkath_boundary(acid);
             acid = !acid;
-            self.phase_reset();
             if !self.alive {
                 return false;
             }
@@ -1569,6 +1577,87 @@ mod consumption_tests {
         r.burn_damage(7, &mut first, 1, None);
         assert_eq!(first, 99, "expired pulses are not queued for later");
         assert!(r.burns.is_empty());
+    }
+    #[test]
+    fn vorkath_acid_preserves_burn_clock_and_stacks_at_both_boundaries() {
+        let model = eclipse_model();
+        let mut r = Runner::new(&model, 1);
+        let mut stacks = crate::burn::Burns::default();
+        for _ in 0..5 {
+            assert!(stacks.apply());
+        }
+        r.burns.insert(
+            0,
+            TargetBurn {
+                stacks,
+                pulse: 0,
+                rule: Default::default(),
+            },
+        );
+        r.ready = 20;
+        r.vorkath_boundary(true);
+        let mut hp = 100;
+        for _ in 0..8 {
+            assert!(r.tick("Acid", 1, false));
+            r.burn_damage(0, &mut hp, 1, Some(2));
+        }
+        assert_eq!(
+            hp, 96,
+            "two combined five-stack acid pulses, each floored to two"
+        );
+        r.vorkath_boundary(true);
+        for _ in 0..4 {
+            assert!(r.tick("Normal", 0, false));
+            r.burn_damage(0, &mut hp, 0, None);
+        }
+        assert_eq!(hp, 91, "the existing clock and stacks survive acid exit");
+        assert_eq!(
+            (r.ready, r.usage.attacks, r.usage.burns_cleared),
+            (20, 0, 0)
+        );
+        r.vorkath_boundary(false);
+        assert!(r.burns.is_empty());
+        assert_eq!(
+            (r.ready, r.usage.burns_cleared),
+            (20, 5),
+            "freeze policy remains independent"
+        );
+    }
+    #[test]
+    fn vorkath_acid_carry_still_expires_and_stops_at_target_death() {
+        let model = eclipse_model();
+        for initial_hp in [1, 100] {
+            let mut r = Runner::new(&model, 1);
+            let mut stacks = crate::burn::Burns::default();
+            for _ in 0..5 {
+                stacks.apply();
+            }
+            r.burns.insert(
+                0,
+                TargetBurn {
+                    stacks,
+                    pulse: 0,
+                    rule: Default::default(),
+                },
+            );
+            let mut hp = initial_hp;
+            r.vorkath_boundary(true);
+            while hp > 0 && r.usage.ticks < 40 {
+                assert!(r.tick("Acid", 1, false));
+                r.burn_damage(0, &mut hp, 1, Some(2));
+            }
+            if initial_hp == 1 {
+                assert_eq!((hp, r.usage.ticks, r.usage.burn_damage), (0, 4, 1));
+            } else {
+                assert_eq!((hp, r.usage.burn_damage), (80, 20));
+                r.vorkath_boundary(true);
+                assert!(r.tick("Normal", 0, false));
+                r.burn_damage(0, &mut hp, 0, None);
+                assert_eq!(hp, 80, "expired acid pulses cannot queue damage after exit");
+            }
+            assert!(r.burns.is_empty());
+            assert_eq!(r.usage.attacks, 0);
+        }
     }
     #[test]
     fn reset_discards_target_stacks_without_resetting_attack_cooldown() {

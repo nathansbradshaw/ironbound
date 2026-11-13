@@ -8,11 +8,12 @@ use crate::{
     rules,
 };
 use std::{collections::BTreeMap, sync::OnceLock};
-pub const FILTERS: [&str; 10] = [
+pub const FILTERS: [&str; 11] = [
     "For you",
     "Well equipped",
     "Doable",
     "A struggle",
+    "Requirements missing",
     "Not assessed",
     "Popular",
     "Bosses",
@@ -26,6 +27,7 @@ pub enum Readiness {
     WellEquipped,
     Doable,
     Struggle,
+    RequirementsMissing,
     Unknown,
 }
 impl Readiness {
@@ -34,6 +36,7 @@ impl Readiness {
             Self::WellEquipped => "Well equipped",
             Self::Doable => "Doable",
             Self::Struggle => "A struggle",
+            Self::RequirementsMissing => "Requirements missing",
             Self::Unknown => "Not assessed",
         }
     }
@@ -42,6 +45,7 @@ impl Readiness {
             Self::WellEquipped => "ready",
             Self::Doable => "doable",
             Self::Struggle => "struggle",
+            Self::RequirementsMissing => "requirements",
             Self::Unknown => "unknown",
         }
     }
@@ -341,6 +345,24 @@ pub fn assess_catalog(snapshot: &Snapshot, preferences: &Options) -> Vec<Assessm
     crate::encounters::catalog().iter().map(|entry| {
         if !entry.bank_equipment { return unknown("This encounter needs its own equipment or skilling readiness model."); }
         if entry.targets.is_empty() { return unknown(if crate::encounters::mechanics().unverified_modes.contains(&entry.name) { "This mode needs its own scaling and readiness model; the base-mode rating does not apply." } else { "A verified target mapping is needed before gear readiness can be rated." }); }
+        let guideline = profile(&entry.name);
+        if let Some(p) = guideline.as_ref().filter(|p| p.slayer > 0) {
+            match member.level("Slayer") {
+                Some(level) if level < p.slayer => return Assessment {
+                    readiness: Readiness::RequirementsMissing,
+                    reason: format!("Needs {} Slayer (yours: {level}).", p.slayer),
+                    detail: format!("Reach {} Slayer to clear this entry requirement. {}", p.slayer, p.note),
+                    wilderness: false,
+                    preview: None,
+                },
+                None => {
+                    let mut a = unknown(&format!("Add your Slayer level to check the {} Slayer requirement.", p.slayer));
+                    a.detail = p.note.into();
+                    return a;
+                }
+                _ => {}
+            }
+        }
         let mut incomplete: Vec<_> = entry.targets.iter().filter_map(|t| {
             let target = planner::monster(t.id);
             target.is_none_or(|m| crate::encounters::limitation(m).is_some()).then(|| target.map(|m| m.name.as_str()).unwrap_or("unmapped target"))
@@ -351,12 +373,9 @@ pub fn assess_catalog(snapshot: &Snapshot, preferences: &Options) -> Vec<Assessm
             a.detail = format!("Readiness needs reviewed calculations for: {}. Check the encounter coverage notes for the remaining mechanics.", incomplete.join(", "));
             return a;
         }
-        let Some(p) = profile(&entry.name) else { return unknown("No reviewed readiness guideline yet. Open the gear plan where available."); };
+        let Some(p) = guideline else { return unknown("No reviewed readiness guideline yet. Open the gear plan where available."); };
         if matches!(entry.name.as_str(), "TzTok-Jad" | "Fight Caves") && member.level("Prayer").unwrap() < 43 {
-            return Assessment { readiness: Readiness::Struggle, reason: format!("Ranged baseline needs 43 Prayer for protection switches (yours: {}).", member.level("Prayer").unwrap()), detail: p.note.into(), wilderness: false, preview: None };
-        }
-        if p.slayer > 0 && !member.level("Slayer").is_some_and(|level| level >= p.slayer) {
-            return Assessment { readiness: Readiness::Struggle, reason: format!("Needs {} Slayer (yours: {}).", p.slayer, member.level("Slayer").map(|v| v.to_string()).unwrap_or_else(|| "unknown".into())), detail: p.note.into(), wilderness: false, preview: None };
+            return Assessment { readiness: Readiness::Struggle, reason: format!("43 Prayer is recommended for this ranged baseline (yours: {}).", member.level("Prayer").unwrap()), detail: p.note.into(), wilderness: false, preview: None };
         }
         let mut choices = vec![];
         for required in p.styles {
@@ -537,8 +556,11 @@ pub fn assess_wilderness(snapshot: &Snapshot, preferences: &Options, cap: u32) -
             continue;
         }
         a.wilderness = true;
-        if a.readiness == Readiness::Unknown {
-            a.detail = crate::wilderness::CAUTION.into();
+        if matches!(
+            a.readiness,
+            Readiness::Unknown | Readiness::RequirementsMissing
+        ) {
+            a.detail = format!("{} {}", a.detail, crate::wilderness::CAUTION);
             continue;
         }
         if let Some(preview) =

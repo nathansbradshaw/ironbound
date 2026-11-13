@@ -366,23 +366,55 @@ fn moon_followups_apply_chemical_and_hp_scaling_once_to_each_style() {
 }
 
 #[test]
-fn dynamic_vardorvis_budget_keeps_delayed_burn_unverified() {
+fn dynamic_vardorvis_burn_uses_falling_defence_and_recommendations_share_the_budget() {
     let mut gear = set(29000, Some(28991));
     for (slot, id) in [(0, 29010), (4, 29004), (7, 29007)] {
         gear[slot] = Some(id);
     }
-    let reason = attack_budget::for_dynamic_window(
-        &member(),
-        &gear,
-        "Ranged",
-        planner::monster(12223).unwrap(),
-        "",
-        &Options::default(),
-    )
-    .unwrap_err();
-    assert!(
-        reason.contains("burn") && reason.contains("unverified"),
-        "{reason}"
+    let mut options = Options::default();
+    options.boss = Boss::Custom;
+    options.targets = vec![Target {
+        id: 12223,
+        style: "Ranged".into(),
+    }];
+    let m = member();
+    let target = planner::monster(12223).unwrap();
+    let budget =
+        attack_budget::for_dynamic_window(&m, &gear, "Ranged", target, "", &options).unwrap();
+    let dynamic = budget.burn.as_ref().unwrap();
+    let frozen = combat::calculate(&m, &gear, "Ranged", target, "").unwrap();
+    let fixed = attack_budget::for_hp(&frozen, 700, 0).unwrap();
+    assert!(budget.attacks < fixed.attacks);
+    assert!(dynamic.burn_damage > 0.0);
+    let mut owned: std::collections::BTreeMap<_, _> =
+        gear.iter().flatten().map(|id| (*id, 1)).collect();
+    owned.insert(28991, 1000);
+    let assessed =
+        ironbound::recommendation::assess(&m, &gear, "Ranged", &options, &owned).unwrap();
+    close(assessed.time, budget.seconds);
+    let bow = set(9185, Some(9144));
+    owned.insert(9185, 1);
+    owned.insert(9144, 1000);
+    let other =
+        attack_budget::for_dynamic_window(&m, &bow, "Ranged", target, "", &options).unwrap();
+    let assessed = ironbound::recommendation::assess(&m, &bow, "Ranged", &options, &owned).unwrap();
+    close(assessed.time, other.seconds);
+    assert!(other.burn.is_none());
+    options.combat.target_hp.insert(12223, 1);
+    let low = attack_budget::for_dynamic_window(&m, &gear, "Ranged", target, "", &options).unwrap();
+    close(low.burn.as_ref().unwrap().burn_damage, 0.0);
+    assert!(low.attacks < budget.attacks);
+    let again =
+        attack_budget::for_dynamic_window(&m, &gear, "Ranged", target, "", &Options::default())
+            .unwrap();
+    close(again.seconds, budget.seconds);
+    options.combat.target_hp.insert(12223, 700);
+    options.combat.ranged_stance = "Accurate".into();
+    let accurate =
+        attack_budget::for_dynamic_window(&m, &gear, "Ranged", target, "", &options).unwrap();
+    assert_ne!(
+        accurate.seconds, budget.seconds,
+        "stance must invalidate the cached timing"
     );
 }
 

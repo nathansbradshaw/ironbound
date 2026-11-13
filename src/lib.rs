@@ -1,11 +1,14 @@
 pub mod account;
 pub mod bestiary;
+pub mod burn;
+pub mod death_risk;
 pub mod wilderness;
 
 pub mod alternatives;
 #[cfg(target_arch = "wasm32")]
 mod app;
 pub mod attack_budget;
+pub mod calibration;
 pub mod combat;
 pub mod coverage;
 pub mod defence;

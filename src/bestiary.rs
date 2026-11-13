@@ -8,11 +8,12 @@ use crate::{
     rules,
 };
 use std::{collections::BTreeMap, sync::OnceLock};
-pub const FILTERS: [&str; 9] = [
+pub const FILTERS: [&str; 10] = [
     "For you",
     "Well equipped",
     "Doable",
     "A struggle",
+    "Not assessed",
     "Popular",
     "Bosses",
     "Raids",
@@ -76,6 +77,12 @@ fn profile(name: &str) -> Option<Profile> {
             0,
             "Learn protection prayers and movement; keys may be needed.",
         ),
+        "Brutus" => (
+            40,
+            &["Melee", "Ranged", "Magic"],
+            0,
+            "Post-quest baseline. Bring the cowbell amulet and food; charges, stomps and safespot movement are not scored.",
+        ),
         "Barrows Chests" => (
             60,
             &["Magic", "Ranged"],
@@ -87,6 +94,24 @@ fn profile(name: &str) -> Option<Profile> {
             &["Melee"],
             0,
             "Check access and encounter supplies before travelling.",
+        ),
+        "Dagannoth Prime" => (
+            75,
+            &["Ranged"],
+            0,
+            "Prime-only ranged baseline. Protect from Magic, room entry, the other Kings and Spinolyps still need planning.",
+        ),
+        "Dagannoth Supreme" => (
+            75,
+            &["Melee"],
+            0,
+            "Supreme-only melee baseline. Protect from Missiles, room entry, the other Kings and Spinolyps still need planning.",
+        ),
+        "Dagannoth Kings" => (
+            80,
+            &["Melee", "Ranged", "Magic"],
+            0,
+            "Tribrid baseline: melee for Supreme, ranged for Prime and magic for Rex. The weakest required setup determines the rating; overlapping aggro, respawns and sustained supplies are not scored.",
         ),
         "Dagannoth Rex" => (
             60,
@@ -130,11 +155,47 @@ fn profile(name: &str) -> Option<Profile> {
             0,
             "Both styles are screened. Rotations, protection and phase mechanics need practice.",
         ),
-        "Moons of Peril" => (
+        "Moons of Peril" | "Lunar Chests" => (
             75,
             &["Melee"],
             0,
             "Defence matters heavily. Blood healing and special phases can change the outcome.",
+        ),
+        "Mimic" => (
+            75,
+            &["Melee", "Magic", "Ranged"],
+            0,
+            "Ordinary attacks against the Mimic body. Clue access, special attacks, freezing, candy minions and dodging stomps are not scored.",
+        ),
+        "Skotizo" => (
+            80,
+            &["Melee", "Ranged"],
+            0,
+            "Body damage assumes the altars are cleared. Bring a dark totem and a way to disable altars; Arclight/Emberlight can disable them in one hit. Altar timing, adds and running are not scored.",
+        ),
+        "Corporeal Beast" => (
+            90,
+            &["Melee", "Magic"],
+            0,
+            "Undrained body baseline with the reviewed Corpbane damage rules. Stab spears/halberds or a fang avoid the usual melee reduction. Team support, stat-drain specials, the dark core and incoming damage are not scored.",
+        ),
+        "TzTok-Jad" | "Fight Caves" => (
+            75,
+            &["Ranged"],
+            0,
+            "Ranged gear baseline, including Jad. Practise prayer switches and healer management; a rating does not assess surviving all 63 waves or having enough ammunition, prayer restoration and food for the run.",
+        ),
+        "Tombs of Amascut" => (
+            80,
+            &["Melee", "Ranged", "Magic"],
+            0,
+            "Solo, raid-level-0 gear baseline across all three required styles. The weakest setup determines the rating. Invocations, path/team scaling, puzzles, protection rotations and full-raid supplies are not scored; this is not an Expert-mode rating.",
+        ),
+        "Yama" => (
+            85,
+            &["Melee", "Magic"],
+            0,
+            "Hybrid baseline: melee on the boss and Judge, magic on the Judge and Void Flares. Both setups are required. Fast flare clearing, regeneration, poison control, glyphs, movement, duo support and contracts need separate checks.",
         ),
         "General Graardor" | "K'ril Tsutsaroth" | "Kalphite Queen" => (
             85,
@@ -215,7 +276,14 @@ fn profile(name: &str) -> Option<Profile> {
 fn requires_all(name: &str) -> bool {
     matches!(
         name,
-        "Barrows Chests" | "Zulrah" | "Phantom Muspah" | "Grotesque Guardians" | "Abyssal Sire"
+        "Barrows Chests"
+            | "Zulrah"
+            | "Phantom Muspah"
+            | "Grotesque Guardians"
+            | "Abyssal Sire"
+            | "Dagannoth Kings"
+            | "Tombs of Amascut"
+            | "Yama"
     )
 }
 
@@ -237,7 +305,8 @@ pub fn assess_catalog(snapshot: &Snapshot, preferences: &Options) -> Vec<Assessm
         recommended: Some(false),
         ..Default::default()
     };
-    let owned = snapshot.available(options.shared);
+    let mut owned = snapshot.available(options.shared);
+    owned.retain(|id, _| !options.item_excluded(*id));
     let member = planner::member_with_stock(snapshot.selected().expect("checked levels"), &owned);
     let sets: Vec<_> = ["Stab", "Slash", "Crush", "Ranged", "Magic"]
         .into_iter()
@@ -249,13 +318,25 @@ pub fn assess_catalog(snapshot: &Snapshot, preferences: &Options) -> Vec<Assessm
         })
         .collect();
     crate::encounters::catalog().iter().map(|entry| {
+        if !entry.bank_equipment { return unknown("This encounter needs its own equipment or skilling readiness model."); }
+        if entry.targets.is_empty() { return unknown(if crate::encounters::mechanics().unverified_modes.contains(&entry.name) { "This mode needs its own scaling and readiness model; the base-mode rating does not apply." } else { "A verified target mapping is needed before gear readiness can be rated." }); }
+        let mut incomplete: Vec<_> = entry.targets.iter().filter_map(|t| {
+            let target = planner::monster(t.id);
+            target.is_none_or(|m| crate::encounters::limitation(m).is_some()).then(|| target.map(|m| m.name.as_str()).unwrap_or("unmapped target"))
+        }).collect();
+        incomplete.dedup();
+        if !incomplete.is_empty() {
+            let mut a = unknown(&format!("Unreviewed phases: {}{}.", incomplete.iter().take(2).copied().collect::<Vec<_>>().join(", "), if incomplete.len() > 2 { format!(" and {} more", incomplete.len()-2) } else { String::new() }));
+            a.detail = format!("Readiness needs reviewed calculations for: {}. Check the encounter coverage notes for the remaining mechanics.", incomplete.join(", "));
+            return a;
+        }
         let Some(p) = profile(&entry.name) else { return unknown("No reviewed readiness guideline yet. Open the gear plan where available."); };
-        if !entry.bank_equipment || entry.targets.is_empty() { return unknown("This encounter needs its own equipment or mode model."); }
+        if matches!(entry.name.as_str(), "TzTok-Jad" | "Fight Caves") && member.level("Prayer").unwrap() < 43 {
+            return Assessment { readiness: Readiness::Struggle, reason: format!("Ranged baseline needs 43 Prayer for protection switches (yours: {}).", member.level("Prayer").unwrap()), detail: p.note.into(), wilderness: false, preview: None };
+        }
         if p.slayer > 0 && !member.level("Slayer").is_some_and(|level| level >= p.slayer) {
             return Assessment { readiness: Readiness::Struggle, reason: format!("Needs {} Slayer (yours: {}).", p.slayer, member.level("Slayer").map(|v| v.to_string()).unwrap_or_else(|| "unknown".into())), detail: p.note.into(), wilderness: false, preview: None };
         }
-        // All mapped windows must support outgoing estimates before an overall label.
-        if entry.targets.iter().any(|t| planner::monster(t.id).is_none_or(|m| crate::encounters::limitation(m).is_some())) { return unknown("Phase calculations are incomplete; readiness is not rated yet."); }
         let mut choices = vec![];
         for required in p.styles {
             let mut best: Option<(f64, &str, i32, u32, usize)> = None;
@@ -271,7 +352,7 @@ pub fn assess_catalog(snapshot: &Snapshot, preferences: &Options) -> Vec<Assessm
                     if requires_all(&entry.name) && rules::base_style(&target.style) != *required { continue; }
                     let Some(monster) = planner::monster(target.id) else { valid = false; break; };
                     let spell = rules::spell_name_for_target(&member, set, &owned, &options.combat, monster, 0);
-                    if *required == "Magic" && rules::spell_requirement(&member, set, &owned, &options.combat, spell).is_some() { valid = false; break; }
+                    if *required == "Magic" && (!rules::casting_supported_for_style(&member, set, &owned, &options.combat, style) || rules::spell_requirement(&member, set, &owned, &options.combat, spell).is_some()) { valid = false; break; }
                     match combat::calculate_configured(&member, set, style, monster, spell, 0, &options.combat) { Ok(result) if result.dps.is_finite() => lowest = lowest.min(result.dps), _ => { valid = false; break; } }
                 }
                 if valid && lowest.is_finite() && best.as_ref().is_none_or(|b| lowest > b.0) { best = Some((lowest, *style, weapon, level, armour)); }
@@ -290,7 +371,15 @@ pub fn assess_catalog(snapshot: &Snapshot, preferences: &Options) -> Vec<Assessm
                 else { Readiness::WellEquipped };
             readiness = readiness.max(band);
         }
-        let reason = choices.iter().map(|(dps, style, weapon, _, _)| format!("{} · {style} · {dps:.1} basic DPS", planner::item_name(*weapon))).collect::<Vec<_>>().join("; ");
+        let setup_reason = choices.iter().map(|(dps, style, weapon, _, _)| format!("{} · {style} · {dps:.1} basic DPS", planner::item_name(*weapon))).collect::<Vec<_>>().join("; ");
+        let scope = match entry.name.as_str() {
+            "Tombs of Amascut" => "Solo · raid level 0",
+            "Yama" => "Melee-boss hybrid",
+            "Corporeal Beast" => "Undrained baseline",
+            "Fight Caves" => "Ranged gear baseline",
+            _ => "",
+        };
+        let reason = if scope.is_empty() { setup_reason } else { format!("{scope}: {setup_reason}") };
         let gaps = if readiness == Readiness::WellEquipped { "Levels and owned gear meet this screening baseline.".into() } else { format!("Guideline: {} offensive level / HP, {} Defence, 43 Prayer; 3+ basic DPS and four armour slots for the top band. Yours: {} HP, {} Defence, {} Prayer.", p.level, p.level.saturating_sub(10), hp, def, prayer) };
         Assessment { readiness, reason, detail: format!("{gaps} {}", p.note), wilderness: false, preview: None }
     }).collect()
@@ -360,7 +449,7 @@ pub fn card(entry: &Entry, index: usize, a: &Assessment) -> String {
         html.push_str("</ul><p>All other equipment slots are empty. Food, runes, charged contents and other supplies need a separate risk check.</p></div>");html
     }).unwrap_or_default();
     format!(
-        r#"<article class="bestiary-card"><button class="encounter-choice bestiary-open" data-action="choose-encounter:{index}" {} aria-label="Plan {}"><span class="boss-portrait">{}</span><span class="boss-entry"><span class="boss-entry-heading"><strong>{}</strong><span class="boss-readiness readiness-{}">{}</span></span>{location}<span class="boss-stats">{stats}</span><small>{context}</small><span class="boss-reason">{}</span></span><span class="boss-open-arrow" aria-hidden="true">→</span></button><details class="bestiary-notes"><summary>Readiness & encounter notes</summary>{kit}<p>{}</p><p>{}</p><small>{}</small></details></article>"#,
+        r#"<article class="bestiary-card"><button class="encounter-choice bestiary-open" data-action="choose-encounter:{index}" {} aria-label="Plan {}"><span class="boss-portrait">{}</span><span class="boss-entry"><span class="boss-entry-heading"><strong>{}</strong><span class="boss-readiness readiness-{}">{}</span></span>{location}<span class="boss-reason">{}</span></span><span class="boss-open-arrow" aria-hidden="true">→</span></button><details class="bestiary-notes"><summary>Details & readiness</summary><div class="boss-entry"><span class="boss-stats">{stats}</span><small>{context}</small></div>{kit}<p>{}</p><p>{}</p><small>{}</small></details></article>"#,
         if entry.targets.is_empty() || a.wilderness && a.preview.is_none() {
             "disabled"
         } else {

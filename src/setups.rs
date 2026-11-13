@@ -19,6 +19,8 @@ pub struct Saved {
     pub setups: Library,
     #[serde(default = "default_budget_caps")]
     pub budget_caps: [usize; 2],
+    #[serde(default)]
+    pub death_risk: crate::death_risk::Settings,
 }
 impl Saved {
     pub fn parse(raw: &str) -> Result<Self, String> {
@@ -36,6 +38,9 @@ impl Saved {
             &serde_json::to_string(&saved.snapshot).map_err(|e| e.to_string())?,
             saved.snapshot.fetched_at.clone(),
         )?;
+        if !saved.death_risk.valid() {
+            return Err("Risk inputs are invalid.".into());
+        }
         validate_options(&saved.options)?;
         saved.setups.validate()?;
         Ok(saved)

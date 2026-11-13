@@ -54,15 +54,21 @@ struct State {
     building_group: bool,
     raid_rooms_open: bool,
     bestiary_open: bool,
+    risk_open: bool,
     wilderness_location: String,
     scaredy_cat: bool,
     filler_cap: u32,
     switch_preferences_open: bool,
     packing_limits_open: bool,
+    compact_open: bool,
+    encounter_filters_open: bool,
+    wilderness_options_open: bool,
     combat_options_open: bool,
     attack_budget_open: bool,
     simulation_open: bool,
     simulation_result: Option<(String, Result<crate::simulation::Report, String>)>,
+    calibration_result: Option<(String, Result<crate::calibration::Report, String>)>,
+    calibration_open: bool,
     budget_comparison_open: bool,
     budget_phases_open: bool,
     budget_window: Option<String>,
@@ -88,6 +94,7 @@ impl State {
             SaveStatus::Pending
         };
         let mut saved = restored.unwrap_or(Saved {
+            death_risk: Default::default(),
             version: 1,
             snapshot: account::demo(),
             options: Options::default(),
@@ -163,6 +170,7 @@ impl State {
             building_group: false,
             raid_rooms_open: false,
             bestiary_open: false,
+            risk_open: false,
             wilderness_location: "all".into(),
             scaredy_cat: saved.options.wilderness.is_some(),
             filler_cap: saved
@@ -173,10 +181,15 @@ impl State {
                 .unwrap_or(crate::wilderness::DEFAULT_CAP),
             switch_preferences_open: false,
             packing_limits_open: false,
+            compact_open: false,
+            encounter_filters_open: false,
+            wilderness_options_open: false,
             combat_options_open: false,
             attack_budget_open: false,
             simulation_open: false,
             simulation_result: None,
+            calibration_result: None,
+            calibration_open: false,
             budget_comparison_open: comparison_query.is_some(),
             budget_phases_open: false,
             budget_window: None,
@@ -360,6 +373,9 @@ thread_local! {
 }
 
 fn live_number(id: &str) -> bool {
+    if id.starts_with("risk-") {
+        return true;
+    }
     if id.starts_with("sim-") {
         return true;
     }
@@ -387,6 +403,17 @@ fn live_number(id: &str) -> bool {
 }
 fn apply_number(s: &mut State, id: &str, value: &str) -> bool {
     if s.shared_setup.is_some() && !id.starts_with("skill-") {
+        return false;
+    }
+    if let Some(key) = id.strip_prefix("risk-") {
+        if let Some((field, item)) = key
+            .rsplit_once('-')
+            .and_then(|(field, id)| Some((field, id.parse::<i32>().ok()?)))
+        {
+            let plan = s.plan();
+            s.saved.death_risk.bind(&plan);
+            return s.saved.death_risk.set(field, item, value);
+        }
         return false;
     }
     if let Some(key) = id.strip_prefix("sim-") {
@@ -965,13 +992,25 @@ pub fn start() -> Result<(), JsValue> {
     search.forget();
     let disclosure = Closure::<dyn FnMut(web_sys::Event)>::new(|e: web_sys::Event| {
         if let Some(el) = e.target().and_then(|t| t.dyn_into::<Element>().ok()) {
-            if el.id() == "boss-bestiary" {
+            if el.id() == "death-risk-details" {
+                STATE.with(|state| state.borrow_mut().risk_open = el.has_attribute("open"));
+            } else if el.id() == "boss-bestiary" {
                 STATE.with(|state| state.borrow_mut().bestiary_open = el.has_attribute("open"));
             } else if el.id() == "raid-room-picker" {
                 STATE.with(|state| state.borrow_mut().raid_rooms_open = el.has_attribute("open"));
             } else if el.id() == "switch-preferences" {
                 STATE.with(|state| {
                     state.borrow_mut().switch_preferences_open = el.has_attribute("open")
+                });
+            } else if el.id() == "compact-setup" {
+                STATE.with(|state| state.borrow_mut().compact_open = el.has_attribute("open"));
+            } else if el.id() == "encounter-extra-filters" {
+                STATE.with(|state| {
+                    state.borrow_mut().encounter_filters_open = el.has_attribute("open")
+                });
+            } else if el.id() == "wilderness-options" {
+                STATE.with(|state| {
+                    state.borrow_mut().wilderness_options_open = el.has_attribute("open")
                 });
             } else if el.id() == "packing-limits" {
                 STATE.with(|state| {
@@ -986,6 +1025,8 @@ pub fn start() -> Result<(), JsValue> {
                     .with(|state| state.borrow_mut().attack_budget_open = el.has_attribute("open"));
             } else if el.id() == "fight-simulation" {
                 STATE.with(|state| state.borrow_mut().simulation_open = el.has_attribute("open"));
+            } else if el.id() == "gameplay-calibration" {
+                STATE.with(|state| state.borrow_mut().calibration_open = el.has_attribute("open"));
             } else if el.id() == "budget-phases" {
                 STATE
                     .with(|state| state.borrow_mut().budget_phases_open = el.has_attribute("open"));
@@ -1116,6 +1157,37 @@ pub fn start() -> Result<(), JsValue> {
                     s.persist();
                 });
                 render();
+            }
+            return;
+        }
+        if id == "calibration-file" {
+            if let Ok(i) = el.dyn_into::<HtmlInputElement>() {
+                if let Some(file) = i.files().and_then(|f| f.get(0)) {
+                    if file.size() > crate::calibration::MAX_BYTES as f64 {
+                        notice("Gameplay worksheet exceeds 4 MB.", true);
+                        return;
+                    }
+                    spawn_local(async move {
+                        let raw = JsFuture::from(file.text()).await;
+                        STATE.with(|state| {
+                            let mut s = state.borrow_mut();
+                            let plan = s.plan();
+                            let key = simulation_key(&s, &plan);
+                            let result = raw.map_err(|_| "Could not read gameplay worksheet.".to_string())
+                                .and_then(|v| crate::calibration::parse(&v.as_string().unwrap_or_default()))
+                                .and_then(|data| {
+                                    let current = crate::simulation::Model::from_plan(&s.saved.snapshot, &s.saved.options, &plan)?;
+                                    if !crate::calibration::same_inputs(&current, &data.inputs) {
+                                        return Err("Worksheet uses a different setup or assumptions. Restore its original setup before comparing.".into());
+                                    }
+                                    crate::calibration::compare(&data)
+                                });
+                            s.calibration_result = Some((key, result));
+                            s.calibration_open = true;
+                        });
+                        render();
+                    });
+                }
             }
             return;
         }
@@ -1373,6 +1445,7 @@ pub fn start() -> Result<(), JsValue> {
                 "member" => {
                     if let Ok(select) = el.dyn_into::<HtmlSelectElement>() {
                         s.saved.snapshot.selected = select.value();
+                        s.saved.death_risk = Default::default();
                         s.saved.options.access_override = None;
                         s.saved.options.started_barrows = None;
                         s.phase = None;
@@ -1470,6 +1543,46 @@ fn focus_inventory(slot: usize) {
     }
 }
 fn act(action: &str) {
+    if action.starts_with("risk-") {
+        STATE.with(|state| {
+            let mut s = state.borrow_mut();
+            if s.shared_setup.is_some() {
+                return;
+            }
+            let plan = s.plan();
+            s.saved.death_risk.bind(&plan);
+            if let Some(scenario) = action
+                .strip_prefix("risk-scenario:")
+                .and_then(crate::death_risk::Scenario::parse)
+            {
+                s.saved.death_risk.scenario = scenario;
+                s.saved.death_risk.kept.clear();
+            } else if action == "risk-kept-mode" {
+                s.saved.death_risk.manual_kept = !s.saved.death_risk.manual_kept;
+                s.saved.death_risk.kept.clear();
+            } else if action == "risk-reset" {
+                s.saved.death_risk = Default::default();
+            } else if let Some(id) = action
+                .strip_prefix("risk-keep:")
+                .and_then(|s| s.parse::<i32>().ok())
+            {
+                let report = crate::death_risk::report(&plan, &s.saved.death_risk);
+                if let Some(row) = report.rows.iter().find(|r| r.id == id) {
+                    let maximum = row.quantity.min(report.slots);
+                    let current = s.saved.death_risk.kept.get(&id).copied().unwrap_or(0);
+                    s.saved
+                        .death_risk
+                        .kept
+                        .insert(id, if current >= maximum { 0 } else { current + 1 });
+                }
+            }
+            s.risk_open = true;
+            s.persist();
+        });
+        render();
+        return;
+    }
+
     if action == "wilderness-mode"
         || action.starts_with("wilderness-location:")
         || action.starts_with("wilderness-cap:")
@@ -1786,6 +1899,8 @@ fn act(action: &str) {
             }
         } else if let Some(value)=action.strip_prefix("simulation-warden:").and_then(|v|v.parse::<u32>().ok()) {
             s.saved.options.simulation.warden=value.min(1);
+        } else if let Some(value)=action.strip_prefix("simulation-burn-reset:").and_then(|v|v.parse::<u32>().ok()) {
+            s.saved.options.simulation.burn_phase_resets=value.min(1);
         } else if action == "simulate-fight" {
             let plan=s.plan();
             let key=simulation_key(&s,&plan);
@@ -1796,8 +1911,24 @@ fn act(action: &str) {
             if let Some((key,Ok(report)))=&s.simulation_result {
                 if *key==simulation_key(&s,&plan) {if let Ok(raw)=serde_json::to_string_pretty(report) {download("ironbound-fight-scenario.json",&raw);}}
             }
+        } else if action == "download-gameplay-worksheet" {
+            let plan=s.plan();
+            if let Some((key,Ok(report)))=&s.simulation_result {
+                if *key==simulation_key(&s,&plan) {
+                    if let Ok(raw)=serde_json::to_string_pretty(&crate::calibration::worksheet(&report.inputs)) {
+                        download("ironbound-gameplay-worksheet.json",&raw);
+                    }
+                }
+            }
+        } else if action == "download-calibration" {
+            let plan=s.plan();
+            if let Some((key,Ok(report)))=&s.calibration_result {
+                if *key==simulation_key(&s,&plan) {
+                    if let Ok(raw)=serde_json::to_string_pretty(report) {download("ironbound-gameplay-comparison.json",&raw);}
+                }
+            }
         } else if action == "reset-simulation" {
-            s.saved.options.simulation=Default::default();s.simulation_result=None;
+            s.saved.options.simulation=Default::default();s.simulation_result=None;s.calibration_result=None;
         } else if action == "reset-target-hp" {
             if let Some(target) = comparison_monster(&s).map(|m| m.id) {
                 s.saved.options.combat.target_hp.remove(&target);
@@ -1823,6 +1954,7 @@ fn act(action: &str) {
                         if action=="efficient-compare" {
                             s.saved.budget_caps=[cap,result.candidates[best].budget.cap];
                             s.budget_comparison_open=true;
+                            s.compact_open=false;
                         } else {
                             apply_number(&mut s,"max-switches",&cap.to_string());
                             s.saved.options.inventory_overrides.clear();
@@ -2324,6 +2456,7 @@ fn act(action: &str) {
                 s.demo_return = Some(s.saved.clone());
             }
             s.saved.snapshot = account::demo();
+            s.saved.death_risk = Default::default();
             s.saved.options = Options::default();
             s.saved.pins = BTreeMap::new();
             s.shared_setup = None;
@@ -2403,6 +2536,11 @@ fn act(action: &str) {
         s.persist();
     });
     render();
+    if action == "efficient-compare" {
+        if let Some(panel) = document().get_element_by_id("budget-comparison") {
+            panel.scroll_into_view();
+        }
+    }
     if action.starts_with("tab:")
         || action.starts_with("choose-encounter:")
         || ["demo", "restore-account"].contains(&action)
@@ -2465,6 +2603,7 @@ fn import_raw(raw: &str) {
                     }
                     s.demo_return = None;
                     s.saved.snapshot = snapshot;
+                    s.saved.death_risk = Default::default();
                     s.unreadable_save = None;
                     s.shared_setup = None;
                     s.saved.options.access_override = None;
@@ -2544,6 +2683,7 @@ fn import_raw(raw: &str) {
             let mut s = s.borrow_mut();
             s.demo_return = None;
             s.saved.snapshot = snapshot;
+            s.saved.death_risk = Default::default();
             s.unreadable_save = None;
             s.saved.options = Options::default();
             s.shared_setup = None;
@@ -2690,6 +2830,7 @@ fn render_with_edit(edit: Option<&str>) {
         html.push_str(&raid_rooms(&s));
         html.push_str("</div></div>");
         html.push_str(&wilderness_banner(&s));
+        html.push_str(&death_risk_panel(&s, &plan));
         if s.shared_setup.is_some(){html.push_str(&format!("<p class=\"notice\">Viewing a shared setup. Your saved bank is unchanged. {}</p>",button("use-bank","Rebuild using my items","text-button")));}
         if s.shared_setup.is_none(){html.push_str(&switch_controls(&s,&plan));}
         html.push_str("<nav class=\"planner-tabs\" aria-label=\"Planner sections\">");
@@ -2698,7 +2839,7 @@ fn render_with_edit(edit: Option<&str>) {
         match s.view.as_str(){
             "combat"=>{html.push_str("<div class=\"analysis-layout\">");html.push_str(&combat_panel(&s,&plan));html.push_str(&simulation_panel(&s,&plan));html.push_str(&switch_panel(&s,&plan));html.push_str("</div>");},
             "prepare"=>{html.push_str("<div class=\"prepare-layout\">");html.push_str(&checks_panel(&s,&plan));if s.shared_setup.is_none(){html.push_str(&manual_checks(&s));html.push_str(&coverage_panel(&s.saved.options));}if !plan.missing.is_empty(){html.push_str("<section class=\"panel\"><div class=\"panel-heading\"><h2>Missing trip items</h2></div><ul class=\"missing-list\">");for missing in &plan.missing{html.push_str(&format!("<li>{}</li>",esc(missing)));}html.push_str("</ul></section>");}if s.shared_setup.is_none(){html.push_str(&next_goal(&s));}html.push_str("</div>");},
-            _=>{html.push_str("<div class=\"loadout-layout\">");html.push_str(&loadout_panel(&s,&plan));html.push_str(&inventory_panel(&s,&plan));html.push_str("</div>");}
+            _=>{html.push_str(&phase_navigation(&s,&plan));html.push_str("<div class=\"loadout-layout\">");html.push_str(&loadout_panel(&s,&plan));html.push_str(&inventory_panel(&s,&plan));html.push_str("</div>");}
         }
         html.push_str("</section><div class=\"plan-actions\">");html.push_str(&export_panel(&s,&plan));html.push_str("</div>");
         if s.shared_setup.is_none(){html.push_str("<div class=\"plan-tools\">");html.push_str(&efficient_panel(&s,&plan));html.push_str(&budget_comparison(&s));html.push_str(&named_setups(&s));html.push_str("</div>");}
@@ -2823,17 +2964,51 @@ fn slot(id: Option<i32>, label: &str, class: &str, quantity: Option<u32>) -> Str
         esc(label)
     )
 }
+fn phase_navigation(s: &State, p: &Plan) -> String {
+    if p.phases.is_empty() {
+        return String::new();
+    }
+    let mut html = String::from(
+        "<nav class=\"panel loadout-preview\" aria-label=\"Loadout preview\"><div class=\"phase-tabs\">",
+    );
+    if p.phases.len() > 6 {
+        html.push_str("<label class=\"phase-select-label\">Preview<select id=\"phase-select\"><option value=\"start\">Start gear</option>");
+        for (i, phase) in p.phases.iter().enumerate() {
+            html.push_str(&format!(
+                "<option value=\"{i}\" {}>{}</option>",
+                if s.phase == Some(i) { "selected" } else { "" },
+                esc(&phase.name)
+            ));
+        }
+        html.push_str("</select></label>");
+    } else if !p.phases.is_empty() {
+        html.push_str(&format!("<button class=\"phase {}\" data-action=\"starting\" aria-pressed=\"{}\">Start gear</button>",if s.phase.is_none(){"active"}else{""},s.phase.is_none()));
+        for (i, phase) in p.phases.iter().enumerate() {
+            let label = if s.saved.options.boss == Boss::Barrows {
+                if i == 0 { "Five brothers" } else { "Ahrim" }
+            } else {
+                s.saved
+                    .options
+                    .targets
+                    .get(i)
+                    .and_then(|target| crate::encounters::window(target.id))
+                    .filter(|window| !window.label.is_empty())
+                    .map(|window| window.label.as_str())
+                    .unwrap_or(&phase.name)
+            };
+            html.push_str(&format!("<button class=\"phase {}\" data-action=\"phase:{i}\" aria-pressed=\"{}\">{}</button>",if s.phase==Some(i){"active"}else{""},s.phase==Some(i),esc(label)));
+        }
+    }
+    html.push_str("</div></nav>");
+    html
+}
 fn loadout_panel(s: &State, p: &Plan) -> String {
     let current = s.phase.and_then(|i| p.phases.get(i));
     let set = current.map(|p| &p.equipment).unwrap_or(&p.equipment);
     let mut html = format!(
         "<section class=\"panel loadout-panel\"><div class=\"panel-heading\"><h2>{} {}</h2>{}</div><div class=\"loadout-content\"><div class=\"equipment-paper\"><div class=\"paper-header\">{}</div><div class=\"equipment-grid\">",
         image(12954),
-        if current.is_some() {
-            "Phase preview"
-        } else {
-            "Equipment"
-        },
+        "Equipment",
         badge(
             if s.shared_setup.is_some() {
                 "SHARED SETUP"
@@ -2911,36 +3086,7 @@ fn loadout_panel(s: &State, p: &Plan) -> String {
         ));
     }
     html.push_str("</div></details>");
-    html.push_str("</details></div><div class=\"phase-tabs\">");
-    if p.phases.len() > 6 {
-        html.push_str("<label class=\"phase-select-label\">Preview<select id=\"phase-select\"><option value=\"start\">Start gear</option>");
-        for (i, phase) in p.phases.iter().enumerate() {
-            html.push_str(&format!(
-                "<option value=\"{i}\" {}>{}</option>",
-                if s.phase == Some(i) { "selected" } else { "" },
-                esc(&phase.name)
-            ));
-        }
-        html.push_str("</select></label>");
-    } else if !p.phases.is_empty() {
-        html.push_str(&format!("<button class=\"phase {}\" data-action=\"starting\" aria-pressed=\"{}\">Start gear</button>",if s.phase.is_none(){"active"}else{""},s.phase.is_none()));
-        for (i, phase) in p.phases.iter().enumerate() {
-            let label = if s.saved.options.boss == Boss::Barrows {
-                if i == 0 { "Five brothers" } else { "Ahrim" }
-            } else {
-                s.saved
-                    .options
-                    .targets
-                    .get(i)
-                    .and_then(|target| crate::encounters::window(target.id))
-                    .filter(|window| !window.label.is_empty())
-                    .map(|window| window.label.as_str())
-                    .unwrap_or(&phase.name)
-            };
-            html.push_str(&format!("<button class=\"phase {}\" data-action=\"phase:{i}\" aria-pressed=\"{}\">{}</button>",if s.phase==Some(i){"active"}else{""},s.phase==Some(i),esc(label)));
-        }
-    }
-    html.push_str("</div>");
+    html.push_str("</details></div>");
     if let Some(phase) = current {
         html.push_str(&format!(
             "<p class=\"phase-note\"><strong>{}</strong> · {}</p>",
@@ -3289,6 +3435,18 @@ fn encounter_label(options: &Options) -> &str {
         .unwrap_or(options.boss.name())
 }
 fn bestiary_assessments(s: &State) -> Vec<crate::bestiary::Assessment> {
+    if s.shared_setup.is_some() {
+        return crate::encounters::catalog()
+            .iter()
+            .map(|_| crate::bestiary::Assessment {
+                readiness: crate::bestiary::Readiness::Unknown,
+                reason: "Shared setups do not include the sender's bank or levels.".into(),
+                detail: String::new(),
+                wilderness: false,
+                preview: None,
+            })
+            .collect();
+    }
     thread_local! {
         static CACHE: RefCell<Option<(String, Vec<crate::bestiary::Assessment>)>> = const { RefCell::new(None) };
     }
@@ -3320,21 +3478,57 @@ fn bestiary_assessments(s: &State) -> Vec<crate::bestiary::Assessment> {
         cache.as_ref().unwrap().1.clone()
     })
 }
+fn extra_filter_label(s: &State) -> String {
+    if ["For you", "Bosses", "Raids", "Groups", "All"].contains(&s.encounter_filter.as_str()) {
+        "More filters".into()
+    } else {
+        format!("More filters · {}", s.encounter_filter)
+    }
+}
 fn encounter_catalog(s: &State) -> String {
     let mut html = format!(
         r#"<section class="encounter-browser"><h2>Choose your fight</h2><p>Based on your bank and levels.</p><label><span class="slot-caption">Search encounters</span><input id="encounter-search" type="search" placeholder="Search bosses or raids" value="{}" autocomplete="off"></label><nav class="encounter-filters" aria-label="Encounter categories">"#,
         esc(&s.encounter_query)
     );
-    for filter in crate::bestiary::FILTERS {
-        html.push_str(&format!(r#"<button id="enc-filter-{}" class="encounter-filter {}" data-action="encounter-filter:{filter}" aria-pressed="{}">{filter}</button>"#,filter.replace(' ', "-"),if s.encounter_filter==filter{"active"}else{""},s.encounter_filter==filter));
+    let filter_button = |filter: &str| {
+        format!(
+            r#"<button id="enc-filter-{}" class="encounter-filter {}" data-action="encounter-filter:{filter}" aria-pressed="{}">{filter}</button>"#,
+            filter.replace(' ', "-"),
+            if s.encounter_filter == filter {
+                "active"
+            } else {
+                ""
+            },
+            s.encounter_filter == filter
+        )
+    };
+    for filter in ["For you", "Bosses", "Raids", "Groups", "All"] {
+        html.push_str(&filter_button(filter));
     }
-    html.push_str("</nav>");
+    html.push_str(&format!("</nav><div class=\"encounter-tools\"><details id=\"encounter-extra-filters\" class=\"secondary-section\" {}><summary id=\"encounter-filter-label\">{}</summary><nav class=\"encounter-filters\" aria-label=\"Readiness filters\">",if s.encounter_filters_open {"open"}else{""},esc(&extra_filter_label(s))));
+    for filter in crate::bestiary::FILTERS {
+        if !["For you", "Bosses", "Raids", "Groups", "All"].contains(&filter) {
+            html.push_str(&filter_button(filter));
+        }
+    }
+    let location = match s.wilderness_location.as_str() {
+        "safe" => " · avoiding Wilderness",
+        "wild" => " · Wilderness only",
+        _ => "",
+    };
+    let kit = if s.scaredy_cat {
+        " · 3-item kit on"
+    } else {
+        ""
+    };
+    html.push_str(&format!("</nav></details><details id=\"wilderness-options\" class=\"secondary-section\" {}><summary>Wilderness options{location}{kit}</summary>",if s.wilderness_options_open {"open"}else{""}));
     html.push_str(&wilderness_controls(s));
-    html.push_str("<p class=\"bestiary-disclaimer\">Gear readiness only. Check access, supplies and mechanics in each card.</p><div id=\"encounter-results\">");
+    html.push_str("</details></div><p class=\"bestiary-disclaimer\">Gear readiness only. Check access, supplies and mechanics in each card.</p><div id=\"encounter-results\">");
     html.push_str(&encounter_results(s));
     html.push_str("</div></section>");
     html
 }
+
 fn encounter_results(s: &State) -> String {
     let query = s.encounter_query.trim().to_lowercase();
     let popular = &crate::encounters::browser_catalog().popular;
@@ -3410,6 +3604,9 @@ fn encounter_results(s: &State) -> String {
     html
 }
 fn refresh_encounter_browser(s: &State) {
+    if let Some(label) = document().get_element_by_id("encounter-filter-label") {
+        label.set_text_content(Some(&extra_filter_label(s)));
+    }
     if let Some(results) = document().get_element_by_id("encounter-results") {
         results.set_inner_html(&encounter_results(s));
     }
@@ -4498,9 +4695,12 @@ fn combat_panel(s: &State, p: &Plan) -> String {
                     esc(&r.attack_type),
                     r.expected_attack_ticks * 0.6
                 );
+                if r.burn.is_some() {
+                    headline = headline.replace("Outgoing DPS", "Sustained DPS");
+                }
                 html.push_str(&attack_window_budget(s, target, &set, &r));
                 if r.burn_dps > 0.0 {
-                    html.push_str(&format!("<p>Eclipse burn: {:.3} of the DPS above is delayed steady-state damage (1 every 4 ticks, 10 per stack, at most 5 stacks). Short fights, phase resets and target death reduce this contribution; no finite-HP attack-time estimate is credited.</p>", r.burn_dps));
+                    html.push_str(&format!("<p>Eclipse's long-run burn reference is {:.3} HP/s. The finite-HP estimate above instead starts empty and advances actual burn pulses, stack expiry and target death. Each separate attack window or target starts fresh; use the full-fight scenario for transitions and downtime.</p>", r.burn_dps));
                 }
                 if r.expected_attack_ticks != f64::from(r.attack_ticks) {
                     html.push_str(&format!("<p>Bloodrager average delay: {:.3} ticks ({:.3}s), including the 33% chance per accurate splat to attack one tick sooner.</p>",r.expected_attack_ticks,r.expected_attack_ticks*0.6));
@@ -4598,7 +4798,11 @@ fn attack_window_budget(
         .unwrap_or_default();
     let mut html = format!(
         "<details id=\"attack-budget\" class=\"attack-budget\" {}><summary>Attack window & supply budget</summary><label>{}<input id=\"target-hp\" type=\"number\" min=\"{min}\" max=\"{max}\" placeholder=\"{max}\" value=\"{current}\"></label><p class=\"small-note\">{}</p>",
-        if s.attack_budget_open { "open" } else { "" },
+        if s.attack_budget_open || result.burn.is_some() {
+            "open"
+        } else {
+            ""
+        },
         resource.input_label(),
         if resource == crate::encounters::Resource::Hitpoints {
             "Leave empty for this window's starting HP. Ruby bolts and HP-dependent NPC stats use this HP; the attack budget recalculates them as HP falls."
@@ -4628,6 +4832,11 @@ fn attack_window_budget(
         crate::attack_budget::for_window(target, result, &s.saved.options, set)
     };
     match budget {
+        Ok(budget) if budget.burn.is_some() => {
+            let burn=budget.burn.as_ref().unwrap();
+            let spread=f64::from(budget.entities);
+            html.push_str(&format!("<dl class=\"combat-values\"><div><dt>Estimated attacks</dt><dd>{:.2} ± {:.2}</dd></div><div><dt>Attack cooldown budget</dt><dd>{:.2}s ± {:.2}s</dd></div><div><dt>HP window · each of {} target(s)</dt><dd>{} → {}</dd></div><div><dt>Burn damage · each target</dt><dd>{:.2}</dd></div></dl><p>Time to HP boundary from the first attack: {:.2}s ± {:.2}s per target, excluding projectile travel. No attacks or burn damage are credited after that boundary.</p><p class=\"small-note\">{} seeded trials; ± is an approximate 95% confidence interval for the estimated mean, not an outcome range or safe supply minimum. Five-stack cap, expiry, misses, accurate zeroes and overkill are included. The cooldown budget retains the finishing attack's committed delay. Each entity/window starts with no burns. Transition clearing and downtime are handled separately in the full-fight scenario.</p>",budget.attacks,1.96*burn.attacks_error*spread,budget.seconds,1.96*burn.cooldown_error*0.6*spread,budget.entities,budget.start_hp,budget.stop_hp,burn.burn_damage,burn.death_ticks*0.6,1.96*burn.death_error*0.6,burn.trials));
+        },
         Ok(budget) => html.push_str(&format!("<dl class=\"combat-values\"><div><dt>Expected attacks</dt><dd>{:.1}</dd></div><div><dt>Attack cooldown budget</dt><dd>{:.1}s</dd></div><div><dt>{} · each of {} target(s)</dt><dd>{} → {}</dd></div></dl><p class=\"small-note\">Includes misses, overkill and the finishing cooldown. This is an expectation, not a safe supply minimum or kill-time prediction. Compare with your {}-cast / {}-projectile packing budgets; projectile recovery, ruby self-damage, movement, specials, regeneration and eating are excluded.</p>", budget.attacks, budget.seconds, resource.window_label(), budget.entities, budget.start_hp, budget.stop_hp, s.saved.options.combat.spell_casts, s.saved.options.combat.ammo_shots)),
         Err(reason) => html.push_str(&format!("<p class=\"small-note\">{}</p>", esc(&reason))),
     }
@@ -4678,7 +4887,13 @@ fn simulation_panel(s: &State, p: &Plan) -> String {
         } else {
             true
         };
-        if relevant && key == "warden" {
+        if relevant && key == "burn_phase_resets" {
+            html.push_str("<div role=\"group\" aria-label=\"Burn stacks at phase changes\"><span>Burn stacks at phase changes</span><div class=\"combat-subtype-options\">");
+            for (n, label) in [(1, "Clear stacks"), (0, "Keep aging stacks")] {
+                html.push_str(&format!("<button class=\"phase {}\" data-action=\"simulation-burn-reset:{n}\" aria-pressed=\"{}\">{label}</button>",if value==n {"active"}else{""},value==n));
+            }
+            html.push_str("</div><p class=\"small-note\">Scenario assumption: confirm phase clearing for this encounter. Retained burns expire during invulnerable downtime without damaging the target.</p></div>");
+        } else if relevant && key == "warden" {
             html.push_str("<div role=\"group\" aria-label=\"P2 Warden\"><span>Fight in P2</span><div class=\"combat-subtype-options\">");
             for (n, label) in [(0, "Elidinis"), (1, "Tumeken")] {
                 html.push_str(&format!("<button class=\"phase {}\" data-action=\"simulation-warden:{n}\" aria-pressed=\"{}\">{label}</button>",if value==n {"active"}else{""},value==n));
@@ -4707,7 +4922,9 @@ fn simulation_panel(s: &State, p: &Plan) -> String {
                 let mut failures=BTreeMap::new();for run in report.runs.iter().filter(|r|!r.completed){*failures.entry(run.reason.as_str()).or_insert(0usize)+=1;}
                 if !failures.is_empty(){html.push_str("<p>Unfinished first fights: ");for (reason,n) in failures {html.push_str(&format!("{}: {n}. ",esc(reason)));}html.push_str("</p>");}
                 html.push_str("<table class=\"wiki-table\"><thead><tr><th>First-fight demand</th><th>Median</th><th>90th percentile</th></tr></thead><tbody>");
-                let rows:[(&str,fn(&crate::simulation::Usage)->f64);15]=[
+                let rows:[(&str,fn(&crate::simulation::Usage)->f64);19]=[
+                    ("Burn damage (HP)",|u|u.burn_damage as f64),("Burn stacks applied",|u|u.burns_applied as f64),
+                    ("Burn procs discarded at cap",|u|u.burns_discarded as f64),("Burn stacks cleared",|u|u.burns_cleared as f64),
                     ("Duration (seconds)",|u|u.ticks as f64*0.6),("Attacks",|u|u.attacks as f64),
                     ("Rune casts",|u|u.casts as f64),("Projectiles fired",|u|u.shots as f64),
                     ("Weapon charges",|u|u.charges.values().sum::<u32>() as f64),("Blowpipe scales",|u|u.scales as f64),
@@ -4736,11 +4953,90 @@ fn simulation_panel(s: &State, p: &Plan) -> String {
                 html.push_str("The configured trip cap is a censoring limit, not proof that another fight is impossible. Additional food uses 20-HP shark equivalents; extra prayer doses use ordinary prayer-potion restoration. These extras are demand forecasts and are never added to your bag.</p><details><summary>Model assumptions & exclusions</summary><ul>");
                 for note in &report.notes {html.push_str(&format!("<li>{}</li>",esc(note)));}
                 html.push_str("</ul></details></div>");html.push_str(&button("download-simulation","Download scenario results","text-button"));
+                html.push_str(&button("download-gameplay-worksheet","Download gameplay worksheet","text-button"));
             }
         }
         }
     }
-    html.push_str("</details></section>");
+    html.push_str(&format!("<details id=\"gameplay-calibration\" class=\"gameplay-calibration\" {}><summary>Compare with recorded gameplay</summary><p>No matched gameplay recordings are checked in for this encounter. Public mechanics references and synthetic tests do not validate fight duration, consumption or survival.</p><p>Run a scenario, download its gameplay worksheet, and annotate recordings with the same stats, equipment, supplies and solo rules. Keep later attempts separate as holdouts. Unknown quantities can stay blank.</p><p><a class=\"text-button\" href=\"https://github.com/nathansbradshaw/ironbound/blob/main/docs/gameplay-calibration.md\" target=\"_blank\" rel=\"noopener\">Recording guide and worksheet format ↗</a></p><label>Recorded gameplay worksheet<input id=\"calibration-file\" type=\"file\" accept=\".json,application/json\"></label><p class=\"small-note\">Read locally for this session. This does not upload recordings, save evidence in your account, or change scenario defaults. Download the comparison to keep it.</p>",if s.calibration_open {"open"}else{""}));
+    html.push_str("<ul>");
+    for note in crate::calibration::capture_notes(encounter) {
+        html.push_str(&format!("<li>{}</li>", esc(note)));
+    }
+    html.push_str("</ul>");
+    if let Some((key, result)) = &s.calibration_result {
+        if *key != simulation_key(s, p) {
+            html.push_str("<p role=\"status\">Setup or assumptions changed. Restore the worksheet setup and compare again.</p>");
+        } else {
+            match result {
+                Err(reason) => html.push_str(&format!(
+                    "<p role=\"status\">Gameplay comparison unavailable: {}</p>",
+                    esc(reason)
+                )),
+                Ok(report) => {
+                    html.push_str(&format!("<div aria-live=\"polite\"><h3>Gameplay comparison</h3><p>{}. {} accepted attempts; {} skipped.</p>",esc(&report.status),report.accepted,report.skipped.len()));
+                    for (id, reason) in &report.skipped {
+                        html.push_str(&format!("<p>{}: {}</p>", esc(id), esc(reason)));
+                    }
+                    for row in &report.completion {
+                        let uncertainty = row
+                            .wilson_95
+                            .map(|(lo, hi)| {
+                                format!(
+                                    " Observed completion 95% interval: {:.1}–{:.1}%.",
+                                    lo * 100.0,
+                                    hi * 100.0
+                                )
+                            })
+                            .unwrap_or_default();
+                        html.push_str(&format!("<p>{:?}: {} / {} completed; {} deaths, {} teleports, {} timeouts. Model completion: {:.1}%.{uncertainty}</p>",row.split,row.completed,row.attempts,row.deaths,row.teleports,row.timeouts,row.predicted_rate*100.0));
+                    }
+                    if !report.summaries.is_empty() {
+                        html.push_str("<table class=\"wiki-table\"><thead><tr><th>Metric / split</th><th>Attempts</th><th>Mean bias / absolute error</th><th>10–90% interval coverage</th></tr></thead><tbody>");
+                        for row in &report.summaries {
+                            html.push_str(&format!("<tr><th>{} · {:?}</th><td>{}</td><td>{:.1} / {:.1}</td><td>{:.0}%</td></tr>",esc(&crate::calibration::metric_label(&row.metric)),row.split,row.samples,row.mean_error,row.mean_absolute_error,row.interval_coverage*100.0));
+                        }
+                        html.push_str("</tbody></table><p class=\"small-note\">Positive bias means the model predicts more than observed. Timing uses ticks. Consumption uses the worksheet's named units. Only completed attempts enter this table.</p>");
+                    }
+                    if !report.proposals.is_empty() {
+                        html.push_str("<h4>Training-only suggestions</h4><p>These use directly measured controls. Check the recording, then use new holdout attempts after changing settings.</p><ul>");
+                        for row in &report.proposals {
+                            let fields = s.saved.options.simulation.fields();
+                            let label = fields
+                                .iter()
+                                .find(|f| f.0 == row.setting)
+                                .map(|f| f.1)
+                                .unwrap_or(&row.setting);
+                            html.push_str(&format!(
+                                "<li>{}: {:.1} (current {}; {} run(s), {} measurements; {})</li>",
+                                esc(label),
+                                row.proposed,
+                                row.current,
+                                row.training_runs,
+                                row.measurements,
+                                if row.within_bounds {
+                                    "within allowed bounds"
+                                } else {
+                                    "outside allowed bounds; investigate model mismatch"
+                                }
+                            ));
+                        }
+                        html.push_str("</ul>");
+                    }
+                    html.push_str(&format!(
+                        "<p class=\"small-note\">{}</p></div>",
+                        esc(crate::calibration::LIMITATION)
+                    ));
+                    html.push_str(&button(
+                        "download-calibration",
+                        "Download gameplay comparison",
+                        "text-button",
+                    ));
+                }
+            }
+        }
+    }
+    html.push_str("</details></details></section>");
     html
 }
 fn tier_table(s: &State) -> String {
@@ -4930,8 +5226,9 @@ fn switch_controls(s: &State, p: &Plan) -> String {
 fn efficient_panel(s: &State, _plan: &Plan) -> String {
     ensure_efficient(s);
     let limits = crate::efficient::Tolerances::from_options(&s.saved.options);
-    let mut html = String::from(
-        "<section class=\"panel efficient-panel\" aria-label=\"Compact setup recommendation\"><h3>Save bag space</h3>",
+    let mut html = format!(
+        "<details id=\"compact-setup\" class=\"panel efficient-panel\" aria-label=\"Compact setup recommendation\" {}><summary><h3>Save bag space</h3></summary><div class=\"efficient-body\">",
+        if s.compact_open { "open" } else { "" }
     );
     html.push_str(&format!("<details id=\"packing-limits\" class=\"packing-limits\" {}><summary>Allowances <span>{}% DPS · {}% damage · {}% prayer</span></summary><div class=\"tradeoff-limits\">",if s.packing_limits_open {"open"}else{""},limits.dps_loss,limits.damage_taken,limits.prayer_drain));
     for (id, label, value) in [
@@ -4951,12 +5248,12 @@ fn efficient_panel(s: &State, _plan: &Plan) -> String {
     }
     html.push_str("</div><p id=\"tolerance-help\" class=\"small-note\">Effective encounter DPS. Prayer drain is points per minute; longer fights can use more prayer overall.</p></details>");
     let Some(result) = efficient_result(s) else {
-        html.push_str("<p role=\"status\">Checking switch limits…</p></section>");
+        html.push_str("<p role=\"status\">Checking switch limits…</p></div></details>");
         return html;
     };
     let Some((selected, best)) = result.compact.zip(result.best) else {
         html.push_str(&format!(
-            "<p>{}</p></section>",
+            "<p>{}</p></div></details>",
             esc(result
                 .reason
                 .as_deref()
@@ -5010,7 +5307,7 @@ fn efficient_panel(s: &State, _plan: &Plan) -> String {
         && s.saved.options.inventory_overrides.is_empty()
         && s.saved.options.inventory_quantities.is_empty();
     html.push_str(&format!("<div class=\"efficient-actions\"><button class=\"phase\" data-action=\"efficient-apply\" {}>{}</button>{}</div>",if using {"disabled"}else{""},if using {"Using compact setup"}else if edited_inventory {"Repack & use compact setup"}else{"Use compact setup"},button("efficient-compare","Compare with fastest","text-button")));
-    html.push_str(&format!("<details><summary>How we choose</summary><p>Limits: {limits}. DPS loss uses effective encounter DPS, not a percentage increase in attack time. Damage checks include known incoming rates and total exposure where modelled. Prayer checks use drain rates, not total points consumed.</p><p>Tests caps 0–11 with the same bank, gear pins, combat settings and supply counts. Keeps identical workload coverage and your switch ceiling. Prioritizes peak bag space, then carried gear and actual changes. Applying restores automatic inventory packing. This bounded search does not prove a global BIS.</p><p>Fastest tested: {}-change cap · {} gear pieces · {:.1}s · {:.1} prayer points. Suggested cap: {}.</p></details></section>",benchmark.budget.cap,benchmark.budget.carried_gear,b.seconds,b.prayer_points,chosen.budget.cap));
+    html.push_str(&format!("<details><summary>How we choose</summary><p>Limits: {limits}. DPS loss uses effective encounter DPS, not a percentage increase in attack time. Damage checks include known incoming rates and total exposure where modelled. Prayer checks use drain rates, not total points consumed.</p><p>Tests caps 0–11 with the same bank, gear pins, combat settings and supply counts. Keeps identical workload coverage and your switch ceiling. Prioritizes peak bag space, then carried gear and actual changes. Applying restores automatic inventory packing. This bounded search does not prove a global BIS.</p><p>Fastest tested: {}-change cap · {} gear pieces · {:.1}s · {:.1} prayer points. Suggested cap: {}.</p></details></div></details>",benchmark.budget.cap,benchmark.budget.carried_gear,b.seconds,b.prayer_points,chosen.budget.cap));
     html
 }
 
@@ -6063,7 +6360,7 @@ fn wilderness_controls(s: &State) -> String {
         for cap in crate::wilderness::CAPS {
             html.push_str(&format!("<button class=\"encounter-filter {}\" data-action=\"wilderness-cap:{cap}\" aria-pressed=\"{}\">≤{}k GP</button>",if s.filler_cap==cap{"active"}else{""},s.filler_cap==cap,cap/1000));
         }
-        html.push_str("</div><p>Wilderness cards recalculate with up to 3 valuable gear pieces plus owned cheap fillers. Open a card to see the exact kit and full-gear comparison. Selecting it keeps that kit in the planner.</p><small>Unskulled + PK Skull Prevention assumed. Confirm Items Kept on Death; supplies, charges and loot add risk.</small>");
+        html.push_str("</div><p>Wilderness cards recalculate with up to 3 valuable gear pieces plus owned cheap fillers. Open a card to see the exact kit and full-gear comparison. Selecting it keeps that kit in the planner, where the full packed death-risk report includes supplies and charges.</p><small>Unskulled + PK Skull Prevention assumed. Confirm Items Kept on Death; supplies, charges and loot add risk.</small>");
     }
     html.push_str("</section>");
     html
@@ -6078,4 +6375,20 @@ fn wilderness_banner(s: &State) -> String {
         esc(crate::wilderness::CAUTION),
         button("wilderness-off", "Return to full gear", "text-button")
     )
+}
+
+fn death_risk_panel(s: &State, plan: &Plan) -> String {
+    let exposed = selected_encounter(&s.saved.options).is_some_and(|entry| {
+        crate::wilderness::exposure(&entry.name) != crate::wilderness::Exposure::None
+    });
+    if s.saved.options.wilderness.is_none() && !exposed {
+        return String::new();
+    }
+    let defaults = crate::death_risk::Settings::default();
+    let settings = if s.shared_setup.is_some() {
+        &defaults
+    } else {
+        &s.saved.death_risk
+    };
+    crate::death_risk::render(plan, settings, s.risk_open, s.shared_setup.is_none())
 }

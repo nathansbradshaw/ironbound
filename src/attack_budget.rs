@@ -12,6 +12,56 @@ pub struct Budget {
     pub start_hp: u32,
     pub stop_hp: u32,
     pub entities: u32,
+    pub burn: Option<crate::burn::Estimate>,
+}
+pub struct Timing {
+    pub attacks: f64,
+    pub seconds: f64,
+    pub burn: Option<crate::burn::Estimate>,
+}
+pub fn for_hp(result: &ResultStats, start: u32, stop: u32) -> Result<Timing, String> {
+    if let Some(burn) = &result.burn {
+        if !burn.matches(&result.hit_distribution) {
+            return Err("Burn and direct-hit distributions disagree.".into());
+        }
+        let estimate = crate::burn::estimate(burn, result.attack_ticks as u32, start, stop)?;
+        return Ok(Timing {
+            attacks: estimate.attacks,
+            seconds: estimate.cooldown_ticks * 0.6,
+            burn: Some(estimate),
+        });
+    }
+    let attacks = expected_attacks(&result.hit_distribution, start, stop, result.hp_dependent)?;
+    Ok(Timing {
+        attacks,
+        seconds: attacks * result.expected_attack_ticks * 0.6,
+        burn: None,
+    })
+}
+/// Use the same finite workload on both sides whenever a usable Eclipse set is
+/// in the comparison pool, rather than comparing burn timing to stationary DPS.
+pub fn eclipse_available(
+    member: &crate::account::Member,
+    owned: &std::collections::BTreeMap<i32, u32>,
+    o: &Options,
+) -> bool {
+    crate::rules::registry().equipment_sets.iter().any(|s| {
+        s.effect == "eclipse_moon"
+            && s.pieces.iter().all(|piece| {
+                piece.ids.iter().any(|id| {
+                    owned.get(id).copied().unwrap_or(0) > 0
+                        && !o.item_excluded(*id)
+                        && crate::planner::can_use(*id, member)
+                })
+            })
+            && s.pieces.iter().find(|p| p.slot == 3).is_some_and(|p| {
+                p.ids.iter().any(|id| {
+                    crate::rules::ammo_ids(*id)
+                        .iter()
+                        .any(|ammo| owned.get(ammo).copied().unwrap_or(0) >= o.combat.ammo_shots)
+                })
+            })
+    })
 }
 
 /// E[h] = (1 + sum(p[d] E[max(stop,h-d)])) / (1-p[0]).
@@ -95,9 +145,6 @@ pub fn for_window(
     if crate::encounters::window(target.id).is_some_and(|w| w.hp_scaling.is_some()) {
         return Err("HP-dependent accuracy needs the configured attack budget; a fixed snapshot cannot be used for the whole window.".into());
     }
-    if result.burn_dps > 0.0 {
-        return Err("Eclipse burn DPS assumes sustained attacks and five-stack limits. Finite-HP timing with burn buildup, expiration and target death is unavailable; burn is not treated as instant damage.".into());
-    }
     if crate::yama::is_judge_window(target.id) {
         return Err("Use the paired Judge cycle; alternating attacks cannot be counted as independent styles.".into());
     }
@@ -127,14 +174,14 @@ pub fn for_window(
     let stop = stage_start.saturating_sub(progress);
     let start = combat::current_target_hp(target, o.raid_level, &o.combat)?;
     let entities = window.map(|w| w.entity_count).unwrap_or(1);
-    let attacks = expected_attacks(&result.hit_distribution, start, stop, result.hp_dependent)?
-        * f64::from(entities);
+    let timing = for_hp(result, start, stop)?;
     Ok(Budget {
-        attacks,
-        seconds: attacks * result.expected_attack_ticks * 0.6,
+        attacks: timing.attacks * f64::from(entities),
+        seconds: timing.seconds * f64::from(entities),
         start_hp: start,
         stop_hp: stop,
         entities,
+        burn: timing.burn,
     })
 }
 
@@ -184,7 +231,7 @@ pub fn for_dynamic_window(
             &settings,
         )?;
         if r.burn_dps > 0.0 {
-            return Err("Finite-HP timing with Eclipse burn buildup, expiration and target death is unverified.".into());
+            return Err("Finite Eclipse burn timing with HP-dependent NPC accuracy is unverified; a fixed snapshot cannot replace that changing accuracy.".into());
         }
         let mut a = 1.0;
         let mut time = r.expected_attack_ticks * 0.6;
@@ -220,5 +267,6 @@ pub fn for_dynamic_window(
         start_hp: start,
         stop_hp: stop,
         entities: window.entity_count,
+        burn: None,
     })
 }

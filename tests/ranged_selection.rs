@@ -184,6 +184,7 @@ fn choice_and_real_ammo_round_trip_saved_and_shared_setups() {
         let o = options(kind);
         let p = planner::plan(&snapshot, &o);
         let mut saved = Saved {
+            death_risk: Default::default(),
             version: 1,
             snapshot,
             options: o.clone(),

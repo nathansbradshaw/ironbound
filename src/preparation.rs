@@ -5,21 +5,12 @@ use crate::{
 };
 
 pub const CONFIRMATIONS: [(&str, &str); 4] = [
-    (
-        "access",
-        "I have the quests and access needed for this encounter",
-    ),
-    (
-        "unlocks",
-        "My spellbook, spells and selected prayers are unlocked",
-    ),
-    (
-        "charges",
-        "My weapons, armour, tomes and teleports have enough charges/pages",
-    ),
+    ("access", "I checked encounter access and quests"),
+    ("unlocks", "I checked spellbook, spell and prayer unlocks"),
+    ("charges", "I checked equipment, tome and teleport charges"),
     (
         "supplies",
-        "I checked ammunition, casts, food and potions for my intended trip",
+        "I checked ammunition, casts, food and potions for this trip",
     ),
 ];
 

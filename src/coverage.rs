@@ -29,7 +29,7 @@ pub fn windows(options: &Options) -> Vec<Window> {
 pub fn summary(options: &Options) -> String {
     let rows = windows(options);
     format!(
-        "{} / {} selected attack windows have a basic attack model. Full encounter mechanics remain partial.",
+        "{} / {} basic attack windows",
         rows.iter().filter(|r| r.supported).count(),
         rows.len()
     )

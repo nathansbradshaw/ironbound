@@ -799,6 +799,10 @@ footer{font-size:10px;padding:9px 4px 0}footer>span:last-child{display:none}
 .coverage-panel small{display:block;font-weight:normal;margin-top:4px}
 .coverage-panel .table-wrap{overflow-x:auto}
 .save-warning{margin:12px;display:flex;flex-wrap:wrap;align-items:center;gap:8px}
+.manual-checks .manual-confirm{font:18px/1.25 Scape,monospace;min-height:44px}
+.manual-checks h2,.coverage-panel h2{font:22px Scape,monospace;color:#ffcf00}
+.coverage-panel table{font:18px/1.25 Scape,monospace}
+.coverage-panel small{font-size:16px}
 .spell-book h4,.prayer-book h4,.incoming-choices h4,.target-choices h4,.ranged-stances h4{font:21px Scape,monospace;color:#ffcf00;margin:0 0 10px}
 .spell-book>.combat-subtype-options{margin-bottom:12px}
 .book-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;margin:10px 0}

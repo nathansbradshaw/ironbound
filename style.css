@@ -901,3 +901,4 @@ button.ranged-type:focus-visible{outline:3px solid #ffe087;outline-offset:2px}
 .encounter-browser .bestiary-disclaimer{font-size:12px;line-height:1.5;max-width:80ch}.portrait-missing{font:44px Scape,monospace;color:#80623b}
 @media(max-width:1000px){#encounter-results{grid-template-columns:1fr}}
 @media(max-width:480px){.bestiary-card .boss-portrait{flex-basis:60px!important;width:60px}.boss-portrait img{width:60px;height:78px}.bestiary-card .bestiary-open{padding:10px 8px;gap:8px}.bestiary-card .boss-entry-heading strong{font-size:21px}.boss-stats{gap:3px 7px}.bestiary-card .boss-open-arrow{display:none}}
+.fight-simulation-panel .wiki-table tbody>tr>th{width:50%;overflow-wrap:break-word;word-break:normal}.fight-simulation-panel .wiki-table td{white-space:nowrap}

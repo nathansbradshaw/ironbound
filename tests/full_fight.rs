@@ -126,6 +126,21 @@ fn wardens_repeats_shields_uses_fivefold_core_damage_and_enters_enrage_once() {
     assert_eq!(simulation::core_exposure(59, 100), 37);
 }
 #[test]
+fn core_safety_limit_is_per_fight_and_does_not_truncate_long_stocked_trips() {
+    let mut m = model(Encounter::Wardens, 5);
+    m.hp = vec![10, 10, 10, 20_000, 100, 100];
+    m.attacks[3] = hit(10);
+    m.settings.trip_limit = 20;
+    let report = simulation::simulate(&m).unwrap();
+    assert!(
+        report
+            .runs
+            .iter()
+            .all(|r| r.completed && r.trip_kills == 20)
+    );
+    assert!(report.runs[0].usage.core_downs > 5);
+}
+#[test]
 fn cooldown_survives_phase_changes_food_delays_and_utility_waits() {
     let mut m = model(Encounter::Yama, 500);
     for a in &mut m.attacks {

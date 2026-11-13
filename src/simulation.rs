@@ -1109,9 +1109,10 @@ impl<'a> Runner<'a> {
         }
         let mut body = self.m.hp[3];
         let max_body = body;
+        let first_down = self.usage.core_downs;
         let mut elapsed = 0u32;
         while body > 0 {
-            if self.usage.core_downs >= 100 {
+            if self.usage.core_downs - first_down >= 100 {
                 return false;
             }
             let mut shield = self.m.hp[1];
@@ -1155,6 +1156,7 @@ impl<'a> Runner<'a> {
         let mut hp = maximum;
         let mut skull = 80;
         let mut enraged = false;
+        let p3_start = self.usage.ticks;
         while hp > 0 || !enraged {
             if skull > 0 && hp * 100 <= maximum * skull {
                 self.usage.skulls += 1;
@@ -1182,7 +1184,7 @@ impl<'a> Runner<'a> {
             if !self.tick(if enraged { "Enrage" } else { "P3" }, index, true) {
                 return false;
             }
-            if self.usage.ticks.is_multiple_of(21) {
+            if (self.usage.ticks - p3_start).is_multiple_of(21) {
                 self.fail(40);
             }
             if let Some(n) = self.hit(index, hp, self.m.settings.uptime) {
@@ -1282,6 +1284,7 @@ pub fn simulate(model: &Model) -> Result<Report, String> {
         let mut kills = u32::from(completed && packed);
         if completed && packed {
             for _ in 1..model.settings.trip_limit {
+                r.deadline = r.usage.ticks + model.settings.between + 1;
                 if !r.wait(model.settings.between, "Between fights", 0, false)
                     || !r.fight()
                     || !r.covered()

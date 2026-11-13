@@ -1,7 +1,7 @@
 {
   "elemental_focuses": [
     {"ids":[20714],"element":"fire","rune":554,"damage_percent":10,"accuracy_percent":0},
-    {"ids":[25574],"element":"water","rune":555,"damage_percent":10,"accuracy_percent":20},
+    {"ids":[25574],"element":"water","rune":555,"damage_percent":10,"accuracy_percent":10},
     {"ids":[30064],"element":"earth","rune":557,"damage_percent":10,"accuracy_percent":0}
   ],
   "families": {

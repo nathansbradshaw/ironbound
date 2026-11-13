@@ -50,3 +50,11 @@ inherits = "dev"
 
 [profile.calibration-release]
 inherits = "release"
+
+# Shared target root, separate package artifacts from concurrent checkouts.
+[profile.monster-dev]
+inherits = "dev"
+debug = 0
+
+[profile.monster-release]
+inherits = "release"

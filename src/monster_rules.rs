@@ -19,6 +19,11 @@ pub enum Kind {
     PhosaniMinion,
     HueyTail,
     TitanElemental,
+    Seren,
+    Slagilith,
+    Maggot,
+    Tormented,
+    Leafy,
 }
 #[derive(Clone, Copy, Debug, Default, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
@@ -97,7 +102,8 @@ pub fn instant_defeat(id: i32, weapon: i32) -> Option<i32> {
         .flatten()
 }
 pub fn guaranteed_accuracy(id: i32, attack_type: &str) -> bool {
-    profile(id).is_some_and(|p| p.kind == Kind::Totem && attack_type == "magic")
+    encounters::window(id).is_some_and(|w| w.guaranteed_accuracy)
+        || profile(id).is_some_and(|p| p.kind == Kind::Totem && attack_type == "magic")
 }
 /// Elemental accuracy bypasses normal rolls, weakness accuracy and reroll gear.
 pub fn elemental_accuracy(id: i32, attack_type: &str, magic_bonus: i32, void: bool) -> Option<f64> {
@@ -134,6 +140,9 @@ pub fn check_weapon(id: i32, style: &str, weapon: i32) -> Result<(), String> {
     if rules::base_style(style) != "Melee" {
         return Ok(());
     }
+    if id == 15742 {
+        return Err("Maggot King is out of melee reach in the far state; choose the nearby or crush-punish window.".into());
+    }
     if let Some(p) = profile(id) {
         let category = combat::stats(weapon)
             .map(|s| s.category.as_str())
@@ -157,6 +166,15 @@ pub enum Transform {
     #[default]
     Identity,
     Zulrah,
+    /// min(rolled damage, uniform 22..24), as in the pinned calculator.
+    Seren,
+    Divide {
+        divisor: i32,
+    },
+    Add {
+        damage: i32,
+    },
+    TormentedShield,
     Kraken,
     Corporeal,
     Immune,
@@ -179,6 +197,14 @@ impl Transform {
     pub fn outcomes(self, damage: i32, probability: f64) -> Vec<(i32, f64)> {
         match self {
             Self::Zulrah if damage > 50 => (45..=50).map(|d| (d, probability / 6.0)).collect(),
+            Self::Seren => (22..=24)
+                .map(|cap| (damage.min(cap), probability / 3.0))
+                .collect(),
+            Self::Divide { divisor } => vec![(damage / divisor.max(1), probability)],
+            Self::Add { damage: bonus } => vec![(damage + bonus, probability)],
+            Self::TormentedShield => {
+                vec![((damage * 4 / 5).max(i32::from(damage > 0)), probability)]
+            }
             // A positive hit stays at least one; an accuracy miss remains zero.
             Self::Kraken if damage > 0 => vec![((damage / 7).max(1), probability)],
             Self::Corporeal => vec![(damage / 2, probability)],
@@ -221,6 +247,11 @@ pub fn transform_for(
     if encounters::window(id).is_some_and(|w| w.invulnerable) {
         return Transform::Immune;
     }
+    if id == 100180 {
+        return Transform::Add {
+            damage: bonuses.other.get("str").copied().unwrap_or(0).max(0) / 5,
+        };
+    }
     let pillar = encounters::window(id).is_some_and(|w| w.huey_pillar);
     if profile(id).is_some_and(|p| p.kind == Kind::HueyTail) {
         let bonus = |style: &str| bonuses.offensive.get(style).copied().unwrap_or(0);
@@ -253,6 +284,15 @@ pub fn transform_for(
     }
     match profile(id).map(|p| p.kind) {
         Some(Kind::Zulrah) => Transform::Zulrah,
+        Some(Kind::Seren) => Transform::Seren,
+        Some(Kind::Slagilith) if combat::stats(weapon).is_none_or(|s| s.category != "Pickaxe") => {
+            Transform::Divide { divisor: 3 }
+        }
+        Some(Kind::Tormented)
+            if !is_demonbane(weapon, attack_type, spell) && !is_abyssal(weapon, attack_type) =>
+        {
+            Transform::TormentedShield
+        }
         Some(Kind::Kraken) if ["light", "standard", "heavy"].contains(&attack_type) => {
             Transform::Kraken
         }
@@ -269,6 +309,52 @@ pub fn transform_for(
             cap: None,
         },
         _ => Transform::Identity,
+    }
+}
+pub fn is_demonbane(weapon: i32, attack_type: &str, spell: &str) -> bool {
+    if attack_type == "magic" {
+        return rules::spells()
+            .iter()
+            .any(|s| s.name == spell && s.name.contains("Demonbane"));
+    }
+    let Some(gear) = planner::gear(weapon) else {
+        return false;
+    };
+    if ["light", "standard", "heavy"].contains(&attack_type) {
+        gear.name == "Scorching bow"
+    } else {
+        [
+            "Silverlight",
+            "Darklight",
+            "Arclight",
+            "Emberlight",
+            "Bone claws",
+            "Burning claws",
+        ]
+        .contains(&gear.name.as_str())
+    }
+}
+fn is_abyssal(weapon: i32, attack_type: &str) -> bool {
+    ["stab", "slash", "crush"].contains(&attack_type)
+        && planner::gear(weapon).is_some_and(|g| {
+            [
+                "Abyssal bludgeon",
+                "Abyssal dagger",
+                "Abyssal whip",
+                "Abyssal tentacle",
+            ]
+            .contains(&g.name.as_str())
+        })
+}
+pub fn leafy_allowed(id: i32, weapon: i32, ammo: Option<i32>, style: &str, spell: &str) -> bool {
+    if !profile(id).is_some_and(|p| p.kind == Kind::Leafy) {
+        return true;
+    }
+    match rules::base_style(style) {
+        "Melee" => [20727, 4158, 11902].contains(&weapon),
+        "Ranged" => ammo.is_some_and(|id| [4160, 11875, 21316, 33601].contains(&id)),
+        "Magic" => spell == "Magic Dart",
+        _ => false,
     }
 }
 /// Retain each hitsplat until NPC transformations finish; cap(60)+cap(30)
@@ -315,6 +401,26 @@ pub fn corpbane(weapon: i32, attack_type: &str) -> bool {
                     .unwrap_or("")
                     .eq_ignore_ascii_case("Blue moon spear")
     })
+}
+/// Counter bonuses affect only the first hitsplat. A cleave clamps low rolls;
+/// it does not reroll uniformly between the new minimum and maximum.
+pub fn counter_splat(
+    counter: encounters::Counter,
+    hits: &mut [(i32, f64)],
+    first_max: i32,
+    attack_max: i32,
+    chained: bool,
+) {
+    for (damage, _) in hits {
+        *damage = match counter {
+            encounters::Counter::None => *damage,
+            encounters::Counter::AngelLightning => first_max,
+            encounters::Counter::AngelCleave => {
+                (*damage).max(if chained { first_max } else { attack_max } / 2)
+            }
+            encounters::Counter::MaggotPunish => *damage * 3 / 2,
+        };
+    }
 }
 /// Corp applies after other bolt effects but before ruby damage. Other NPC
 /// transforms apply to every hit including ruby; its suffix stays identifiable

@@ -630,8 +630,16 @@ pub(crate) fn calculate_mode(
                     if mage < i64::from(recipe.level) {
                         return Err(format!("{} requires {} Magic.", recipe.name, recipe.level));
                     }
-                    rules::spell_max_hit(spell, mage as u32)
-                        .ok_or("Spell damage tier unavailable.")?
+                    if spell == "Magic Dart"
+                        && weapon == 21255
+                        && crate::slayer::on_task(settings, monster.id)
+                        && crate::encounters::slayer_eligible(monster.id)
+                    {
+                        13 + mage / 6
+                    } else {
+                        rules::spell_max_hit(spell, mage as u32)
+                            .ok_or("Spell damage tier unavailable.")?
+                    }
                 }
                 _ => return Err("Spell or powered staff not supported.".into()),
             };
@@ -930,6 +938,42 @@ pub(crate) fn calculate_mode(
         hit = 1.0;
     }
     let splat_base_max = max_hit;
+    let counter = crate::encounters::window(monster.id)
+        .map(|w| w.counter)
+        .unwrap_or_default();
+    let base_hit = if always_max { 1.0 } else { hit };
+    let chained_counter = rule.has(Effect::Macuahuitl);
+    if counter != crate::encounters::Counter::None {
+        if style != "Melee"
+            || counter == crate::encounters::Counter::MaggotPunish && attack_type != "crush"
+        {
+            return Err("This counterattack comparison is verified only for melee (crush for the Maggot punish).".into());
+        }
+        if rules::set_effect(set, "verac") || rules::set_effect(set, "blood_moon") {
+            return Err("Verac bypass and Blood Moon cooldown interactions with this counterattack are unverified.".into());
+        }
+        hit = match counter {
+            crate::encounters::Counter::AngelCleave
+            | crate::encounters::Counter::AngelLightning => 1.0,
+            crate::encounters::Counter::MaggotPunish => accuracy(attack, defence * 15 / 100),
+            _ => hit,
+        };
+    }
+    let demonbane = crate::monster_rules::is_demonbane(weapon, attack_type, spell);
+    if crate::encounters::window(monster.id).is_some_and(|w| w.demonbane_only) && !demonbane {
+        return Err("Doom's demonic shield requires a reviewed demonbane weapon or spell; Eye of Ayak and holy water do not qualify.".into());
+    }
+    if crate::monster_rules::profile(monster.id)
+        .is_some_and(|p| p.kind == crate::monster_rules::Kind::Maggot)
+        && rules::spells()
+            .iter()
+            .any(|s| s.name == spell && s.element.as_deref() == Some("fire"))
+    {
+        return Err("Maggot King's stacking fire burn and changing Magic defence are not yet verified; use a non-fire comparison.".into());
+    }
+    if !crate::monster_rules::leafy_allowed(monster.id, weapon, set[13], style, spell) {
+        return Err("This leafy monster requires a leaf-bladed melee weapon, broad ammunition or Magic Dart.".into());
+    }
     let mut damage_factor = [1, 1];
     if style == "Melee" && rules::set_effect(set, "dharok") {
         let hp = member
@@ -1003,7 +1047,7 @@ pub(crate) fn calculate_mode(
         },
     };
     let distribution_max = max_hit;
-    let (_mean, ceiling, mut hits) = if always_max {
+    let (_mean, mut ceiling, mut hits) = if always_max {
         hit = 1.0;
         conditional_hit(
             max_hit,
@@ -1029,6 +1073,10 @@ pub(crate) fn calculate_mode(
             &hit_effects,
         )
     };
+    if counter != crate::encounters::Counter::None {
+        crate::monster_rules::counter_splat(counter, &mut hits, ceiling, ceiling, false);
+        ceiling = hits.iter().map(|(d, _)| *d).max().unwrap_or(0);
+    }
     let mut distribution: Vec<_> = hits.iter().map(|(damage, p)| (*damage, p * hit)).collect();
     let mut hp_dependent = None;
     if hit < 1.0 {
@@ -1071,9 +1119,10 @@ pub(crate) fn calculate_mode(
             .ok_or("Scythe needs verified target size metadata.")?
             .min(3);
         let mut parts = Vec::new();
+        let attack_max: i32 = (0..size).map(|i| splat_base_max / (1 << i)).sum();
         for index in 0..size {
             let max = splat_base_max / (1 << index);
-            let (_, _, splats) = conditional_hit(
+            let (_, ceiling, mut splats) = conditional_hit(
                 if always_max { max } else { 0 },
                 max,
                 flat_armour,
@@ -1082,9 +1131,19 @@ pub(crate) fn calculate_mode(
                 None,
                 &multi_hit_effects,
             );
-            let mut part: Vec<_> = splats.into_iter().map(|(d, p)| (d, p * hit)).collect();
-            if hit < 1.0 {
-                part.extend(hit_effects.npc_transform.outcomes(0, 1.0 - hit));
+            let chance = if index == 0 { hit } else { base_hit };
+            if index == 0 {
+                crate::monster_rules::counter_splat(
+                    counter,
+                    &mut splats,
+                    ceiling,
+                    attack_max,
+                    false,
+                );
+            }
+            let mut part: Vec<_> = splats.into_iter().map(|(d, p)| (d, p * chance)).collect();
+            if chance < 1.0 {
+                part.extend(hit_effects.npc_transform.outcomes(0, 1.0 - chance));
             }
             parts.push(part);
         }
@@ -1098,7 +1157,7 @@ pub(crate) fn calculate_mode(
         if always_max {
             hits = distribution.clone();
         }
-        hit = 1.0 - (1.0 - hit).powi(size as i32);
+        hit = 1.0 - (1.0 - hit) * (1.0 - base_hit).powi(size as i32 - 1);
     }
     if style == "Melee" && rules::set_effect(set, "verac") {
         let (_, proc_max, proc_hits) = conditional_hit(
@@ -1129,7 +1188,7 @@ pub(crate) fn calculate_mode(
     }
     let blood_proc = if chained_weapon && rules::set_effect(set, "blood_moon") {
         // 33% per accurate splat; the second splat must pass both accuracy checks.
-        0.33 * hit + 0.33 * 0.67 * hit * hit
+        0.33 * hit + 0.33 * 0.67 * hit * base_hit
     } else {
         0.0
     };
@@ -1141,11 +1200,14 @@ pub(crate) fn calculate_mode(
             ..Default::default()
         };
         max_hit = 0;
-        for max in [
+        for (index, max) in [
             distribution_max / 2,
             distribution_max - distribution_max / 2,
-        ] {
-            let (_, ceiling, outcomes) = conditional_hit(
+        ]
+        .into_iter()
+        .enumerate()
+        {
+            let (_, ceiling, mut outcomes) = conditional_hit(
                 if always_max { max } else { 0 },
                 max,
                 flat_armour,
@@ -1154,10 +1216,20 @@ pub(crate) fn calculate_mode(
                 None,
                 &twin_effects,
             );
-            max_hit += ceiling;
-            let mut part: Vec<_> = outcomes.into_iter().map(|(d, p)| (d, p * hit)).collect();
-            if hit < 1.0 {
-                part.extend(hit_effects.npc_transform.outcomes(0, 1.0 - hit));
+            if index == 0 {
+                crate::monster_rules::counter_splat(
+                    counter,
+                    &mut outcomes,
+                    ceiling,
+                    distribution_max,
+                    chained_counter,
+                );
+            }
+            max_hit += outcomes.iter().map(|(d, _)| *d).max().unwrap_or(0);
+            let chance = if index == 0 { hit } else { base_hit };
+            let mut part: Vec<_> = outcomes.into_iter().map(|(d, p)| (d, p * chance)).collect();
+            if chance < 1.0 {
+                part.extend(hit_effects.npc_transform.outcomes(0, 1.0 - chance));
             }
             parts.push(part);
         }
@@ -1171,7 +1243,7 @@ pub(crate) fn calculate_mode(
             distribution.clear();
             distribution.extend(hit_effects.npc_transform.outcomes(0, 1.0 - hit));
             let first_max = distribution_max / 2;
-            let (_, _, first) = conditional_hit(
+            let (_, first_ceiling, mut first) = conditional_hit(
                 if always_max { first_max } else { 0 },
                 first_max,
                 flat_armour,
@@ -1179,6 +1251,13 @@ pub(crate) fn calculate_mode(
                 monster,
                 None,
                 &twin_effects,
+            );
+            crate::monster_rules::counter_splat(
+                counter,
+                &mut first,
+                first_ceiling,
+                distribution_max,
+                true,
             );
             for (a, p) in first {
                 for (b, q) in &parts[1] {
@@ -1190,7 +1269,7 @@ pub(crate) fn calculate_mode(
             hits = distribution.clone();
         }
         if !chained_weapon {
-            hit = 1.0 - (1.0 - hit).powi(2);
+            hit = 1.0 - (1.0 - hit) * (1.0 - base_hit);
         }
     }
     if always_max
@@ -1433,8 +1512,16 @@ pub(crate) fn calculate_mode(
         if crate::encounters::window(monster.id).is_some_and(|w| {
             w.npc_damage.is_some()
                 || w.huey_pillar
-                || crate::monster_rules::profile(monster.id)
-                    .is_some_and(|p| p.kind == crate::monster_rules::Kind::HueyTail)
+                || crate::monster_rules::profile(monster.id).is_some_and(|p| {
+                    matches!(
+                        p.kind,
+                        crate::monster_rules::Kind::HueyTail
+                            | crate::monster_rules::Kind::Seren
+                            | crate::monster_rules::Kind::Slagilith
+                            | crate::monster_rules::Kind::Tormented
+                            | crate::monster_rules::Kind::Leafy
+                    )
+                })
                 || w.resource != crate::encounters::Resource::Hitpoints
         }) {
             return Err("Eclipse burn timing and pulse reductions against this special state or non-HP counter are unverified.".into());

@@ -193,6 +193,72 @@ struct Profile {
 }
 fn profile(name: &str) -> Option<Profile> {
     let (level, styles, slayer, note): (_, &[&str], _, _) = match name {
+        "Doom of Mokhaiotl" => (
+            90,
+            &["Ranged", "Melee", "Demonbane shield"],
+            0,
+            "Deep-delve ranged body, ordinary melee and the best usable owned demonbane shield style. No melee-punish bonus is assumed. Larvae, acid, beam timing, incoming attacks and full-trip supplies are not scored.",
+        ),
+        "Shellbane Gryphon" => (
+            65,
+            &["Melee"],
+            51,
+            "Post-quest melee baseline with a usable tortugan shield. Equipment weight, knockback counters, corrosion and whirlwinds are not scored; task and quest access remain unverified.",
+        ),
+        "Mad Angel" => (
+            75,
+            &["Melee"],
+            0,
+            "Post-quest ordinary damage baseline. Perfect counters, reflected blasts, enrage and incoming damage are not assumed.",
+        ),
+        "Maggot King" => (
+            85,
+            &["Ranged", "Melee"],
+            0,
+            "Ranged far-phase and melee nearby gear baseline. No fire burn or timed punish bonus is assumed. Larvae, healing, bile, phase timing and incoming damage remain unverified.",
+        ),
+        "Sol Heredit" => (
+            90,
+            &["Melee"],
+            0,
+            "Sol-only boss gear baseline. Colosseum waves, invocations, grapples, perfect parries, positioning and incoming damage are not scored.",
+        ),
+        "TzKal-Zuk" => (
+            95,
+            &["Ranged"],
+            0,
+            "Zuk-only exposed-window gear baseline. Inferno waves, moving shield uptime, adds, healers and incoming attacks are not scored.",
+        ),
+        "Inferno" => (
+            95,
+            &["Ranged", "Magic"],
+            0,
+            "Enemy-type gear baseline including Zuk. Wave counts, moving shield uptime, adds, healers, protection execution and full-trip supplies are not scored.",
+        ),
+        "Fortis Colosseum" => (
+            90,
+            &["Melee", "Ranged", "Magic"],
+            0,
+            "Enemy-type gear baseline including Sol. Wave counts, reinforcements, invocations, grapples, parries, positioning and incoming attacks are not scored.",
+        ),
+        "Tormented Demons" => (
+            80,
+            &["Melee", "Magic"],
+            0,
+            "Shielded melee/Magic hybrid baseline. Protection prayers are explicit; the score assumes no unshielded bonus. While Guthix Sleeps access, shield-drop timing, protection switches, spawn interactions and incoming damage are not scored.",
+        ),
+        "Fragment of Seren" => (
+            80,
+            &["Magic"],
+            0,
+            "Vulnerable-body Magic gear baseline with the per-splat limiter. Song of the Elves access, healing beams, clones, movement, near-max-HP special and full-fight supplies are not scored.",
+        ),
+        "Turoths" | "Kurasks" => (
+            if name == "Turoths" { 55 } else { 65 },
+            &["Melee", "Ranged", "Magic"],
+            if name == "Turoths" { 55 } else { 70 },
+            "Ordinary mob gear baseline with required leaf-bladed, broad ammunition or Magic Dart equipment. The best usable owned style is screened; Slayer access, task, superior encounters and full-trip supplies remain separate.",
+        ),
         "Scurrius" | "Obor" | "Bryophyta" => (
             50,
             &["Melee", "Ranged", "Magic"],
@@ -439,6 +505,11 @@ fn requires_all(name: &str) -> bool {
             | "The Nightmare"
             | "Phosani's Nightmare"
             | "The Royal Titans"
+            | "Doom of Mokhaiotl"
+            | "Maggot King"
+            | "Inferno"
+            | "Fortis Colosseum"
+            | "Tormented Demons"
     )
 }
 
@@ -526,25 +597,77 @@ fn assess_gear_catalog(snapshot: &Snapshot, preferences: &Options) -> Vec<Assess
             return a;
         }
         let Some(p) = guideline else { return unknown("No reviewed readiness guideline yet. Open the gear plan where available."); };
+        let mut entry_sets = sets.clone();
+        if matches!(entry.name.as_str(), "Turoths" | "Kurasks") {
+            for (style,set) in &sets {
+                let candidates: &[i32] = match rules::base_style(style) {
+                    "Melee" => &[20727,4158,11902],
+                    "Magic" => &[4170,21255],
+                    _ => &[],
+                };
+                for id in candidates.iter().filter(|id| owned.get(id).is_some_and(|q| *q>0) && planner::can_use(**id,&member)) {
+                    let mut alternative = set.clone();
+                    alternative[3] = Some(*id);
+                    if planner::gear(*id).is_some_and(|g| g.two_handed) { alternative[5] = None; }
+                    entry_sets.push((*style,alternative));
+                }
+                if rules::base_style(style) == "Ranged" {
+                    for id in [4160,11875,21316,33601].into_iter().filter(|id| owned.get(id).is_some_and(|q| *q>=options.combat.ammo_shots) && planner::can_use(*id,&member) && set[3].is_some_and(|w| rules::ammo_ids(w).contains(id))) {
+                        let mut alternative = set.clone();
+                        alternative[13] = Some(id);
+                        entry_sets.push((*style,alternative));
+                    }
+                }
+            }
+        }
+        if entry.name == "Doom of Mokhaiotl" {
+            // Generic winners may be unable to damage the shield. Screen each
+            // owned, usable demonbane weapon in its matching style baseline.
+            for (style, set) in &sets {
+                for id in owned.keys().filter(|id| planner::can_use(**id, &member)
+                    && rules::weapon(**id).is_some_and(|w| w.family.style == rules::base_style(style)
+                        && (w.weapon.family == "demonbane" || crate::monster_rules::is_demonbane(**id, if w.family.style == "Ranged" {"standard"} else {"slash"}, "")))) {
+                    let mut alternative = set.clone();
+                    alternative[3] = Some(*id);
+                    if planner::gear(*id).is_some_and(|g| g.two_handed) { alternative[5] = None; }
+                    if rules::base_style(style) == "Ranged" {
+                        alternative[13] = rules::ammo_ids(*id).iter().rev().find(|ammo| owned.get(ammo).is_some_and(|q| *q >= options.combat.ammo_shots) && planner::can_use(**ammo,&member)).copied();
+                    }
+                    entry_sets.push((*style, alternative));
+                }
+            }
+        }
+        if entry.name == "Shellbane Gryphon" {
+            if !owned.get(&31398).is_some_and(|q| *q > 0) || !planner::can_use(31398, &member) {
+                return Assessment { readiness: Readiness::Struggle, requirements: Requirements::default(), reason: "No usable owned tortugan shield for the protected melee baseline.".into(), detail: p.note.into(), wilderness: false, preview: None };
+            }
+            // The tortugan shield is worn on the back (cape slot), not in the
+            // off-hand slot. Its offensive cost must be included in the score.
+            for (_, set) in &mut entry_sets { set[1] = Some(31398); }
+        }
         if matches!(entry.name.as_str(), "TzTok-Jad" | "Fight Caves") && member.level("Prayer").unwrap() < 43 {
             return Assessment { readiness: Readiness::Struggle, requirements: Requirements::default(), reason: format!("43 Prayer is recommended for this ranged baseline (yours: {}).", member.level("Prayer").unwrap()), detail: p.note.into(), wilderness: false, preview: None };
         }
         let mut choices = vec![];
         for required in p.styles {
+            let shield_role = *required == "Demonbane shield";
             let mut best: Option<(f64, &str, i32, u32, usize)> = None;
-            for (style, set) in &sets {
-                if rules::base_style(style) != *required { continue; }
+            for (style, set) in &entry_sets {
+                let actual_style = rules::base_style(style);
+                if !shield_role && actual_style != *required { continue; }
                 let Some(weapon) = set[3] else { continue; };
-                let level = match *required { "Melee" => member.level("Attack").unwrap().min(member.level("Strength").unwrap()), "Magic" => member.level("Magic").unwrap(), _ => member.level("Ranged").unwrap() };
+                let level = match actual_style { "Melee" => member.level("Attack").unwrap().min(member.level("Strength").unwrap()), "Magic" => member.level("Magic").unwrap(), _ => member.level("Ranged").unwrap() };
                 let armour = [0, 4, 7, 9, 10].iter().filter(|slot| set[**slot].is_some()).count();
                 let mut lowest = f64::INFINITY;
                 let mut valid = true;
                 for target in &entry.targets {
                     // Mixed encounters use each recorded phase's intended style.
-                    if requires_all(&entry.name) && rules::base_style(&target.style) != *required { continue; }
+                    if entry.name == "Doom of Mokhaiotl" {
+                        if (target.id == 100178) != shield_role || !shield_role && rules::base_style(&target.style) != *required { continue; }
+                    } else if requires_all(&entry.name) && rules::base_style(&target.style) != *required { continue; }
                     let Some(monster) = planner::monster(target.id) else { valid = false; break; };
                     let spell = rules::spell_name_for_target(&member, set, &owned, &options.combat, monster, 0);
-                    if *required == "Magic" && (!rules::casting_supported_for_style(&member, set, &owned, &options.combat, style) || rules::spell_requirement(&member, set, &owned, &options.combat, spell).is_some()) { valid = false; break; }
+                    if actual_style == "Magic" && (!rules::casting_supported_for_style(&member, set, &owned, &options.combat, style) || rules::spell_requirement(&member, set, &owned, &options.combat, spell).is_some()) { valid = false; break; }
                     match combat::calculate_configured(&member, set, style, monster, spell, 0, &options.combat) { Ok(result) if result.dps.is_finite() => lowest = lowest.min(result.dps), _ => { valid = false; break; } }
                 }
                 if valid && lowest.is_finite() && best.as_ref().is_none_or(|b| lowest > b.0) { best = Some((lowest, *style, weapon, level, armour)); }
@@ -571,6 +694,9 @@ fn assess_gear_catalog(snapshot: &Snapshot, preferences: &Options) -> Vec<Assess
             "Fight Caves" => "Ranged gear baseline",
             "Nightmare" | "The Nightmare" => "Base 1–5-player gear",
             "Phosani's Nightmare" => "Solo shield/totem gear",
+            "Doom of Mokhaiotl" => "Deep-delve gear · body and demonbane shield",
+            "Sol Heredit" => "Sol-only gear · waves excluded",
+            "TzKal-Zuk" => "Zuk-only gear · waves excluded",
             _ => "",
         };
         let reason = if scope.is_empty() { setup_reason } else { format!("{scope}: {setup_reason}") };

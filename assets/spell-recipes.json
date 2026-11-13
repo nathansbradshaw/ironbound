@@ -1,4 +1,5 @@
 [
+  {"name":"Magic Dart","family":"magic_dart","level":50,"runes":{"560":1,"558":4},"tiers":[[50,15],[60,16],[70,17],[80,18],[90,19],[100,20],[110,21],[120,22]]},
   {"name":"Wind Surge","family":"wind","element":"air","level":81,"runes":{"21880":1,"556":7},"tiers":[[81,21],[85,22],[90,23],[95,24]]},
   {"name":"Water Surge","family":"wind","element":"water","level":85,"runes":{"21880":1,"556":7,"555":10},"tiers":[[81,21],[85,22],[90,23],[95,24]]},
   {"name":"Earth Surge","family":"wind","element":"earth","level":90,"runes":{"21880":1,"556":7,"557":10},"tiers":[[81,21],[85,22],[90,23],[95,24]]},

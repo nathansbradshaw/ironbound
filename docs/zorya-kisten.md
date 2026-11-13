@@ -69,7 +69,8 @@ future game fixes; the tests establish the chosen arithmetic, not a new game tes
 - Invalid charge variants, unmet/unknown known wear levels, two-handed/offhand
   conflicts, invulnerable or unreviewed resource/boundary states are unavailable.
 - Wardens P2/core, non-HP counters, encounter minimum-hit bounds and phase
-  transitions remain excluded from special-burst estimates. Supported ordinary
+  transitions, counterattack and scripted guaranteed-accuracy windows remain
+  excluded from special-burst estimates. Supported ordinary
   reductions include Corp (full Magic, half non-Corpbane melee), Huey caps and
   per-hit Vorkath acid halving. These do not establish whole-fight special timing.
 - Energy and held-buff assumptions save in private backups/share links and setup

@@ -69,6 +69,8 @@ pub fn evaluate(
     let window = crate::encounters::window(monster.id);
     if window.is_some_and(|w| {
         w.invulnerable
+            || w.counter != crate::encounters::Counter::None
+            || w.guaranteed_accuracy
             || w.min_hp.is_some_and(|hp| hp > 1)
             || w.resource != crate::encounters::Resource::Hitpoints
             || ![

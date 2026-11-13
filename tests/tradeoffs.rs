@@ -233,7 +233,10 @@ fn independent_caps_support_reverse_and_equal_comparisons() {
     let reverse = tradeoffs::compare(&snapshot, &o, 7, 3);
     assert_eq!((forward.left.cap, forward.right.cap), (3, 7));
     assert_eq!((reverse.left.cap, reverse.right.cap), (7, 3));
-    for (a, b) in [(&forward.left, &reverse.right), (&forward.right, &reverse.left)] {
+    for (a, b) in [
+        (&forward.left, &reverse.right),
+        (&forward.right, &reverse.left),
+    ] {
         assert_eq!(a.plan.equipment, b.plan.equipment);
         assert_eq!(a.carried_gear, b.carried_gear);
         assert_eq!(a.max_pair, b.max_pair);

@@ -77,7 +77,9 @@ Defaults use unboosted levels. Selected boosts use peak current levels; wear req
 
 Blowpipes preload your chosen ammunition budget from owned compatible darts, or you can explicitly confirm at least that many darts are already loaded. Changing the budget requires confirming the contents again. These occupy no bag or worn ammo slot. Projectile recovery, charges and actual consumption need your check. Boost decay, potion timing, venom and special-attack damage are outside these estimates.
 
-Incoming values describe an explicitly selected attack scenario, not a full-fight average. Unknown prayer interactions, special attacks, chip damage and defensive passives remain unverified. Automatic defence priority uses your selected defence bonuses; incoming scenarios remain separate estimates.
+Scythe uses target-size hits. Soulreaper uses **Boosts, darts & debuffs → Soulreaper held stacks**. Initial Moon support includes Dual macuahuitl, expected Blood Moon timing, Atlatl Strength-based damage and Blue Moon elemental casts. Full Eclipse burns and Blue Moon follow-ups remain unavailable. [Equipment coverage and remaining work](docs/equipment-backlog.md).
+
+Incoming values describe an explicitly selected attack scenario, not a full-fight average. Elysian, full Justiciar, settled Dinh's Block and Rondache reductions cover ordinary unprotected hits. Their interactions with chains, boss healing, prayer chip and specials remain unavailable. **Dinh's Block active** prevents attacks. Automatic defence priority uses your selected defence bonuses; incoming scenarios remain separate estimates.
 
 Prayer duration assumes full starting prayer, continuous use and carried ordinary prayer/restore doses. It excludes flicking, regeneration, restoration modifiers and encounter-imposed drains. It is not a whole-trip or kills-per-trip prediction.
 

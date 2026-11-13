@@ -1122,6 +1122,8 @@ pub fn start() -> Result<(), JsValue> {
             "reduction-accursed",
             "reduction-vulnerability",
             "kandarin-diary",
+            "soulreaper-stacks",
+            "bulwark-block",
             "allow-void",
             "safety",
             "prayer-weight",
@@ -1243,6 +1245,17 @@ pub fn start() -> Result<(), JsValue> {
                     s.saved.options.combat.kandarin_diary = el
                         .dyn_ref::<HtmlInputElement>()
                         .is_some_and(|e| e.checked())
+                }
+                "soulreaper-stacks" => {
+                    if let Ok(sel) = el.dyn_into::<HtmlSelectElement>() {
+                        s.saved.options.combat.soulreaper_stacks =
+                            sel.value().parse::<u32>().unwrap_or(0).min(5);
+                    }
+                }
+                "bulwark-block" => {
+                    s.saved.options.combat.bulwark_block = el
+                        .dyn_ref::<HtmlInputElement>()
+                        .is_some_and(|e| e.checked());
                 }
                 "allow-void" => {
                     s.saved.options.exclude_void = !el
@@ -3560,6 +3573,32 @@ fn combat_assumptions(
     html.push_str(&format!("<label>Current Hitpoints (Dharok's)<input id=\"current-hitpoints\" type=\"number\" min=\"1\" max=\"255\" placeholder=\"Full health\" value=\"{}\"></label>",
         settings.current_hitpoints.map(|hp|hp.to_string()).unwrap_or_default()));
     let owned = s.saved.snapshot.available(s.saved.options.shared);
+    if owned.keys().any(|id| {
+        crate::rules::weapon(*id).is_some_and(|r| r.has(crate::rules::Effect::Soulreaper))
+    }) {
+        html.push_str("<label>Soulreaper held stacks<select id=\"soulreaper-stacks\">");
+        for stacks in 0..=5 {
+            html.push_str(&format!(
+                "<option value=\"{stacks}\" {}>{stacks}</option>",
+                if settings.soulreaper_stacks == stacks {
+                    "selected"
+                } else {
+                    ""
+                }
+            ));
+        }
+        html.push_str("</select></label>");
+    }
+    if owned
+        .keys()
+        .any(|id| crate::rules::equipment_effect(*id, "bulwark"))
+    {
+        html.push_str(&format!("<label><input id=\"bulwark-block\" type=\"checkbox\" {}> Dinh's Block active · prevents attacks</label>", if settings.bulwark_block { "checked" } else { "" }));
+    }
+    for note in crate::equipment_effects::notes(set, settings) {
+        html.push_str(&format!("<p class=\"small-note\">{}</p>", esc(&note)));
+    }
+    html.push_str("<p class=\"small-note\">Normal attacks only. Special-attack damage, energy recovery and rotations are excluded; selected defence reductions assume successful effects already applied.</p>");
     let internal = set[3]
         .and_then(crate::rules::weapon)
         .filter(|r| !r.family.internal_ammo.is_empty())
@@ -4228,7 +4267,7 @@ fn combat_panel(s: &State, p: &Plan) -> String {
             &s.saved.options.combat,
         ) {
             Ok(r) => {
-                html.push_str(&format!(r#"<dl class="combat-values"><div><dt>Outgoing DPS</dt><dd>{:.3}</dd></div><div><dt>Hit chance</dt><dd>{:.1}%</dd></div><div><dt>Max hit</dt><dd>{}</dd></div><div><dt>Attack speed</dt><dd>{} ticks</dd></div></dl><p>{} attacks · {:.1} seconds per attack</p>"#,r.dps,r.accuracy*100.0,r.max_hit,r.attack_ticks,esc(&r.attack_type),r.attack_ticks as f64*0.6));
+                html.push_str(&format!(r#"<dl class="combat-values"><div><dt>Outgoing DPS</dt><dd>{:.3}</dd></div><div><dt>Hit chance</dt><dd>{:.1}%</dd></div><div><dt>Max hit</dt><dd>{}</dd></div><div><dt>Attack speed</dt><dd>{:.2} ticks</dd></div></dl><p>{} attacks · {:.2} seconds per attack (expected)</p>"#,r.dps,r.accuracy*100.0,r.max_hit,r.expected_attack_ticks,esc(&r.attack_type),r.expected_attack_ticks*0.6));
                 html.push_str(&attack_window_budget(s, target, &set, &r));
                 html.push_str(&combat_breakdown(s, m, &set, target, &r));
                 if r.potential_healing_per_second > 0.0 {

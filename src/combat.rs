@@ -160,6 +160,35 @@ pub fn calculate_configured(
     }
     let requested_style = style;
     let style = rules::base_style(style);
+    let void = rules::set_effect(
+        set,
+        match style {
+            "Magic" => "void_magic",
+            "Ranged" => "void_ranged",
+            _ => "void_melee",
+        },
+    );
+    let undead = monster
+        .attributes
+        .iter()
+        .any(|attribute| attribute == "undead");
+    let salve: (i64, i64) = if !undead {
+        (1, 1)
+    } else if style == "Melee" {
+        if rules::equipped_effect(set, "salve_enhanced_melee") {
+            (6, 5)
+        } else if rules::equipped_effect(set, "salve_melee") {
+            (7, 6)
+        } else {
+            (1, 1)
+        }
+    } else if rules::equipped_effect(set, "salve_enhanced_imbued") {
+        (6, 5)
+    } else if rules::equipped_effect(set, "salve_imbued") {
+        if style == "Magic" { (115, 100) } else { (7, 6) }
+    } else {
+        (1, 1)
+    };
     let prayer_attack = if prayer.style == style {
         prayer.attack
     } else {
@@ -197,6 +226,9 @@ pub fn calculate_configured(
     }
     let toa = crate::encounters::mechanics().toa_ids.contains(&monster.id);
     let mut b = bonuses_in_context(set, toa);
+    if rules::set_effect(set, "elite_void_magic") {
+        *b.other.entry("magic_str".into()).or_default() += 50;
+    }
     // Self-ammunition weapons retain e.g. a blessing's prayer, but do not fire arrows/bolts.
     if style == "Ranged" && rule.family.ammo.is_empty() {
         if let Some(ammo) = set[13].and_then(self::stats) {
@@ -218,6 +250,10 @@ pub fn calculate_configured(
         } else {
             0
         };
+        // Salve's magic damage is additive with other magic damage, and is not
+        // multiplied by Shadow; melee/ranged Salve apply after the base max hit.
+        *b.other.entry("magic_str".into()).or_default() +=
+            ((salve.0 - salve.1) * 1000 / salve.1) as i32;
     }
     let get = |m: &BTreeMap<String, i32>, k: &str| m.get(k).copied().unwrap_or(0);
     let level = |s: &str| {
@@ -239,14 +275,16 @@ pub fn calculate_configured(
                     .as_str()
             };
             let stance = rule.stance(kind);
-            let a = (level("Attack")? * (100 + prayer_attack) / 100 + 8 + stance.attack_bonus())
-                * (get(&b.offensive, kind) as i64 + 64);
-            let max = ((level("Strength")? * (100 + prayer_strength) / 100
-                + 8
-                + stance.strength_bonus())
-                * (get(&b.other, "str") as i64 + 64)
-                + 320)
-                / 640;
+            let mut effective_attack =
+                level("Attack")? * (100 + prayer_attack) / 100 + 8 + stance.attack_bonus();
+            let mut effective_strength =
+                level("Strength")? * (100 + prayer_strength) / 100 + 8 + stance.strength_bonus();
+            if void {
+                effective_attack = effective_attack * 11 / 10;
+                effective_strength = effective_strength * 11 / 10;
+            }
+            let a = effective_attack * (get(&b.offensive, kind) as i64 + 64);
+            let max = (effective_strength * (get(&b.other, "str") as i64 + 64) + 320) / 640;
             (
                 kind,
                 a,
@@ -262,10 +300,21 @@ pub fn calculate_configured(
                 if !rule.family.ammo.contains(&ammo) {
                     return Err("Weapon/ammunition combination not supported.".into());
                 }
+                if rules::ammunition(ammo) == AmmoEffect::Unsupported {
+                    return Err("This ammunition is compatible, but its enchanted-bolt effect is not modelled yet. Choose supported bolts for a DPS estimate.".into());
+                }
             }
-            let effective = level("Ranged")? * (100 + prayer_attack) / 100 + 8;
+            let mut effective = level("Ranged")? * (100 + prayer_attack) / 100 + 8;
+            if void {
+                effective = effective * 11 / 10;
+            }
             let a = effective * (get(&b.offensive, "ranged") as i64 + 64);
-            let strength = level("Ranged")? * (100 + prayer_strength) / 100 + 8;
+            let mut strength = level("Ranged")? * (100 + prayer_strength) / 100 + 8;
+            if rules::set_effect(set, "elite_void_ranged") {
+                strength = strength * 9 / 8;
+            } else if void {
+                strength = strength * 11 / 10;
+            }
             let max = (strength * (get(&b.other, "ranged_str") as i64 + 64) + 320) / 640;
             (
                 "ranged",
@@ -318,12 +367,16 @@ pub fn calculate_configured(
                 _ => return Err("Spell or powered staff not supported.".into()),
             };
             let mut max = base + base * get(&b.other, "magic_str") as i64 / 1000;
-            let mut a = (mage * (100 + prayer_attack) / 100 + rule.family.accuracy_bonus)
-                * (get(&b.offensive, "magic") as i64 + 64);
+            let mut effective = mage * (100 + prayer_attack) / 100 + rule.family.accuracy_bonus;
+            if void {
+                effective = effective * 29 / 20;
+            }
+            let base_a = effective * (get(&b.offensive, "magic") as i64 + 64);
+            let mut a = base_a * salve.0 / salve.1;
             if rule.family.formula == Formula::Wind {
                 if let Some(w) = &monster.weakness {
                     if w.element == "air" {
-                        a += a * w.severity as i64 / 100;
+                        a += base_a * w.severity as i64 / 100;
                         max += base * w.severity as i64 / 100;
                     }
                 }
@@ -344,6 +397,22 @@ pub fn calculate_configured(
         defence = defence * (250 + invocation.min(150) as i64) / 250;
     }
     let (mut attack, mut max_hit) = rule.scale_equipment(set, attack, max_hit);
+    if style != "Magic" {
+        attack = attack * salve.0 / salve.1;
+        max_hit = (i64::from(max_hit) * salve.0 / salve.1) as i32;
+    }
+    if rule.has(Effect::Demonbane)
+        && monster
+            .attributes
+            .iter()
+            .any(|attribute| attribute == "demon")
+    {
+        let percent = rule.weapon.demonbane_percent.unwrap_or(0)
+            * i64::from(crate::encounters::demonbane_vulnerability(monster.id))
+            / 100;
+        attack += attack * percent / 100;
+        max_hit += (i64::from(max_hit) * percent / 100) as i32;
+    }
     let keris =
         rule.has(Effect::KalphiteDamage) && monster.attributes.iter().any(|a| a == "kalphite");
     if keris {
@@ -363,12 +432,8 @@ pub fn calculate_configured(
         }
     }
     let mut hit = accuracy(attack, defence);
-    if style == "Magic"
-        && set
-            .iter()
-            .flatten()
-            .any(|id| rules::equipment_effect(*id, "brimstone_accuracy"))
-    {
+    let brimstone = style == "Magic" && rules::equipped_effect(set, "brimstone_accuracy");
+    if brimstone {
         hit = 0.75 * hit + 0.25 * accuracy(attack, defence * 9 / 10);
     }
     let fang = rule.has(Effect::Fang);
@@ -378,6 +443,19 @@ pub fn calculate_configured(
         } else {
             fang_accuracy(attack, defence)
         };
+    }
+    if style == "Magic"
+        && rules::equipped_effect(set, "confliction_accuracy")
+        && crate::planner::gear(weapon).is_some_and(|g| !g.two_handed)
+    {
+        // The ring rolls independently each cast. Average the unbuffed and
+        // after-miss transition probabilities before solving the steady state.
+        let double = if brimstone {
+            0.75 * fang_accuracy(attack, defence) + 0.25 * fang_accuracy(attack, defence * 9 / 10)
+        } else {
+            fang_accuracy(attack, defence)
+        };
+        hit = double / (1.0 + double - hit);
     }
     let min_hit = if fang { max_hit * 3 / 20 } else { 0 };
     if fang {
@@ -475,8 +553,22 @@ fn conditional_hit(
     (mean, ceiling)
 }
 pub fn fang_accuracy(a: i64, d: i64) -> f64 {
-    if a < 0 || d < 0 {
-        return accuracy(a, d);
+    let a = if a < 0 { (a + 2).min(0) } else { a };
+    let d = if d < 0 { (d + 2).min(0) } else { d };
+    if a >= 0 && d < 0 {
+        return 1.0 - 1.0 / (-d + 1) as f64 / (a + 1) as f64;
+    }
+    if a < 0 && d >= 0 {
+        return 0.0;
+    }
+    if a < 0 && d < 0 {
+        let (a, d) = (-d as f64, -a as f64);
+        return (if a < d {
+            a * (d * 6.0 - 2.0 * a + 5.0) / (6.0 * (d + 1.0) * (d + 1.0))
+        } else {
+            1.0 - (d + 2.0) * (2.0 * d + 3.0) / (6.0 * (d + 1.0) * (a + 1.0))
+        })
+        .clamp(0.0, 1.0);
     }
     let (a, d) = (a as f64, d as f64);
     (if a > d {
@@ -485,4 +577,11 @@ pub fn fang_accuracy(a: i64, d: i64) -> f64 {
         a * (4.0 * a + 5.0) / (6.0 * (a + 1.0) * (d + 1.0))
     })
     .clamp(0.0, 1.0)
+}
+/// Long-run single-target accuracy: after a miss, two attack rolls share one
+/// defence roll. The first cast and target/spell switches reset this state.
+pub fn confliction_accuracy(attack: i64, defence: i64) -> f64 {
+    let single = accuracy(attack, defence);
+    let double = fang_accuracy(attack, defence);
+    (double / (1.0 + double - single)).clamp(0.0, 1.0)
 }

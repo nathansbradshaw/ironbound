@@ -865,6 +865,11 @@ fn act(action: &str) {
                     };
                     s.saved.options.targets = entry.targets.clone();
                     s.saved.options.gear_overrides.clear();
+                    s.saved.options.targets = planner::recommend_encounter(
+                        &s.saved.snapshot,
+                        &s.saved.options,
+                        &s.saved.options.targets,
+                    );
                     s.saved.options.inventory_overrides.clear();
                     s.saved.options.inventory_quantities.clear();
                     s.shared_setup = None;
@@ -879,6 +884,17 @@ fn act(action: &str) {
             } else {
                 s.notice("Choose a listed boss, raid or encounter.", true);
             }
+        } else if action == "compare-owned-styles" {
+            s.saved.options.targets = planner::recommend_encounter(
+                &s.saved.snapshot,
+                &s.saved.options,
+                &s.saved.options.targets,
+            );
+            s.saved.options.inventory_overrides.clear();
+            s.saved.options.inventory_quantities.clear();
+            s.phase = None;
+            s.edit_style = None;
+            s.notice("Compared complete owned loadouts for this boss.", false);
         } else if let Some(id) = action
             .strip_prefix("goal-item:")
             .and_then(|v| v.parse::<i32>().ok())
@@ -995,6 +1011,27 @@ fn act(action: &str) {
                                     .selected()
                                     .is_some_and(|m| planner::can_use(id, m))))
                     {
+                        let mut selected_style = parts[0].to_string();
+                        if slot == 3
+                            && s.saved.options.boss == Boss::Custom
+                            && s.saved.options.targets.len() == 1
+                        {
+                            if let Some(rule) = crate::rules::weapon(id) {
+                                if !rule.permits(&selected_style) {
+                                    selected_style = rule.family.style.clone();
+                                    s.saved.options.targets[0].style = selected_style.clone();
+                                    s.edit_style = Some(selected_style.clone());
+                                    s.phase = None;
+                                }
+                                if rule.family.style == "Ranged"
+                                    && s.saved.options.gear_overrides.get("Ranged:13").is_some_and(
+                                        |ammo| !crate::rules::ammo_ids(id).contains(ammo),
+                                    )
+                                {
+                                    s.saved.options.gear_overrides.remove("Ranged:13");
+                                }
+                            }
+                        }
                         let key = format!(
                             "{}:{slot}",
                             if s.saved.options.fewer_switches
@@ -1002,7 +1039,7 @@ fn act(action: &str) {
                             {
                                 planner::primary_style(&s.saved.options)
                             } else {
-                                parts[0]
+                                &selected_style
                             }
                         );
                         s.saved.options.gear_overrides.insert(key, id);
@@ -1594,13 +1631,28 @@ fn loadout_panel(s: &State, p: &Plan) -> String {
     if p.phases.len() > 6 {
         html.push_str("<label class=\"phase-select-label\">Preview<select id=\"phase-select\"><option value=\"start\">Start gear</option>");
         for (i, phase) in p.phases.iter().enumerate() {
-            html.push_str(&format!("<option value=\"{i}\" {}>{}</option>",if s.phase==Some(i){"selected"}else{""},esc(&phase.name)));
+            html.push_str(&format!(
+                "<option value=\"{i}\" {}>{}</option>",
+                if s.phase == Some(i) { "selected" } else { "" },
+                esc(&phase.name)
+            ));
         }
         html.push_str("</select></label>");
     } else if !p.phases.is_empty() {
         html.push_str(&format!("<button class=\"phase {}\" data-action=\"starting\" aria-pressed=\"{}\">Start gear</button>",if s.phase.is_none(){"active"}else{""},s.phase.is_none()));
         for (i, phase) in p.phases.iter().enumerate() {
-            let label=if s.saved.options.boss==Boss::Barrows {if i==0{"Five brothers"}else{"Ahrim"}}else{&phase.name};
+            let label = if s.saved.options.boss == Boss::Barrows {
+                if i == 0 { "Five brothers" } else { "Ahrim" }
+            } else {
+                s.saved
+                    .options
+                    .targets
+                    .get(i)
+                    .and_then(|target| crate::encounters::window(target.id))
+                    .filter(|window| !window.label.is_empty())
+                    .map(|window| window.label.as_str())
+                    .unwrap_or(&phase.name)
+            };
             html.push_str(&format!("<button class=\"phase {}\" data-action=\"phase:{i}\" aria-pressed=\"{}\">{}</button>",if s.phase==Some(i){"active"}else{""},s.phase==Some(i),esc(label)));
         }
     }
@@ -1819,7 +1871,7 @@ fn selected_encounter(options: &Options) -> Option<&'static crate::encounters::E
     }
     crate::encounters::catalog()
         .iter()
-        .filter(|e| !e.targets.is_empty() && e.targets == options.targets)
+        .filter(|e| e.matches(&options.targets))
         .min_by_key(|e| !crate::encounters::groups().iter().any(|g| g.name == e.name))
 }
 fn encounter_label(options: &Options) -> &str {
@@ -2379,8 +2431,16 @@ fn switch_controls(s: &State) -> String {
     }
     let mut html = format!(
         r#"<section class="flow-controls" aria-label="Switching preferences"><label>Switch limit<input id="max-switches" type="number" min="0" max="11" step="1" value="{}" placeholder="No limit" title="Leave empty for no limit"></label><details id="switch-preferences" {}><summary>Options</summary><div class="switch-preferences-fields"><label>Gear slots in bag<input id="switch-slots" type="number" min="0" max="20" value="{}"></label><label>Prioritize<select id="focus-style">"#,
-        s.saved.options.max_switches.map(|v|v.to_string()).unwrap_or_default(),
-        if s.switch_preferences_open {"open"}else{""},
+        s.saved
+            .options
+            .max_switches
+            .map(|v| v.to_string())
+            .unwrap_or_default(),
+        if s.switch_preferences_open {
+            "open"
+        } else {
+            ""
+        },
         s.saved.options.switch_slots
     );
     for (value, label) in [
@@ -2419,9 +2479,16 @@ fn switch_controls(s: &State) -> String {
                     esc(url)
                 ));
             }
-            html.push_str("<p>Normal attacks only at Moons; ToA specials and a full raid survival model are not simulated.</p>");
+            if s.saved.options.boss == Boss::Custom && s.saved.options.targets.len() == 1 {
+                html.push_str(&button(
+                    "compare-owned-styles",
+                    "Compare owned styles",
+                    "phase",
+                ));
+            }
+            html.push_str("<p>Supported attack windows only. Movement, specials and full fight survival remain partial.</p>");
         } else {
-            html.push_str("<p>Uses supported combat calculations. Reviewed encounter-specific gear roles are available for ToA and Moons.</p>");
+            html.push_str("<p>Uses supported combat calculations and reviewed encounter roles where available.</p>");
         }
     }
     html.push_str("</details></div></section>");
@@ -2603,6 +2670,7 @@ struct GearChoice {
     usable: bool,
     metrics: crate::ranking::Metrics,
     score: Option<f64>,
+    reason: Option<String>,
 }
 
 fn ranked_gear(s: &State) -> (Vec<GearChoice>, Vec<&'static str>) {
@@ -2621,7 +2689,14 @@ fn ranked_gear(s: &State) -> (Vec<GearChoice>, Vec<&'static str>) {
         .iter()
         .filter(|g| g.slot == planner::SLOT_KEYS[slot] && owned.get(&g.id).is_some_and(|n| *n > 0))
         .map(|g| {
-            let usable = planner::can_use(g.id, member)
+            let compatible = slot != 13
+                || set[3].and_then(crate::rules::weapon).is_none_or(|rule| {
+                    rule.family.style != "Ranged"
+                        || rule.family.ammo.is_empty()
+                        || rule.family.ammo.contains(&g.id)
+                });
+            let usable = compatible
+                && planner::can_use(g.id, member)
                 && !s.saved.options.excluded.contains(&g.id)
                 && (slot != 13 || owned.get(&g.id).copied().unwrap_or(0) >= 100);
             let mut trial = set.clone();
@@ -2629,23 +2704,74 @@ fn ranked_gear(s: &State) -> (Vec<GearChoice>, Vec<&'static str>) {
             if slot == 3 && g.two_handed {
                 trial[5] = None;
             }
-            let dps = if usable {
-                comparison_monster(s)
-                    .and_then(|target| {
-                        combat::calculate_configured(
-                            member,
-                            &trial,
-                            style,
-                            target,
-                            crate::rules::spell_name(member, &trial, &owned),
-                            s.saved.options.raid_level,
-                            &s.saved.options.combat,
-                        )
-                        .ok()
+            let trial_style = if slot == 3
+                && s.saved.options.boss == Boss::Custom
+                && s.saved.options.targets.len() == 1
+            {
+                crate::rules::weapon(g.id)
+                    .filter(|rule| !rule.permits(style))
+                    .map(|rule| rule.family.style.as_str())
+                    .unwrap_or(style)
+            } else {
+                style
+            };
+            if slot == 3
+                && trial_style == "Ranged"
+                && !crate::rules::ammo_ids(g.id).contains(&trial[13].unwrap_or(0))
+            {
+                trial[13] = crate::rules::ammo_ids(g.id)
+                    .iter()
+                    .copied()
+                    .filter(|id| {
+                        owned.get(id).copied().unwrap_or(0) >= 100 && planner::can_use(*id, member)
                     })
-                    .map(|r| r.dps)
+                    .max_by(|a, b| {
+                        let evaluate = |id| {
+                            let mut set = trial.clone();
+                            set[13] = Some(id);
+                            comparison_monster(s)
+                                .and_then(|target| {
+                                    combat::calculate_configured(
+                                        member,
+                                        &set,
+                                        trial_style,
+                                        target,
+                                        "",
+                                        s.saved.options.raid_level,
+                                        &s.saved.options.combat,
+                                    )
+                                    .ok()
+                                })
+                                .map(|r| r.dps)
+                        };
+                        evaluate(*a)
+                            .partial_cmp(&evaluate(*b))
+                            .unwrap_or(std::cmp::Ordering::Equal)
+                    });
+            }
+            let calculation = if usable {
+                comparison_monster(s).map(|target| {
+                    combat::calculate_configured(
+                        member,
+                        &trial,
+                        trial_style,
+                        target,
+                        crate::rules::spell_name(member, &trial, &owned),
+                        s.saved.options.raid_level,
+                        &s.saved.options.combat,
+                    )
+                })
             } else {
                 None
+            };
+            let dps = calculation
+                .as_ref()
+                .and_then(|r| r.as_ref().ok())
+                .map(|r| r.dps);
+            let reason = if !compatible {
+                Some("Not compatible with the equipped weapon".into())
+            } else {
+                calculation.and_then(Result::err)
             };
             let known_bonuses = trial
                 .iter()
@@ -2684,6 +2810,7 @@ fn ranked_gear(s: &State) -> (Vec<GearChoice>, Vec<&'static str>) {
                     weight: crate::ranking::equipment_weight(&trial),
                 },
                 score: None,
+                reason,
             }
         })
         .collect();
@@ -2778,6 +2905,11 @@ fn gear_choices(s: &State) -> String {
             format!("Owned × {}", owned[&g.id])
         } else {
             format!("{state} · owned × {}", owned[&g.id])
+        };
+        let state = if let Some(reason) = &row.reason {
+            format!("{state} · {reason}")
+        } else {
+            state
         };
         let score = row
             .score

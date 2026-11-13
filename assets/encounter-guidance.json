@@ -1,5 +1,11 @@
 {
   "aliases": {
+    "Elite void robe": ["Elite void robe (or)"],
+    "Elite void top": ["Elite void top (or)"],
+    "Void knight gloves": ["Void knight gloves (or)"],
+    "Void knight robe": ["Void knight robe (or)"],
+    "Void knight top": ["Void knight top (or)"],
+    "Void ranger helm": ["Void ranger helm (or)"],
     "Amulet of rancour": ["Amulet of rancour (s)"],
     "Amulet of torture": ["Amulet of torture (or)"],
     "Amulet of fury": ["Amulet of fury (or)"],
@@ -92,6 +98,1217 @@
         {"slot":"feet","rationale":"Strength and slash defence, rather than utility boots.","tiers":[{"items":["Avernic treads (max)","Primordial boots"]},{"items":["Guardian boots","Echo boots"]},{"items":["Dragon boots"]},{"items":["Bandos boots"]},{"items":["Rune boots"]},{"items":["Mixed hide boots","Climbing boots"]}]},
         {"slot":"ring","rationale":"Useful strength before miscellaneous utility rings.","tiers":[{"items":["Ultor ring"]},{"items":["Berserker ring (i)"]},{"items":["Berserker ring","Brimstone ring"]},{"items":["Warrior ring (i)","Warrior ring"]}]}
       ]}]
+    },
+{
+  "id": "vorkath",
+  "incoming_model": "partial",
+  "joint_sets": [
+    {
+      "id": "vorkath_void_ranged",
+      "slots": [
+        {
+          "items": [
+            "Void ranger helm"
+          ],
+          "slot": "head"
+        },
+        {
+          "items": [
+            "Elite void top",
+            "Void knight top"
+          ],
+          "slot": "body"
+        },
+        {
+          "items": [
+            "Elite void robe",
+            "Void knight robe"
+          ],
+          "slot": "legs"
+        },
+        {
+          "items": [
+            "Void knight gloves"
+          ],
+          "slot": "hands"
+        }
+      ],
+      "style": "Ranged"
     }
+  ],
+  "name": "Vorkath",
+  "rationale": [
+    "Compare complete owned melee and ranged loadouts; the lowest defence bonus alone cannot choose the attack style.",
+    "Imbued Salve, dragonbane weapons and a complete Void set can stack. Void pieces are tested together, never as an incomplete set.",
+    "Antifire, venom protection, Crumble Undead and the ruby-to-diamond bolt change still need a trip plan; basic attacks do not simulate the whole fight."
+  ],
+  "roles": [
+    {
+      "slots": [
+        {
+          "rationale": "Strength with useful defence; avoid utility headgear.",
+          "slot": "head",
+          "tiers": [
+            {
+              "items": [
+                "Torva full helm",
+                "Oathplate helm"
+              ]
+            },
+            {
+              "items": [
+                "Neitiznot faceguard"
+              ]
+            },
+            {
+              "items": [
+                "Serpentine helm"
+              ]
+            },
+            {
+              "items": [
+                "Helm of Neitiznot",
+                "Blood Moon helm",
+                "Blue Moon helm"
+              ]
+            },
+            {
+              "items": [
+                "Berserker helm"
+              ]
+            }
+          ]
+        },
+        {
+          "rationale": "Melee strength, then a useful stab/prayer fallback.",
+          "slot": "cape",
+          "tiers": [
+            {
+              "items": [
+                "Infernal cape"
+              ]
+            },
+            {
+              "items": [
+                "Fire cape"
+              ]
+            },
+            {
+              "items": [
+                "Ardougne cloak 4",
+                "Ardougne cloak 3",
+                "Ardougne cloak 2",
+                "Ardougne cloak 1"
+              ]
+            }
+          ]
+        },
+        {
+          "rationale": "Owned Salve enchantments work against Vorkath's undead attribute; ranged still needs imbuing.",
+          "slot": "neck",
+          "tiers": [
+            {
+              "items": [
+                "Salve amulet(ei)",
+                "Salve amulet (e)"
+              ]
+            },
+            {
+              "items": [
+                "Salve amulet(i)",
+                "Salve amulet"
+              ]
+            },
+            {
+              "items": [
+                "Amulet of rancour",
+                "Amulet of torture"
+              ]
+            },
+            {
+              "items": [
+                "Amulet of fury"
+              ]
+            }
+          ]
+        },
+        {
+          "rationale": "Below Bandos, defensive armour can extend Vorkath trips; a small strength gain must actually improve a max hit to justify lost defence.",
+          "slot": "body",
+          "tiers": [
+            {
+              "items": [
+                "Torva platebody"
+              ]
+            },
+            {
+              "items": [
+                "Bandos chestplate",
+                "Oathplate chest"
+              ]
+            },
+            {
+              "items": [
+                "Justiciar chestguard",
+                "Blood Moon chestplate"
+              ]
+            },
+            {
+              "items": [
+                "Dharok's platebody",
+                "Torag's platebody",
+                "Guthan's platebody",
+                "Fighter torso"
+              ]
+            },
+            {
+              "items": [
+                "Verac's brassard",
+                "Rune platebody"
+              ]
+            }
+          ]
+        },
+        {
+          "rationale": "Below Bandos, defensive armour can extend Vorkath trips; a small strength gain must actually improve a max hit to justify lost defence.",
+          "slot": "legs",
+          "tiers": [
+            {
+              "items": [
+                "Torva platelegs"
+              ]
+            },
+            {
+              "items": [
+                "Bandos tassets",
+                "Oathplate legs"
+              ]
+            },
+            {
+              "items": [
+                "Justiciar legguards",
+                "Blood Moon tassets"
+              ]
+            },
+            {
+              "items": [
+                "Dharok's platelegs",
+                "Torag's platelegs",
+                "Verac's plateskirt",
+                "Guthan's chainskirt"
+              ]
+            },
+            {
+              "items": [
+                "Rune platelegs",
+                "Rune plateskirt"
+              ]
+            }
+          ]
+        },
+        {
+          "rationale": "A defender supports melee accuracy and strength.",
+          "slot": "shield",
+          "tiers": [
+            {
+              "items": [
+                "Avernic defender"
+              ]
+            },
+            {
+              "items": [
+                "Dragon defender"
+              ]
+            },
+            {
+              "items": [
+                "Rune defender"
+              ]
+            },
+            {
+              "items": [
+                "Toktz-ket-xil"
+              ]
+            }
+          ]
+        },
+        {
+          "rationale": "Useful combat bonuses across the raid.",
+          "slot": "hands",
+          "tiers": [
+            {
+              "items": [
+                "Ferocious gloves"
+              ]
+            },
+            {
+              "items": [
+                "Barrows gloves"
+              ]
+            },
+            {
+              "items": [
+                "Dragon gloves"
+              ]
+            },
+            {
+              "items": [
+                "Rune gloves",
+                "Combat bracelet"
+              ]
+            }
+          ]
+        },
+        {
+          "rationale": "Strength boots that also work with fewer switches.",
+          "slot": "feet",
+          "tiers": [
+            {
+              "items": [
+                "Avernic treads (max)",
+                "Avernic treads (pr)",
+                "Primordial boots"
+              ]
+            },
+            {
+              "items": [
+                "Dragon boots"
+              ]
+            },
+            {
+              "items": [
+                "Mixed hide boots",
+                "Climbing boots"
+              ]
+            }
+          ]
+        },
+        {
+          "rationale": "Strength baseline; special-attack energy utility needs separate planning.",
+          "slot": "ring",
+          "tiers": [
+            {
+              "items": [
+                "Ultor ring"
+              ]
+            },
+            {
+              "items": [
+                "Berserker ring (i)"
+              ]
+            },
+            {
+              "items": [
+                "Brimstone ring",
+                "Berserker ring"
+              ]
+            },
+            {
+              "items": [
+                "Lightbearer"
+              ]
+            }
+          ]
+        }
+      ],
+      "style": "Melee"
+    },
+    {
+      "slots": [
+        {
+          "rationale": "Crystal only with a compatible bow; hybrid helmets can reduce switches.",
+          "slot": "head",
+          "tiers": [
+            {
+              "items": [
+                "Void ranger helm"
+              ],
+              "required_set": "vorkath_void_ranged"
+            },
+            {
+              "items": [
+                "Masori mask (f)",
+                "Masori mask"
+              ]
+            },
+            {
+              "items": [
+                "Crystal helm"
+              ],
+              "required_weapon_names": [
+                "Bow of Faerdhinen",
+                "Crystal bow"
+              ]
+            },
+            {
+              "items": [
+                "Armadyl helmet"
+              ]
+            },
+            {
+              "items": [
+                "Eclipse Moon helm"
+              ]
+            },
+            {
+              "items": [
+                "Helm of Neitiznot",
+                "Blue Moon helm"
+              ]
+            }
+          ]
+        },
+        {
+          "rationale": "Ranged bonuses and ammunition recovery.",
+          "slot": "cape",
+          "tiers": [
+            {
+              "items": [
+                "Dizana's quiver"
+              ]
+            },
+            {
+              "items": [
+                "Ava's assembler"
+              ]
+            },
+            {
+              "items": [
+                "Ava's accumulator"
+              ]
+            },
+            {
+              "items": [
+                "Ava's attractor"
+              ]
+            }
+          ]
+        },
+        {
+          "rationale": "Only imbued Salve variants boost ranged against undead; the unimbued amulets do not.",
+          "slot": "neck",
+          "tiers": [
+            {
+              "items": [
+                "Salve amulet(ei)"
+              ]
+            },
+            {
+              "items": [
+                "Salve amulet(i)"
+              ]
+            },
+            {
+              "items": [
+                "Necklace of anguish"
+              ]
+            },
+            {
+              "items": [
+                "Amulet of fury",
+                "Amulet of glory"
+              ]
+            }
+          ]
+        },
+        {
+          "rationale": "Crystal is bow-dependent; Moon/mixed hide offer melee/ranged hybrid value.",
+          "slot": "body",
+          "tiers": [
+            {
+              "items": [
+                "Elite void top",
+                "Void knight top"
+              ],
+              "required_set": "vorkath_void_ranged"
+            },
+            {
+              "items": [
+                "Masori body (f)",
+                "Masori body"
+              ]
+            },
+            {
+              "items": [
+                "Crystal body"
+              ],
+              "required_weapon_names": [
+                "Bow of Faerdhinen",
+                "Crystal bow"
+              ]
+            },
+            {
+              "items": [
+                "Armadyl chestplate"
+              ]
+            },
+            {
+              "items": [
+                "Eclipse Moon chestplate"
+              ]
+            },
+            {
+              "items": [
+                "Mixed hide top",
+                "Karil's leathertop",
+                "Armadyl d'hide body",
+                "Bandos d'hide body",
+                "Ancient d'hide body",
+                "Guthix d'hide body",
+                "Saradomin d'hide body",
+                "Zamorak d'hide body"
+              ]
+            },
+            {
+              "items": [
+                "Black d'hide body"
+              ]
+            },
+            {
+              "items": [
+                "Red d'hide body"
+              ]
+            }
+          ]
+        },
+        {
+          "rationale": "Useful ranged legs, with hybrid options for limited switches.",
+          "slot": "legs",
+          "tiers": [
+            {
+              "items": [
+                "Elite void robe",
+                "Void knight robe"
+              ],
+              "required_set": "vorkath_void_ranged"
+            },
+            {
+              "items": [
+                "Masori chaps (f)",
+                "Masori chaps"
+              ]
+            },
+            {
+              "items": [
+                "Crystal legs"
+              ],
+              "required_weapon_names": [
+                "Bow of Faerdhinen",
+                "Crystal bow"
+              ]
+            },
+            {
+              "items": [
+                "Armadyl chainskirt"
+              ]
+            },
+            {
+              "items": [
+                "Eclipse Moon tassets"
+              ]
+            },
+            {
+              "items": [
+                "Mixed hide legs",
+                "Karil's leatherskirt",
+                "Armadyl chaps",
+                "Bandos chaps",
+                "Ancient chaps",
+                "Guthix chaps",
+                "Saradomin chaps",
+                "Zamorak chaps"
+              ]
+            },
+            {
+              "items": [
+                "Black d'hide chaps"
+              ]
+            },
+            {
+              "items": [
+                "Red d'hide chaps"
+              ]
+            }
+          ]
+        },
+        {
+          "rationale": "Ranged gloves or a shared combat glove.",
+          "slot": "hands",
+          "tiers": [
+            {
+              "items": [
+                "Void knight gloves"
+              ],
+              "required_set": "vorkath_void_ranged"
+            },
+            {
+              "items": [
+                "Zaryte vambraces"
+              ]
+            },
+            {
+              "items": [
+                "Barrows gloves"
+              ]
+            },
+            {
+              "items": [
+                "Black d'hide vambraces"
+              ]
+            },
+            {
+              "items": [
+                "Combat bracelet"
+              ]
+            }
+          ]
+        },
+        {
+          "rationale": "Ranged baseline; Lightbearer utility is encounter-dependent.",
+          "slot": "ring",
+          "tiers": [
+            {
+              "items": [
+                "Venator ring"
+              ]
+            },
+            {
+              "items": [
+                "Archers ring (i)"
+              ]
+            },
+            {
+              "items": [
+                "Brimstone ring"
+              ]
+            },
+            {
+              "items": [
+                "Archers ring",
+                "Lightbearer"
+              ]
+            }
+          ]
+        },
+        {
+          "rationale": "Dragonfire protection is a practical default; other offhands require the appropriate super antifire and Protect from Magic plan.",
+          "slot": "shield",
+          "tiers": [
+            {
+              "items": [
+                "Dragonfire ward"
+              ]
+            },
+            {
+              "items": [
+                "Anti-dragon shield"
+              ]
+            },
+            {
+              "items": [
+                "Dragonfire shield"
+              ]
+            },
+            {
+              "items": [
+                "Twisted buckler",
+                "Book of Law"
+              ]
+            }
+          ]
+        },
+        {
+          "rationale": "Ranged boots are compared with the full loadout, not melee strength defaults.",
+          "slot": "feet",
+          "tiers": [
+            {
+              "items": [
+                "Avernic treads (max)",
+                "Pegasian boots"
+              ]
+            },
+            {
+              "items": [
+                "Ranger boots"
+              ]
+            },
+            {
+              "items": [
+                "Armadyl d'hide boots",
+                "Bandos d'hide boots",
+                "Ancient d'hide boots",
+                "Guthix d'hide boots",
+                "Saradomin d'hide boots",
+                "Zamorak d'hide boots"
+              ]
+            },
+            {
+              "items": [
+                "Mixed hide boots"
+              ]
+            }
+          ]
+        }
+      ],
+      "style": "Ranged"
+    }
+  ],
+  "source_urls": [
+    "https://oldschool.runescape.wiki/w/Vorkath/Strategies"
+  ],
+  "target_ids": [
+    8059
+  ]
+},
+{
+  "id": "yama",
+  "incoming_model": "partial",
+  "name": "Yama",
+  "rationale": [
+    "Slash is the usual main-boss starting style; the Judge windows also need a magic option.",
+    "Yama's magic defence depends on the tank's attack style and the phase. Select the matching recorded window before comparing damage.",
+    "Glyphs, prayer-piercing damage, flares and Judge reactions are not a complete incoming-damage simulation."
+  ],
+  "roles": [
+    {
+      "slots": [
+        {
+          "rationale": "Strength with useful defence; avoid utility headgear.",
+          "slot": "head",
+          "tiers": [
+            {
+              "items": [
+                "Torva full helm",
+                "Oathplate helm"
+              ]
+            },
+            {
+              "items": [
+                "Neitiznot faceguard"
+              ]
+            },
+            {
+              "items": [
+                "Serpentine helm"
+              ]
+            },
+            {
+              "items": [
+                "Helm of Neitiznot",
+                "Blood Moon helm",
+                "Blue Moon helm"
+              ]
+            },
+            {
+              "items": [
+                "Berserker helm"
+              ]
+            }
+          ]
+        },
+        {
+          "rationale": "Melee strength, then a useful stab/prayer fallback.",
+          "slot": "cape",
+          "tiers": [
+            {
+              "items": [
+                "Infernal cape"
+              ]
+            },
+            {
+              "items": [
+                "Fire cape"
+              ]
+            },
+            {
+              "items": [
+                "Ardougne cloak 4",
+                "Ardougne cloak 3",
+                "Ardougne cloak 2",
+                "Ardougne cloak 1"
+              ]
+            }
+          ]
+        },
+        {
+          "rationale": "Combat accuracy and strength; fury adds defence.",
+          "slot": "neck",
+          "tiers": [
+            {
+              "items": [
+                "Amulet of rancour"
+              ]
+            },
+            {
+              "items": [
+                "Amulet of torture"
+              ]
+            },
+            {
+              "items": [
+                "Amulet of blood fury",
+                "Amulet of fury"
+              ]
+            },
+            {
+              "items": [
+                "Amulet of glory"
+              ]
+            },
+            {
+              "items": [
+                "Amulet of strength",
+                "Amulet of power"
+              ]
+            }
+          ]
+        },
+        {
+          "rationale": "Strength armour first; hybrid Moon and mixed hide remain practical progression options.",
+          "slot": "body",
+          "tiers": [
+            {
+              "items": [
+                "Torva platebody"
+              ]
+            },
+            {
+              "items": [
+                "Bandos chestplate",
+                "Oathplate chest"
+              ]
+            },
+            {
+              "items": [
+                "Fighter torso",
+                "Blood Moon chestplate"
+              ]
+            },
+            {
+              "items": [
+                "Eclipse Moon chestplate",
+                "Blue Moon chestplate"
+              ]
+            },
+            {
+              "items": [
+                "Mixed hide top"
+              ]
+            },
+            {
+              "items": [
+                "Dharok's platebody",
+                "Torag's platebody",
+                "Guthan's platebody"
+              ]
+            },
+            {
+              "items": [
+                "Rune platebody"
+              ]
+            }
+          ]
+        },
+        {
+          "rationale": "Combat legs rather than teleport or skilling rewards.",
+          "slot": "legs",
+          "tiers": [
+            {
+              "items": [
+                "Torva platelegs"
+              ]
+            },
+            {
+              "items": [
+                "Bandos tassets",
+                "Oathplate legs"
+              ]
+            },
+            {
+              "items": [
+                "Blood Moon tassets"
+              ]
+            },
+            {
+              "items": [
+                "Eclipse Moon tassets",
+                "Blue Moon tassets"
+              ]
+            },
+            {
+              "items": [
+                "Mixed hide legs"
+              ]
+            },
+            {
+              "items": [
+                "Dharok's platelegs",
+                "Torag's platelegs",
+                "Verac's plateskirt",
+                "Guthan's chainskirt"
+              ]
+            },
+            {
+              "items": [
+                "Rune platelegs",
+                "Rune plateskirt"
+              ]
+            }
+          ]
+        },
+        {
+          "rationale": "A defender supports melee accuracy and strength.",
+          "slot": "shield",
+          "tiers": [
+            {
+              "items": [
+                "Avernic defender"
+              ]
+            },
+            {
+              "items": [
+                "Dragon defender"
+              ]
+            },
+            {
+              "items": [
+                "Rune defender"
+              ]
+            },
+            {
+              "items": [
+                "Toktz-ket-xil"
+              ]
+            }
+          ]
+        },
+        {
+          "rationale": "Useful combat bonuses across the raid.",
+          "slot": "hands",
+          "tiers": [
+            {
+              "items": [
+                "Ferocious gloves"
+              ]
+            },
+            {
+              "items": [
+                "Barrows gloves"
+              ]
+            },
+            {
+              "items": [
+                "Dragon gloves"
+              ]
+            },
+            {
+              "items": [
+                "Rune gloves",
+                "Combat bracelet"
+              ]
+            }
+          ]
+        },
+        {
+          "rationale": "Strength boots that also work with fewer switches.",
+          "slot": "feet",
+          "tiers": [
+            {
+              "items": [
+                "Avernic treads (max)",
+                "Avernic treads (pr)",
+                "Primordial boots"
+              ]
+            },
+            {
+              "items": [
+                "Dragon boots"
+              ]
+            },
+            {
+              "items": [
+                "Mixed hide boots",
+                "Climbing boots"
+              ]
+            }
+          ]
+        },
+        {
+          "rationale": "Strength baseline; special-attack energy utility needs separate planning.",
+          "slot": "ring",
+          "tiers": [
+            {
+              "items": [
+                "Ultor ring"
+              ]
+            },
+            {
+              "items": [
+                "Berserker ring (i)"
+              ]
+            },
+            {
+              "items": [
+                "Brimstone ring",
+                "Berserker ring"
+              ]
+            },
+            {
+              "items": [
+                "Lightbearer"
+              ]
+            }
+          ]
+        }
+      ],
+      "style": "Melee"
+    },
+    {
+      "slots": [
+        {
+          "rationale": "Magic damage and accuracy before low-value utility bonuses.",
+          "slot": "head",
+          "tiers": [
+            {
+              "items": [
+                "Ancestral hat"
+              ]
+            },
+            {
+              "items": [
+                "Virtus mask"
+              ]
+            },
+            {
+              "items": [
+                "Ahrim's hood",
+                "Blue Moon helm",
+                "Infinity hat",
+                "Dagon'hai hat",
+                "Bloodbark helm"
+              ]
+            },
+            {
+              "items": [
+                "Mystic hat"
+              ]
+            }
+          ]
+        },
+        {
+          "rationale": "Magic damage cape, then standard mage cape.",
+          "slot": "cape",
+          "tiers": [
+            {
+              "items": [
+                "Imbued Saradomin cape",
+                "Imbued Guthix cape",
+                "Imbued Zamorak cape",
+                "Imbued ancient cape"
+              ]
+            },
+            {
+              "items": [
+                "Saradomin cape",
+                "Guthix cape",
+                "Zamorak cape"
+              ]
+            }
+          ]
+        },
+        {
+          "rationale": "Occult is a damage upgrade rather than a prayer-only choice.",
+          "slot": "neck",
+          "tiers": [
+            {
+              "items": [
+                "Occult necklace"
+              ]
+            },
+            {
+              "items": [
+                "Amulet of fury",
+                "Amulet of blood fury"
+              ]
+            },
+            {
+              "items": [
+                "Amulet of glory"
+              ]
+            },
+            {
+              "items": [
+                "Amulet of magic",
+                "Amulet of power"
+              ]
+            }
+          ]
+        },
+        {
+          "rationale": "Magic damage armour; Blue Moon also supports melee switches.",
+          "slot": "body",
+          "tiers": [
+            {
+              "items": [
+                "Ancestral robe top"
+              ]
+            },
+            {
+              "items": [
+                "Virtus robe top"
+              ]
+            },
+            {
+              "items": [
+                "Ahrim's robetop",
+                "Blue Moon chestplate",
+                "Dagon'hai robe top",
+                "Infinity top",
+                "Bloodbark body"
+              ]
+            },
+            {
+              "items": [
+                "Mystic robe top"
+              ]
+            },
+            {
+              "items": [
+                "Xerician top"
+              ]
+            }
+          ]
+        },
+        {
+          "rationale": "Magic damage and useful accuracy.",
+          "slot": "legs",
+          "tiers": [
+            {
+              "items": [
+                "Ancestral robe bottom"
+              ]
+            },
+            {
+              "items": [
+                "Virtus robe bottom"
+              ]
+            },
+            {
+              "items": [
+                "Ahrim's robeskirt",
+                "Blue Moon tassets",
+                "Dagon'hai robe bottom",
+                "Infinity bottoms",
+                "Bloodbark legs"
+              ]
+            },
+            {
+              "items": [
+                "Mystic robe bottom"
+              ]
+            },
+            {
+              "items": [
+                "Xerician robe"
+              ]
+            }
+          ]
+        },
+        {
+          "rationale": "Magic damage bracelet or shared combat gloves.",
+          "slot": "hands",
+          "tiers": [
+            {
+              "items": [
+                "Confliction gauntlets"
+              ]
+            },
+            {
+              "items": [
+                "Tormented bracelet",
+                "Tormented bracelet (or)"
+              ]
+            },
+            {
+              "items": [
+                "Barrows gloves"
+              ]
+            },
+            {
+              "items": [
+                "Infinity gloves"
+              ]
+            }
+          ]
+        },
+        {
+          "rationale": "Magic offhand; never supplied next to a two-handed weapon.",
+          "slot": "shield",
+          "tiers": [
+            {
+              "items": [
+                "Elidinis' ward (f)"
+              ]
+            },
+            {
+              "items": [
+                "Elidinis' ward"
+              ]
+            },
+            {
+              "items": [
+                "Arcane spirit shield"
+              ]
+            },
+            {
+              "items": [
+                "Mage's book"
+              ]
+            },
+            {
+              "items": [
+                "Book of Darkness"
+              ]
+            }
+          ]
+        },
+        {
+          "rationale": "Magic baseline; special-attack energy is separate utility.",
+          "slot": "ring",
+          "tiers": [
+            {
+              "items": [
+                "Magus ring"
+              ]
+            },
+            {
+              "items": [
+                "Seers ring (i)",
+                "Brimstone ring"
+              ]
+            },
+            {
+              "items": [
+                "Seers ring",
+                "Lightbearer"
+              ]
+            }
+          ]
+        }
+      ],
+      "style": "Magic"
+    }
+  ],
+  "source_urls": [
+    "https://oldschool.runescape.wiki/w/Yama/Strategies"
+  ],
+  "target_ids": [
+    14176,
+    100010,
+    100011,
+    100012,
+    100013
+  ]
+}
   ]
 }

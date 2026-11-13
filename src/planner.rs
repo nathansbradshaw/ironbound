@@ -463,6 +463,9 @@ fn candidates(style: &str, slot: usize, boss: Boss) -> Vec<i32> {
     if slot == 3 {
         return crate::rules::weapon_ids(style, boss == Boss::Barrows);
     }
+    if slot == 13 && crate::rules::base_style(style) == "Ranged" {
+        return crate::rules::all_ammo_ids();
+    }
     let choices: &[i32] = match (crate::rules::base_style(style), slot) {
         ("Ranged", 13) => &[9144, 9143, 9142, 9243, 9242, 892, 890],
         ("Magic", 0) => &[4708, 4856, 4857, 4858, 4859, 10828, 1169],
@@ -584,6 +587,58 @@ pub fn primary_style(options: &Options) -> &str {
     }
 }
 
+/// Compare complete owned loadouts when selecting a reviewed single boss.
+/// Explicit attack-style edits remain unchanged; this is an opt-in selection action.
+pub fn recommend_encounter(
+    snapshot: &Snapshot,
+    options: &Options,
+    targets: &[Target],
+) -> Vec<Target> {
+    if targets.len() != 1 || !crate::recommendation::enabled(options) {
+        return targets.to_vec();
+    }
+    let mut base = options.clone();
+    base.boss = Boss::Custom;
+    base.targets = targets.to_vec();
+    let Some(profile) = crate::guidance::profile(&base) else {
+        return targets.to_vec();
+    };
+    let Some(member) = snapshot.selected() else {
+        return targets.to_vec();
+    };
+    if !missing_combat_levels(snapshot).is_empty() {
+        return targets.to_vec();
+    }
+    let mut owned = snapshot.available(options.shared);
+    owned.retain(|id, _| !options.excluded.contains(id));
+    let mut best = None::<(f64, String)>;
+    for style in crate::rules::STYLES {
+        if !profile
+            .roles
+            .iter()
+            .any(|r| r.style == crate::rules::base_style(style))
+        {
+            continue;
+        }
+        let mut trial = base.clone();
+        trial.targets[0].style = style.into();
+        let set = equipment_for_style(snapshot, &trial, style);
+        let Some(value) = crate::recommendation::assess(member, &set, style, &trial, &owned) else {
+            continue;
+        };
+        if best.as_ref().is_none_or(|(time, _)| value.time < *time) {
+            best = Some((value.time, style.into()));
+        }
+    }
+    best.map(|(_, style)| {
+        vec![Target {
+            id: targets[0].id,
+            style,
+        }]
+    })
+    .unwrap_or_else(|| targets.to_vec())
+}
+
 pub(crate) fn effective_options(o: &Options, m: &Member, owned: &BTreeMap<i32, u32>) -> Options {
     let mut options = o.clone();
     options.gear_overrides.retain(|key, id| {
@@ -668,7 +723,17 @@ fn style_set(
         set[13] = crate::rules::ammo_ids(set[3].unwrap_or(0))
             .iter()
             .copied()
-            .find(|id| owned.get(id).copied().unwrap_or(0) >= 100);
+            .find(|id| {
+                owned.get(id).copied().unwrap_or(0) >= 100
+                    && can_use(*id, m)
+                    && crate::rules::ammunition(*id) != crate::rules::AmmoEffect::Unsupported
+            })
+            .or_else(|| {
+                crate::rules::ammo_ids(set[3].unwrap_or(0))
+                    .iter()
+                    .copied()
+                    .find(|id| owned.get(id).copied().unwrap_or(0) >= 100 && can_use(*id, m))
+            });
         if let Some(id) = options.gear_overrides.get("Ranged:13") {
             let allowed = crate::rules::ammo_ids(set[3].unwrap_or(0)).contains(id);
             if allowed && owned.get(id).copied().unwrap_or(0) >= 100 {
@@ -709,6 +774,11 @@ fn refine_dps(
     let Some(target) = monster(id) else {
         return;
     };
+    if crate::recommendation::enabled(options) {
+        let trials = guided_trials(set, style, m, owned, options);
+        let chosen = crate::recommendation::choose(&trials, style, m, options, owned);
+        *set = trials[chosen].clone();
+    }
     let spell = |set: &Vec<Option<i32>>| crate::rules::spell_name(m, set, owned);
     let metric = |set: &Vec<Option<i32>>| {
         let dps = crate::combat::calculate_configured(
@@ -754,6 +824,12 @@ fn refine_dps(
                 if slot == 13 && owned.get(&id).copied().unwrap_or(0) < 100 {
                     continue;
                 }
+                if slot == 13
+                    && (crate::rules::ammunition(id) == crate::rules::AmmoEffect::Unsupported
+                        || !crate::rules::ammo_ids(set[3].unwrap_or(0)).contains(&id))
+                {
+                    continue;
+                }
                 let mut trial = set.clone();
                 trial[slot] = Some(id);
                 if slot == 3 {
@@ -789,7 +865,12 @@ fn refine_dps(
                         } else {
                             allowed
                                 .iter()
-                                .filter(|id| owned.get(id).copied().unwrap_or(0) >= 100)
+                                .filter(|id| {
+                                    owned.get(id).copied().unwrap_or(0) >= 100
+                                        && can_use(**id, m)
+                                        && crate::rules::ammunition(**id)
+                                            != crate::rules::AmmoEffect::Unsupported
+                                })
                                 .map(|id| Some(*id))
                                 .collect()
                         }
@@ -808,30 +889,7 @@ fn refine_dps(
                         continue;
                     }
                     if slot == 3 && crate::recommendation::enabled(options) {
-                        let mut guided = trial.clone();
-                        crate::guidance::seed(&mut guided, style, m, owned, options);
-                        for (key, id) in &options.gear_overrides {
-                            if let Some(slot) = key
-                                .strip_prefix(&format!("{style}:"))
-                                .and_then(|s| s.parse::<usize>().ok())
-                                .filter(|slot| *slot < 14)
-                            {
-                                if *id == 0 {
-                                    guided[slot] = None;
-                                } else if owned.get(id).copied().unwrap_or(0) > 0
-                                    && can_use(*id, m)
-                                    && catalog
-                                        .iter()
-                                        .any(|g| g.id == *id && g.slot == SLOT_KEYS[slot])
-                                {
-                                    guided[slot] = Some(*id);
-                                }
-                            }
-                        }
-                        if guided[3].is_some_and(|id| gear(id).is_some_and(|g| g.two_handed)) {
-                            guided[5] = None;
-                        }
-                        trials.push(guided);
+                        trials.extend(guided_trials(&trial, style, m, owned, options));
                     }
                     trials.push(trial.clone());
                 }
@@ -873,6 +931,42 @@ fn refine_dps(
             break;
         }
     }
+}
+
+fn guided_trials(
+    set: &[Option<i32>],
+    style: &str,
+    member: &Member,
+    owned: &BTreeMap<i32, u32>,
+    options: &Options,
+) -> Vec<Vec<Option<i32>>> {
+    let mut guided = set.to_vec();
+    crate::guidance::seed(&mut guided, style, member, owned, options);
+    let mut trials = vec![set.to_vec(), guided.clone()];
+    trials.extend(crate::guidance::joint_sets(
+        &guided, style, member, owned, options,
+    ));
+    for trial in &mut trials {
+        for (key, id) in &options.gear_overrides {
+            if let Some(slot) = key
+                .strip_prefix(&format!("{style}:"))
+                .and_then(|s| s.parse::<usize>().ok())
+                .filter(|slot| *slot < 14)
+            {
+                trial[slot] = if *id == 0 { None } else { Some(*id) };
+            }
+        }
+        if trial[3].is_some_and(|id| gear(id).is_some_and(|g| g.two_handed)) {
+            trial[5] = None;
+        }
+    }
+    trials.sort();
+    trials.dedup();
+    // Preserve the caller's seed if every attack estimate is unavailable.
+    if let Some(index) = trials.iter().position(|trial| trial == set) {
+        trials.swap(0, index);
+    }
+    trials
 }
 // Offensive stats seed the search; defence resolves ties before free prayer
 // bonus. Prayer economy only trades away combat stats through the explicit
@@ -1139,7 +1233,11 @@ fn plan_uncached(snapshot: &Snapshot, options: &Options) -> Plan {
     } else if options.boss == Boss::Custom {
         for target in targets {
             if let Some((_, set)) = sets.iter().find(|(style, _)| *style == target.style) {
-                out.phases.push(Phase{name:target.name(),style:target.style.clone(),equipment:set.clone(),note:"User-selected attack style. Check immunities, protection, special items and encounter mechanics.".into()});
+                out.phases.push(Phase{
+                    name:target.name(),style:target.style.clone(),equipment:set.clone(),
+                    note:crate::encounters::window(target.id).map(|window|window.description.clone())
+                        .unwrap_or_else(||"User-selected attack style. Check immunities, protection, special items and encounter mechanics.".into())
+                });
             }
         }
         out.warnings.push("Custom groups share one carried equipment pool. Standard attack estimates and verified defence profiles guide choices; special mechanics and supply consumption remain partial.".into());

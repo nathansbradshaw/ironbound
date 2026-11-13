@@ -119,10 +119,10 @@ independent references, browser verification, then gameplay verification.
 
 13 November 2026: 20 reviewed outgoing NPC windows, implemented in Rust with
 explicit source IDs, reach/immunity rules and per-hit damage transforms. The
-integrated suite passes 419 tests, including 14 dedicated monster regressions
+integrated suite passes 441 tests, including 15 dedicated monster regressions
 and all 24 existing independent combat references. The standalone reference
-comparator and release Wasm build pass. Multi-hit checks retain Karil's and
-Torag's separate hits through NPC caps/reductions; changing-HP ruby effects retain
+comparator and release Wasm build pass. Multi-hit checks retain Karil's,
+Torag's and Scythe's separate hits through NPC caps/reductions; changing-HP ruby effects retain
 the same reductions/rerolls in finite-HP expectations.
 
 Browser verification on a disposable local origin: Zulrah ruby max 50 at full

@@ -97,6 +97,10 @@ pub struct Window {
     #[serde(default)]
     pub invulnerable: bool,
     #[serde(default)]
+    pub huey_pillar: bool,
+    #[serde(default)]
+    pub ranged_accuracy_factor: Option<[u32; 2]>,
+    #[serde(default)]
     pub npc_damage: Option<NpcDamage>,
     #[serde(default)]
     pub resource: Resource,
@@ -229,6 +233,15 @@ pub fn mechanics() -> &'static Mechanics {
             serde_json::from_str(include_str!("../assets/encounter-mechanics.json"))
                 .expect("encounter mechanics");
         for w in &data.windows {
+            assert!(
+                w.ranged_accuracy_factor
+                    .is_none_or(|f| (1..=100).contains(&f[0]) && (1..=100).contains(&f[1])),
+                "ranged accuracy factor"
+            );
+            assert!(
+                !w.huey_pillar || [14009, 14014].contains(&w.npc_id),
+                "pillar target"
+            );
             assert!(
                 w.hitpoints.is_none_or(|hp| (1..=10_000).contains(&hp)),
                 "NPC counter bounds"

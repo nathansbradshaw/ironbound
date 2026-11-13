@@ -82,6 +82,11 @@ pathfinder/enrage mechanics stay labelled. Nightmare/Phosani distinguish shield,
 totem charge and physical HP, with separate encounter counts and Phosani minion
 rules. These comparisons do not predict complete fights or supplies.
 
+Hueycoatl separates body, head, protected head and capped tail, with optional
+lit-pillar comparisons. Royal Titans separate close/withdrawn attacks and elemental
+adds; their gear screen needs melee, ranged and Magic. These are outgoing windows;
+team contribution, barriers, incoming sequences and full fights remain unverified.
+
 Recommendations use a bounded search. They are **not a proof of global BIS** or a prediction of successful kills.
 
 ## Your bank stays private
@@ -175,6 +180,8 @@ Never commit private banks, account snapshots or screenshots. `.local/`, `target
 Readiness now includes Brutus, Mimic, Skotizo, Corporeal Beast, Prime/Supreme and the full Dagannoth Kings group, Jad/Fight Caves, base ToA and hybrid Yama. Mixed-style encounters use the weakest required setup. ToA uses a solo raid-level-0 baseline; Yama screens melee on the boss plus melee/magic for the Judge and magic for flares. Wave endurance, fast flare clearing, full supplies and player execution need separate checks. Lunar Chests shares the Moons of Peril guideline.
 
 **Gear and requirements are independent.** Each card shows **Gear: Well equipped / Doable / A struggle / Not assessed**, plus a separate access line. Kraken can show good gear while also showing **Requirements missing — Needs 87 Slayer**. Gear filters include locked bosses; **Requirements missing** finds known entry locks without hiding their gear scores. Meeting a Slayer level changes the access line, not the gear score. Unknown Slayer levels leave access unverified while supported gear calculations still run. **Slayer level met** checks that level only; quest access and current assignments remain unverified.
+
+Open **Gear & requirements** to combine filters, for example **Well equipped** + **Known levels met**. Changing one keeps the other, search, category and Wilderness choices. **Known levels met** checks recorded Slayer requirements (including reviewed profiles with no Slayer gate); it does not verify quests, keys or tasks. Unreviewed or unknown level requirements stay separate. **Clear filters** resets both groups.
 
 **Nervous about the Wilderness?** In **Boss bestiary**, choose **Avoid Wilderness** or **Wilderness only**. **Scaredy cat · 3 valuable items** rerates exposed bosses with three valuable pieces plus owned cheap gear. Choose a filler ceiling (default 10k GP per piece/ammo stack), expand a card to see the exact kit and full-kit comparison, then select the boss to keep that kit in the planner. **Return to full gear** removes the restriction. Price estimates use the displayed public snapshot; missing values consume a valuable slot. Confirm **Items Kept on Death** in game while unskulled with **PK Skull Prevention** on. Supplies, charges, fees and loot add risk.
 

@@ -17,6 +17,8 @@ pub enum Kind {
     Flower,
     Totem,
     PhosaniMinion,
+    HueyTail,
+    TitanElemental,
 }
 #[derive(Clone, Copy, Debug, Default, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
@@ -97,6 +99,15 @@ pub fn instant_defeat(id: i32, weapon: i32) -> Option<i32> {
 pub fn guaranteed_accuracy(id: i32, attack_type: &str) -> bool {
     profile(id).is_some_and(|p| p.kind == Kind::Totem && attack_type == "magic")
 }
+/// Elemental accuracy bypasses normal rolls, weakness accuracy and reroll gear.
+pub fn elemental_accuracy(id: i32, attack_type: &str, magic_bonus: i32, void: bool) -> Option<f64> {
+    profile(id)
+        .filter(|p| p.kind == Kind::TitanElemental && attack_type == "magic")
+        .map(|_| {
+            let base = (f64::from(magic_bonus.max(0)) / 100.0 + 0.3).min(1.0);
+            (base * if void { 1.45 } else { 1.0 }).min(1.0)
+        })
+}
 pub fn guaranteed_max(id: i32, attack_type: &str) -> bool {
     profile(id).is_some_and(|p| p.kind == Kind::PhosaniMinion && attack_type == "crush")
 }
@@ -154,6 +165,11 @@ pub enum Transform {
         denominator: u32,
         cap: Option<i32>,
     },
+    HueyTail {
+        cap: i32,
+        crush_minimum: bool,
+        pillar: bool,
+    },
     Skotizo {
         altars: u8,
         light: bool,
@@ -176,6 +192,14 @@ impl Transform {
                     / i64::from(denominator.max(1))) as i32;
                 vec![(scaled.min(cap.unwrap_or(i32::MAX)), probability)]
             }
+            Self::HueyTail {
+                cap,
+                crush_minimum,
+                pillar,
+            } => {
+                let damage = damage.min(cap).max(i32::from(crush_minimum));
+                vec![(if pillar { damage * 13 / 10 } else { damage }, probability)]
+            }
             Self::Skotizo { altars, light } => {
                 let percent = 100 - i32::from(altars.min(4)) * if light { 15 } else { 25 };
                 vec![(
@@ -187,9 +211,38 @@ impl Transform {
         }
     }
 }
-pub fn transform_for(id: i32, weapon: i32, attack_type: &str) -> Transform {
+pub fn transform_for(
+    id: i32,
+    weapon: i32,
+    attack_type: &str,
+    bonuses: &combat::Bonuses,
+    spell: &str,
+) -> Transform {
     if encounters::window(id).is_some_and(|w| w.invulnerable) {
         return Transform::Immune;
+    }
+    let pillar = encounters::window(id).is_some_and(|w| w.huey_pillar);
+    if profile(id).is_some_and(|p| p.kind == Kind::HueyTail) {
+        let bonus = |style: &str| bonuses.offensive.get(style).copied().unwrap_or(0);
+        let crush = attack_type == "crush"
+            && bonus("crush") > bonus("stab")
+            && bonus("crush") > bonus("slash");
+        let earth = attack_type == "magic"
+            && rules::spells()
+                .iter()
+                .any(|r| r.name == spell && r.element.as_deref() == Some("earth"));
+        return Transform::HueyTail {
+            cap: if crush || earth { 9 } else { 4 },
+            crush_minimum: crush,
+            pillar,
+        };
+    }
+    if pillar {
+        return Transform::Scaled {
+            numerator: 13,
+            denominator: 10,
+            cap: None,
+        };
     }
     if let Some(damage) = encounters::window(id).and_then(|w| w.npc_damage.as_ref()) {
         return Transform::Scaled {
@@ -268,8 +321,7 @@ pub fn corpbane(weapon: i32, attack_type: &str) -> bool {
 /// so finite-HP budgets can recompute it rather than freezing a full-health proc.
 pub fn apply(
     id: i32,
-    weapon: i32,
-    attack_type: &str,
+    npc_transform: Transform,
     distribution: &mut Vec<(i32, f64)>,
     ruby: &mut Option<combat::HpDependentHit>,
     normal_already_transformed: bool,
@@ -279,11 +331,11 @@ pub fn apply(
     let transform = if p.kind == Kind::Corporeal {
         Transform::Identity
     } else {
-        transform_for(id, weapon, attack_type)
+        npc_transform
     };
     let suffix = usize::from(ruby.is_some());
     let split = distribution.len() - suffix;
-    let corp = p.kind == Kind::Corporeal && !corpbane(weapon, attack_type);
+    let corp = npc_transform == Transform::Corporeal;
     let normal = distribution[..split].iter().flat_map(|(d, probability)| {
         if normal_already_transformed {
             vec![(*d, *probability)]

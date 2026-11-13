@@ -110,7 +110,7 @@ fn only_arclight_and_emberlight_keep_damage_at_four_altars() {
         assert_eq!(four.max_hit, full.max_hit * 40 / 100);
         assert!(four.dps > 0.0);
         assert_eq!(
-            monster_rules::transform_for(100113, weapon, "slash"),
+            monster_rules::transform_for(100113, weapon, "slash", &Default::default(), ""),
             Transform::Skotizo {
                 altars: 4,
                 light: true
@@ -119,7 +119,7 @@ fn only_arclight_and_emberlight_keep_damage_at_four_altars() {
     }
     for weapon in [2402, 6746, 29591, 29594, 4151] {
         assert_eq!(
-            monster_rules::transform_for(100113, weapon, "slash"),
+            monster_rules::transform_for(100113, weapon, "slash", &Default::default(), ""),
             Transform::Skotizo {
                 altars: 4,
                 light: false

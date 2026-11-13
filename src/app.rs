@@ -51,6 +51,8 @@ struct State {
     incoming_attack: Option<String>,
     encounter_query: String,
     encounter_filter: String,
+    gear_filter: crate::bestiary::GearFilter,
+    requirements_filter: crate::bestiary::RequirementsFilter,
     building_group: bool,
     raid_rooms_open: bool,
     bestiary_open: bool,
@@ -167,6 +169,8 @@ impl State {
             incoming_attack: None,
             encounter_query: String::new(),
             encounter_filter: "For you".into(),
+            gear_filter: Default::default(),
+            requirements_filter: Default::default(),
             building_group: false,
             raid_rooms_open: false,
             bestiary_open: false,
@@ -1612,21 +1616,32 @@ fn act(action: &str) {
         return;
     }
 
-    if let Some(filter) = action.strip_prefix("encounter-filter:") {
-        if crate::bestiary::FILTERS.contains(&filter) {
-            STATE.with(|state| {
-                let mut s = state.borrow_mut();
+    if action.starts_with("gear-filter:")
+        || action.starts_with("requirements-filter:")
+        || action.starts_with("encounter-filter:")
+    {
+        STATE.with(|state| {
+            let mut s = state.borrow_mut();
+            if let Some(filter) = action
+                .strip_prefix("gear-filter:")
+                .and_then(crate::bestiary::GearFilter::parse)
+            {
+                s.gear_filter = filter;
+            } else if let Some(filter) = action
+                .strip_prefix("requirements-filter:")
+                .and_then(crate::bestiary::RequirementsFilter::parse)
+            {
+                s.requirements_filter = filter;
+            } else if let Some(filter) = action
+                .strip_prefix("encounter-filter:")
+                .filter(|v| crate::bestiary::CATEGORY_FILTERS.contains(v))
+            {
                 s.encounter_filter = filter.into();
-                s.encounter_query.clear();
-                if let Some(input) = document()
-                    .get_element_by_id("encounter-search")
-                    .and_then(|e| e.dyn_into::<HtmlInputElement>().ok())
-                {
-                    input.set_value("");
-                }
-                refresh_encounter_browser(&s);
-            });
-        }
+            } else {
+                return;
+            }
+            refresh_encounter_browser(&s);
+        });
         return;
     }
     match action {
@@ -1635,6 +1650,8 @@ fn act(action: &str) {
                 let mut s = state.borrow_mut();
                 s.encounter_query.clear();
                 s.encounter_filter = "For you".into();
+                s.gear_filter = Default::default();
+                s.requirements_filter = Default::default();
                 s.wilderness_location = "all".into();
                 if let Some(input) = document()
                     .get_element_by_id("encounter-search")
@@ -3480,38 +3497,51 @@ fn bestiary_assessments(s: &State) -> Vec<crate::bestiary::Assessment> {
     })
 }
 fn extra_filter_label(s: &State) -> String {
-    if ["For you", "Bosses", "Raids", "Groups", "All"].contains(&s.encounter_filter.as_str()) {
-        "More filters".into()
-    } else {
-        format!("More filters · {}", s.encounter_filter)
+    let mut labels = vec!["Gear & requirements"];
+    if s.gear_filter != crate::bestiary::GearFilter::Any {
+        labels.push(s.gear_filter.label());
     }
+    if s.requirements_filter != crate::bestiary::RequirementsFilter::Any {
+        labels.push(s.requirements_filter.label());
+    }
+    labels.join(" · ")
+}
+fn encounter_filter_button(prefix: &str, label: &str, active: bool) -> String {
+    format!(
+        r#"<button id="{prefix}-{}" class="encounter-filter {}" data-action="{prefix}:{label}" aria-pressed="{active}">{label}</button>"#,
+        label.replace(' ', "-"),
+        if active { "active" } else { "" }
+    )
 }
 fn encounter_catalog(s: &State) -> String {
     let mut html = format!(
         r#"<section class="encounter-browser"><h2>Choose your fight</h2><p>Based on your bank and levels.</p><label><span class="slot-caption">Search encounters</span><input id="encounter-search" type="search" placeholder="Search bosses or raids" value="{}" autocomplete="off"></label><nav class="encounter-filters" aria-label="Encounter categories">"#,
         esc(&s.encounter_query)
     );
-    let filter_button = |filter: &str| {
-        format!(
-            r#"<button id="enc-filter-{}" class="encounter-filter {}" data-action="encounter-filter:{filter}" aria-pressed="{}">{filter}</button>"#,
-            filter.replace(' ', "-"),
-            if s.encounter_filter == filter {
-                "active"
-            } else {
-                ""
-            },
-            s.encounter_filter == filter
-        )
-    };
-    for filter in ["For you", "Bosses", "Raids", "Groups", "All"] {
-        html.push_str(&filter_button(filter));
+    for filter in crate::bestiary::CATEGORY_FILTERS {
+        html.push_str(&encounter_filter_button(
+            "encounter-filter",
+            filter,
+            s.encounter_filter == filter,
+        ));
     }
-    html.push_str(&format!("</nav><div class=\"encounter-tools\"><details id=\"encounter-extra-filters\" class=\"secondary-section\" {}><summary id=\"encounter-filter-label\">{}</summary><nav class=\"encounter-filters\" aria-label=\"Readiness filters\">",if s.encounter_filters_open {"open"}else{""},esc(&extra_filter_label(s))));
-    for filter in crate::bestiary::FILTERS {
-        if !["For you", "Bosses", "Raids", "Groups", "All"].contains(&filter) {
-            html.push_str(&filter_button(filter));
-        }
+    html.push_str(&format!("</nav><div class=\"encounter-tools\"><details id=\"encounter-extra-filters\" class=\"secondary-section\" {}><summary id=\"encounter-filter-label\">{}</summary><fieldset class=\"bestiary-filter-group\"><legend>Gear readiness</legend><nav class=\"encounter-filters\" aria-label=\"Gear readiness filters\">",if s.encounter_filters_open {"open"}else{""},esc(&extra_filter_label(s))));
+    for filter in crate::bestiary::GearFilter::ALL {
+        html.push_str(&encounter_filter_button(
+            "gear-filter",
+            filter.label(),
+            s.gear_filter == filter,
+        ));
     }
+    html.push_str("</nav></fieldset><fieldset class=\"bestiary-filter-group\"><legend>Requirements</legend><nav class=\"encounter-filters\" aria-label=\"Requirements filters\">");
+    for filter in crate::bestiary::RequirementsFilter::ALL {
+        html.push_str(&encounter_filter_button(
+            "requirements-filter",
+            filter.label(),
+            s.requirements_filter == filter,
+        ));
+    }
+    html.push_str("</nav></fieldset><p class=\"bestiary-filter-note\">Known levels met checks recorded Slayer requirements only. Quest, key and task access remain unverified. Gear and requirements filters apply together.</p>");
     let location = match s.wilderness_location.as_str() {
         "safe" => " · avoiding Wilderness",
         "wild" => " · Wilderness only",
@@ -3522,7 +3552,7 @@ fn encounter_catalog(s: &State) -> String {
     } else {
         ""
     };
-    html.push_str(&format!("</nav></details><details id=\"wilderness-options\" class=\"secondary-section\" {}><summary>Wilderness options{location}{kit}</summary>",if s.wilderness_options_open {"open"}else{""}));
+    html.push_str(&format!("</details><details id=\"wilderness-options\" class=\"secondary-section\" {}><summary>Wilderness options{location}{kit}</summary>",if s.wilderness_options_open {"open"}else{""}));
     html.push_str(&wilderness_controls(s));
     html.push_str("</details></div><p class=\"bestiary-disclaimer\">Gear readiness and entry requirements are shown separately. Check supplies and mechanics in each card.</p><div id=\"encounter-results\">");
     html.push_str(&encounter_results(s));
@@ -3556,12 +3586,16 @@ fn encounter_results(s: &State) -> String {
                     .filter(|g| g.name == e.name)
                     .any(|g| g.aliases.iter().any(|a| a.to_lowercase().contains(&query)));
             matches
-                && if query.is_empty() && s.encounter_filter == "Popular" {
+                && crate::bestiary::matches_filters(
+                    &assessments[*index],
+                    s.gear_filter,
+                    s.requirements_filter,
+                )
+                && if s.encounter_filter == "Popular" {
                     popular.contains(&e.name)
                 } else {
                     ["Popular", "For you", "All"].contains(&s.encounter_filter.as_str())
                         || e.category() == s.encounter_filter
-                        || assessments[*index].matches_filter(&s.encounter_filter)
                 }
         })
         .collect::<Vec<_>>();
@@ -3612,23 +3646,38 @@ fn refresh_encounter_browser(s: &State) {
     if let Some(results) = document().get_element_by_id("encounter-results") {
         results.set_inner_html(&encounter_results(s));
     }
-    for filter in crate::bestiary::FILTERS {
-        if let Some(el) =
-            document().get_element_by_id(&format!("enc-filter-{}", filter.replace(' ', "-")))
-        {
-            el.set_class_name(if s.encounter_filter == filter {
+    let buttons = crate::bestiary::CATEGORY_FILTERS
+        .into_iter()
+        .map(|v| {
+            (
+                format!("encounter-filter-{}", v.replace(' ', "-")),
+                s.encounter_filter == v,
+            )
+        })
+        .chain(crate::bestiary::GearFilter::ALL.into_iter().map(|v| {
+            (
+                format!("gear-filter-{}", v.label().replace(' ', "-")),
+                s.gear_filter == v,
+            )
+        }))
+        .chain(
+            crate::bestiary::RequirementsFilter::ALL
+                .into_iter()
+                .map(|v| {
+                    (
+                        format!("requirements-filter-{}", v.label().replace(' ', "-")),
+                        s.requirements_filter == v,
+                    )
+                }),
+        );
+    for (id, active) in buttons {
+        if let Some(el) = document().get_element_by_id(&id) {
+            el.set_class_name(if active {
                 "encounter-filter active"
             } else {
                 "encounter-filter"
             });
-            let _ = el.set_attribute(
-                "aria-pressed",
-                if s.encounter_filter == filter {
-                    "true"
-                } else {
-                    "false"
-                },
-            );
+            let _ = el.set_attribute("aria-pressed", if active { "true" } else { "false" });
         }
     }
 }

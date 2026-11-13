@@ -89,10 +89,17 @@ independent references, browser verification, then gameplay verification.
   reductions, exact Arclight/Emberlight exceptions and active altar finishers.
 - [ ] Skotizo full fight: random activation/cooldown sequence, travel, adds,
   attack mixtures, incoming damage and full supplies.
-- [ ] Hueycoatl: body/tail damage limits, crush/earth rules, pillar bonus and team
-  scaling; verify these independently of generic elemental weakness.
-- [ ] Royal Titans: titan resistances, elemental-add accuracy, barriers, duo
-  scaling/timing and incoming attacks.
+- [x] Hueycoatl outgoing: base-stat body/head probes, per-splat tail 4/9 caps,
+  strict crush bonus priority, crush miss minima, earth spells and explicit
+  pillar alternatives. Protected head deals zero; broken tail remains gated.
+- [ ] Hueycoatl full fight: team scaling/contribution, body segment counts and
+  regeneration, actual head/tail thresholds, pillar activation/uptime, slams,
+  travel and incoming attacks. Delayed burn against tail/pillars is gated.
+- [x] Royal Titans outgoing: both titan resistances, separate withdrawn ranged
+  accuracy windows, melee reach gates and elemental Magic accuracy including
+  normal/elite Void. Gear screening requires melee, ranged and Magic.
+- [ ] Royal Titans full fight: barriers, add counts, solo/duo contribution,
+  charge duration, transitions, movement and incoming attack sequences.
 - [ ] Doom of Mokhaiotl: delve scaling, shield/demonbane rules, special phases,
   movement and incoming damage.
 - [ ] Shellbane Gryphon, Mad Angel and Maggot King: each needs its own sourced
@@ -218,3 +225,23 @@ and totem starts 300/200, each with twelve totems. Protected bodies deal zero;
 a weakened parasite with a guaranteed 19 max still needs several hits for 55 HP.
 No console errors. Totem accuracy follows the documented strategy interpretation
 and still needs gameplay confirmation. Deployment evidence is recorded in the PR.
+
+Fifth batch, 13 November 2026: 12 reviewed outgoing states for Hueycoatl and
+Royal Titans, with a separate broken-tail gate. Fourteen independent monster
+regressions cover strict bonus ties, per-hit 4/9 caps, crush miss minima, chained
+hits, Scythe/Torag rounding, post-cap pillar scaling, ruby/HP recurrence,
+withdrawn ranged rolls, elemental Magic accuracy, Void/Shadow, Moon effects,
+shared states and exports. Gear screens include all three Titan styles.
+The 608-test integrated Rust suite and all 24 standalone references pass;
+after browser-discovered readiness/label fixes, all 48 affected regressions
+and the release Wasm build pass again.
+
+Preview browser checks: the example Keris has a 4 tail cap because crush is not
+its highest bonus, becoming 5 with pillars; protected head damage is zero and
+broken-tail outgoing/incoming estimates are explicitly unavailable. Example
+Titan ranged accuracy is 12.0% in reach and 65.1% withdrawn, with unchanged
+ruby maximum 100; melee is blocked while withdrawn. The planned Magic set shows
+100% elemental accuracy and a separate 40-HP workload. Readiness retains usable
+owned gear and separate access status; Titan phase previews identify each boss.
+No console warnings/errors. Full-fight/team/incoming/gameplay gaps remain open;
+merged publication and live verification evidence are recorded in the PR.

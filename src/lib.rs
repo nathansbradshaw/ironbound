@@ -6,6 +6,7 @@ pub mod combat;
 pub mod coverage;
 pub mod defence;
 pub mod effects;
+pub mod efficient;
 pub mod encounter_summary;
 pub mod encounters;
 pub mod explanations;

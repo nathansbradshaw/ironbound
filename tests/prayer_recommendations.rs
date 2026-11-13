@@ -88,7 +88,7 @@ fn an_explicit_gear_override_survives_automatic_tie_breaking() {
 fn unsupported_encounters_still_use_defensive_armour_for_offensive_ties() {
     let bank = bank(&[4151, 4087, 9676]);
     let mut o = options();
-    o.targets[0].id = 16659; // Archive Guardian: damage mechanics are not modelled.
+    o.targets[0].id = 16684; // Xarth: protection/transformation states remain gated.
     assert_eq!(
         planner::equipment_for_style(&bank, &o, "Slash")[7],
         Some(4087)

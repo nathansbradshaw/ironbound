@@ -1,5 +1,6 @@
 {
   "profiles": [
+    {"ids":[16659],"kind":"standard","melee":"polearm","allowed_styles":["Melee","Ranged","Magic"]},
     {"allowed_styles":["Melee","Ranged","Magic"],"ids":[13599],"kind":"tormented"},
     {"allowed_styles":["Melee","Ranged","Magic"],"ids":[410,411,427,428,429,430,7405,10397],"kind":"leafy"},
     {"allowed_styles":["Melee","Ranged","Magic"],"ids":[14707,14860,16305,15743,12821],"kind":"standard"},

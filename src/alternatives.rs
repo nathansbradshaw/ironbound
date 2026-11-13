@@ -15,6 +15,8 @@ pub struct Alternative {
     pub style: String,
     pub slot: usize,
     pub dps_delta: Option<f64>,
+    /// Exact reason damage cannot be compared, separate from packing notes.
+    pub dps_reason: Option<String>,
     /// Alternative minus current continuous drain; negative means less drain.
     pub prayer_delta: f64,
     pub defence_delta: BTreeMap<String, i32>,
@@ -543,15 +545,18 @@ pub fn equipment(
                     "Compatible worn ammunition also changes.".into(),
                 );
             }
-            if dps_delta.is_none() {
-                let reason = metric
-                    .dps_reason
-                    .as_ref()
-                    .or(baseline.dps_reason.as_ref())
-                    .cloned()
-                    .unwrap_or_else(|| "Combat coverage is unavailable.".into());
-                add_note(&mut notes, format!("DPS delta unavailable: {reason}"));
-            }
+            let dps_reason = if dps_delta.is_none() {
+                Some(
+                    metric
+                        .dps_reason
+                        .as_ref()
+                        .or(baseline.dps_reason.as_ref())
+                        .cloned()
+                        .unwrap_or_else(|| "Combat coverage is unavailable.".into()),
+                )
+            } else {
+                None
+            };
             if phase.is_none() {
                 if let Some(target) = planner::monster(c.target) {
                     add_note(
@@ -565,6 +570,7 @@ pub fn equipment(
                 style: c.style.clone(),
                 slot,
                 dps_delta,
+                dps_reason,
                 prayer_delta,
                 defence_delta,
                 max_changes,

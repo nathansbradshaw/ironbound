@@ -22,6 +22,21 @@ pub struct Profile {
     pub roles: Vec<Role>,
     #[serde(default)]
     pub phase_weapons: Vec<PhaseWeapons>,
+    #[serde(default)]
+    pub target_ids: Vec<i32>,
+    #[serde(default)]
+    pub joint_sets: Vec<JointSet>,
+}
+#[derive(Debug, Deserialize)]
+pub struct JointSet {
+    pub id: String,
+    pub style: String,
+    pub slots: Vec<JointSlot>,
+}
+#[derive(Debug, Deserialize)]
+pub struct JointSlot {
+    pub slot: String,
+    pub items: Vec<String>,
 }
 #[derive(Debug, Deserialize)]
 pub struct PhaseWeapons {
@@ -44,6 +59,8 @@ pub struct Tier {
     pub items: Vec<String>,
     #[serde(default)]
     pub required_weapon_names: Vec<String>,
+    #[serde(default)]
+    pub required_set: Option<String>,
 }
 #[derive(Debug, Deserialize)]
 struct Guidance {
@@ -71,6 +88,12 @@ pub fn profile(options: &Options) -> Option<&'static Profile> {
         {
             "moons"
         }
+        Boss::Custom if !options.targets.is_empty() => {
+            return data().profiles.iter().find(|p| {
+                !p.target_ids.is_empty()
+                    && options.targets.iter().all(|t| p.target_ids.contains(&t.id))
+            });
+        }
         _ => return None,
     };
     data().profiles.iter().find(|p| p.id == id)
@@ -87,7 +110,7 @@ fn usable_variant(g: &planner::Gear) -> bool {
     !["0", "broken", "inactive", "uncharged"].contains(&g.version.to_ascii_lowercase().as_str())
 }
 fn tier_applies(tier: &Tier, set: &[Option<i32>]) -> bool {
-    tier.required_weapon_names.is_empty()
+    (tier.required_weapon_names.is_empty()
         || set
             .get(3)
             .copied()
@@ -97,7 +120,73 @@ fn tier_applies(tier: &Tier, set: &[Option<i32>]) -> bool {
                 tier.required_weapon_names
                     .iter()
                     .any(|name| named(&weapon.name, name))
-            })
+            }))
+        && tier.required_set.as_ref().is_none_or(|id| {
+            data()
+                .profiles
+                .iter()
+                .flat_map(|p| &p.joint_sets)
+                .find(|joint| joint.id == *id)
+                .is_some_and(|joint| {
+                    joint.slots.iter().all(|slot| {
+                        planner::SLOT_KEYS
+                            .iter()
+                            .position(|key| *key == slot.slot)
+                            .and_then(|index| set.get(index).copied().flatten())
+                            .and_then(planner::gear)
+                            .is_some_and(|g| {
+                                usable_variant(g) && slot.items.iter().any(|n| named(&g.name, n))
+                            })
+                    })
+                })
+        })
+}
+
+/// Joint equipment effects cannot be discovered reliably one slot at a time.
+/// Return only complete owned, level-usable sets, leaving the original seed intact.
+/// Callers apply manual pins and validate weapon/ammunition after this operation.
+pub fn joint_sets(
+    seed: &[Option<i32>],
+    style: &str,
+    member: &Member,
+    owned: &BTreeMap<i32, u32>,
+    options: &Options,
+) -> Vec<Vec<Option<i32>>> {
+    let Some(profile) = profile(options) else {
+        return Vec::new();
+    };
+    profile
+        .joint_sets
+        .iter()
+        .filter(|joint| joint.style == rules::base_style(style))
+        .filter_map(|joint| {
+            let mut set = seed.to_vec();
+            for slot in &joint.slots {
+                let index = planner::SLOT_KEYS
+                    .iter()
+                    .position(|key| *key == slot.slot)?;
+                if ![0, 1, 2, 4, 5, 7, 9, 10, 12].contains(&index) || index >= set.len() {
+                    return None;
+                }
+                let id = slot.items.iter().find_map(|name| {
+                    planner::equipment()
+                        .iter()
+                        .filter(|g| {
+                            g.slot == slot.slot
+                                && named(&g.name, name)
+                                && usable_variant(g)
+                                && owned.get(&g.id).copied().unwrap_or(0) > 0
+                                && !options.excluded.contains(&g.id)
+                                && planner::can_use(g.id, member)
+                        })
+                        .min_by_key(|g| g.id)
+                        .map(|g| g.id)
+                })?;
+                set[index] = Some(id);
+            }
+            Some(set)
+        })
+        .collect()
 }
 // These are within-tier tie breakers, never global armour weights. A reviewed
 // tank tier remains ahead of low-defence strength armour at the Moons.

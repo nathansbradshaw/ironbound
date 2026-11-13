@@ -28,6 +28,7 @@ pub enum Effect {
     Fang,
     Shadow,
     Zaryte,
+    Demonbane,
 }
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -141,6 +142,18 @@ pub struct Weapon {
     pub multipliers: Vec<Multiplier>,
     #[serde(default)]
     pub kalphite_damage_percent: Option<i32>,
+    #[serde(default)]
+    pub demonbane_percent: Option<i64>,
+}
+#[derive(Debug, Deserialize)]
+pub struct SetPiece {
+    pub slot: usize,
+    pub ids: Vec<i32>,
+}
+#[derive(Debug, Deserialize)]
+pub struct EquipmentSet {
+    pub effect: String,
+    pub pieces: Vec<SetPiece>,
 }
 #[derive(Debug, Deserialize)]
 pub struct EquipmentEffect {
@@ -164,6 +177,7 @@ pub enum AmmoEffect {
     None,
     Ruby,
     Diamond,
+    Unsupported,
 }
 #[derive(Debug, Deserialize)]
 pub struct Ammunition {
@@ -179,6 +193,8 @@ pub struct Registry {
     pub equipment_effects: Vec<EquipmentEffect>,
     #[serde(default)]
     pub equipment_requirements: Vec<EquipmentRequirements>,
+    #[serde(default)]
+    pub equipment_sets: Vec<EquipmentSet>,
 }
 impl Registry {
     pub fn validate(&self) -> Result<(), String> {
@@ -258,6 +274,17 @@ impl Registry {
             }
         }
         let mut equipment_ids = std::collections::BTreeSet::new();
+        for set in &self.equipment_sets {
+            let mut slots = std::collections::BTreeSet::new();
+            if set.effect.is_empty()
+                || set.pieces.is_empty()
+                || set.pieces.iter().any(|piece| {
+                    piece.slot >= 14 || piece.ids.is_empty() || !slots.insert(piece.slot)
+                })
+            {
+                return Err("Invalid equipment set".into());
+            }
+        }
         for group in &self.equipment_requirements {
             if group.ids.is_empty()
                 || group
@@ -344,6 +371,31 @@ pub fn equipment_effect(id: i32, effect: &str) -> bool {
         .iter()
         .any(|r| r.effect == effect && r.ids.contains(&id))
 }
+/// A passive only applies when its item occupies the reviewed equipment slot.
+pub fn equipped_effect(set: &[Option<i32>], effect: &str) -> bool {
+    registry().equipment_effects.iter().any(|rule| {
+        rule.effect == effect
+            && match rule.slot {
+                Some(slot) => set
+                    .get(slot)
+                    .copied()
+                    .flatten()
+                    .is_some_and(|id| rule.ids.contains(&id)),
+                None => set.iter().flatten().any(|id| rule.ids.contains(id)),
+            }
+    })
+}
+pub fn set_effect(set: &[Option<i32>], effect: &str) -> bool {
+    registry().equipment_sets.iter().any(|rule| {
+        rule.effect == effect
+            && rule.pieces.iter().all(|piece| {
+                set.get(piece.slot)
+                    .copied()
+                    .flatten()
+                    .is_some_and(|id| piece.ids.contains(&id))
+            })
+    })
+}
 /// Reviewed requirements supplement missing or incomplete public item metadata.
 /// Cosmetic/charge variants share data without implying ownership of another ID.
 pub fn equipment_requirements(id: i32) -> Option<&'static BTreeMap<String, u32>> {
@@ -401,6 +453,15 @@ pub fn ammo_ids(weapon_id: i32) -> &'static [i32] {
     weapon(weapon_id)
         .map(|w| w.family.ammo.as_slice())
         .unwrap_or(&[])
+}
+pub fn all_ammo_ids() -> Vec<i32> {
+    registry()
+        .families
+        .values()
+        .flat_map(|family| family.ammo.iter().copied())
+        .collect::<std::collections::BTreeSet<_>>()
+        .into_iter()
+        .collect()
 }
 
 pub const DEFAULT_CASTS: u32 = 150;

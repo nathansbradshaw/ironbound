@@ -1,6 +1,7 @@
 //! Public encounter catalog and reusable mechanic coverage, separate from bank ownership.
 use crate::planner::{self, Monster, Target};
 use serde::Deserialize;
+use std::collections::BTreeMap;
 #[derive(Debug, Deserialize)]
 pub struct BrowserCatalog {
     pub raids: Vec<String>,
@@ -46,6 +47,30 @@ pub struct Mechanics {
     pub unsupported_names: Vec<String>,
     pub no_bank_equipment: Vec<String>,
     pub unverified_modes: Vec<String>,
+    #[serde(default)]
+    pub windows: Vec<Window>,
+    #[serde(default)]
+    pub demonbane_vulnerability: BTreeMap<i32, u32>,
+}
+/// Catalog target keys may describe different states of the same game NPC.
+/// `npc_id` is the real source NPC; `id` is a shareable internal attack-window key.
+#[derive(Debug, Deserialize)]
+pub struct Window {
+    pub id: i32,
+    pub npc_id: i32,
+    #[serde(default)]
+    pub label: String,
+    pub phase: String,
+    pub description: String,
+    #[serde(default)]
+    pub progress_hp: BTreeMap<String, f64>,
+    #[serde(default = "supported")]
+    pub outgoing_supported: bool,
+    #[serde(default)]
+    pub default_style: Option<String>,
+}
+fn supported() -> bool {
+    true
 }
 pub fn mechanics() -> &'static Mechanics {
     static DATA: std::sync::OnceLock<Mechanics> = std::sync::OnceLock::new();
@@ -54,7 +79,30 @@ pub fn mechanics() -> &'static Mechanics {
             .expect("encounter mechanics")
     })
 }
+pub fn window(id: i32) -> Option<&'static Window> {
+    mechanics().windows.iter().find(|window| window.id == id)
+}
+/// Explicit progress budgets prevent each state from counting an entire boss kill.
+pub fn progress_hp(id: i32, style: &str) -> Option<f64> {
+    window(id)?
+        .progress_hp
+        .get(crate::rules::base_style(style))
+        .copied()
+}
+pub fn demonbane_vulnerability(id: i32) -> u32 {
+    let source = window(id).map(|window| window.npc_id).unwrap_or(id);
+    mechanics()
+        .demonbane_vulnerability
+        .get(&source)
+        .copied()
+        .unwrap_or(100)
+}
 pub fn limitation(target: &Monster) -> Option<&'static str> {
+    if window(target.id).is_some_and(|window| !window.outgoing_supported) {
+        return Some(
+            "This attack window needs reactive protection, guaranteed-hit or contract mechanics. Its equipment packing is available; outgoing DPS is not verified.",
+        );
+    }
     let data = mechanics();
     if target
         .attributes
@@ -79,6 +127,13 @@ pub struct Entry {
     pub bank_equipment: bool,
 }
 impl Entry {
+    /// Equipment style changes do not change which boss is being fought.
+    pub fn matches(&self, targets: &[Target]) -> bool {
+        !self.targets.is_empty()
+            && self.targets.len() == targets.len()
+            && targets.iter().all(Target::valid)
+            && self.targets.iter().zip(targets).all(|(a, b)| a.id == b.id)
+    }
     pub fn category(&self) -> &'static str {
         let data = browser_catalog();
         if data.raids.iter().any(|raid| self.name.starts_with(raid)) {
@@ -158,6 +213,11 @@ fn variant_rank(name: &str) -> u8 {
     }
 }
 fn starting_style(m: &Monster) -> &'static str {
+    if let Some(style) = window(m.id).and_then(|window| window.default_style.as_deref()) {
+        if crate::rules::STYLES.contains(&style) {
+            return style;
+        }
+    }
     ["Stab", "Slash", "Crush", "Ranged", "Magic"]
         .into_iter()
         .min_by_key(|style| {

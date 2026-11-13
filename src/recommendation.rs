@@ -107,7 +107,9 @@ pub fn assess(
             return None;
         }
         let weight = o.phase_priorities.get(&id).copied().unwrap_or(1).min(10) as f64;
-        let duration = target.skills.get("hp").copied().unwrap_or(100) as f64 / net * weight;
+        let progress = crate::encounters::progress_hp(id, style)
+            .unwrap_or_else(|| target.skills.get("hp").copied().unwrap_or(100) as f64);
+        let duration = progress / net * weight;
         time += duration;
         coverage += 1;
         if let Some(r) = incoming {

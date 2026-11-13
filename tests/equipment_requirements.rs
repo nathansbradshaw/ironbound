@@ -2,7 +2,7 @@ use ironbound::{account::Member, planner, rules};
 
 fn member() -> Member {
     let mut m = Member::default();
-    for skill in ["Defence", "Strength", "Magic", "Ranged", "Agility"] {
+    for skill in ironbound::account::SKILLS {
         m.level_overrides.insert(skill.into(), 99);
     }
     m

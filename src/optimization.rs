@@ -125,7 +125,8 @@ fn value(
             &o.ranking.weights,
         )?;
         total += o.phase_priorities.get(&id).copied().unwrap_or(1).min(10) as f64
-            * target.skills.get("hp").copied().unwrap_or(100) as f64
+            * crate::encounters::progress_hp(id, style)
+                .unwrap_or_else(|| target.skills.get("hp").copied().unwrap_or(100) as f64)
             / (utility * reference_dps.unwrap_or(1.0).max(0.000001));
     }
     Some(total)

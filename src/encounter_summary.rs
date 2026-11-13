@@ -253,7 +253,7 @@ pub fn compare(comparison: &tradeoffs::Comparison) -> Overview {
                         left_seconds: amt + aet,
                         right_seconds: bmt + bet,
                     });
-                    result.assumptions.push("Judge uses the shared alternating-hit model, including both full weapon cooldowns and finite HP. Prayer and defence are weighted by each style's actual attack commitments.".into());
+                    result.assumptions.push("Judge uses the shared alternating-hit model, including full weapon cooldowns and finite HP. Prayer and defence assume each set stays worn for its attack commitment; early swaps during cooldown are not simulated.".into());
                 }
                 Err(why) => result.omissions.push(format!("Judge cycle: {why}")),
             }

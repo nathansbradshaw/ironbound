@@ -3032,7 +3032,7 @@ fn combat_breakdown(
         owned.retain(|id, _| !s.saved.options.excluded.contains(id));
         let candidates =
             crate::rules::elemental_candidates(member, set, &owned, &s.saved.options.combat);
-        html.push_str("<h3>Magic elements</h3><table class=\"wiki-table\"><thead><tr><th>Element</th><th>Target weakness</th><th>Owned spell</th><th>Max hit</th><th>Hit chance</th><th>DPS</th></tr></thead><tbody>");
+        html.push_str("<h3>Magic elements</h3><table class=\"wiki-table\"><thead><tr><th>Element</th><th>Target weakness</th><th>Spell</th><th>Max hit</th><th>Hit chance</th><th>DPS</th></tr></thead><tbody>");
         for (element, label) in [
             ("air", "Air"),
             ("water", "Water"),
@@ -3049,8 +3049,8 @@ fn combat_breakdown(
             let candidate = candidates
                 .iter()
                 .find(|spell| spell.element.as_deref() == Some(element));
-            if let Some((spell, calc)) = candidate.and_then(|spell| {
-                combat::calculate_configured(
+            if let Some(spell) = candidate {
+                match combat::calculate_configured(
                     member,
                     set,
                     "Magic",
@@ -3058,28 +3058,39 @@ fn combat_breakdown(
                     &spell.name,
                     s.saved.options.raid_level,
                     &s.saved.options.combat,
-                )
-                .ok()
-                .map(|calc| (*spell, calc))
-            }) {
-                html.push_str(&format!(
-                    "<td>{}{}</td><td>{}</td><td>{:.1}%</td><td>{:.3}</td>",
-                    esc(&spell.name),
-                    if spell.name == r.spell {
-                        " · selected"
-                    } else {
-                        ""
-                    },
-                    calc.max_hit,
-                    calc.accuracy * 100.0,
-                    calc.dps
-                ));
+                ) {
+                    Ok(calc) => html.push_str(&format!(
+                        "<td>{}{}</td><td>{}</td><td>{:.1}%</td><td>{:.3}</td>",
+                        esc(&spell.name),
+                        if spell.name == r.spell {
+                            " · selected"
+                        } else {
+                            ""
+                        },
+                        calc.max_hit,
+                        calc.accuracy * 100.0,
+                        calc.dps
+                    )),
+                    Err(reason) => html.push_str(&format!(
+                        "<td>{}</td><td colspan=\"3\">Estimate unavailable: {}</td>",
+                        esc(&spell.name),
+                        esc(&reason)
+                    )),
+                }
             } else {
-                html.push_str("<td colspan=\"4\">No usable owned spell for this weapon</td>");
+                html.push_str(&format!(
+                    "<td colspan=\"4\">{}</td>",
+                    esc(&crate::rules::elemental_unavailability(
+                        member,
+                        set,
+                        &s.saved.options.combat,
+                        element
+                    ))
+                ));
             }
             html.push_str("</tr>");
         }
-        html.push_str("</tbody></table><p class=\"small-note\">Each row uses the strongest spell of that element with runes for 150 casts. Selection compares sustained DPS. Staff-provided runes are included; check tome pages and charges.</p>");
+        html.push_str("</tbody></table><p class=\"small-note\">Each row uses the strongest spell you can cast with banked runes for 150 casts. Staff-provided runes are included. Spells are checked by Magic level and rune supplies. Selection compares sustained DPS; check tome pages and charges.</p>");
         if let Some(e) = &r.elemental {
             html.push_str(&format!("<h3>{} · calculation</h3><dl class=\"combat-values\"><div><dt>Base spell max</dt><dd>{}</dd></div><div><dt>After gear, prayer & task</dt><dd>{}</dd></div><div><dt>Elemental damage · {}%</dt><dd>+{}</dd></div><div><dt>Elemental accuracy roll · {}%</dt><dd>+{}</dd></div></dl><p class=\"small-note\">Weakness adds a percentage of base spell damage and the base accuracy roll ({}), after other bonuses. Damage is rounded down at each stage. {} Final max hit: {}. Damage tiers use base Magic; active boosts can unlock spells and improve accuracy.</p>",esc(&r.spell),e.base_max,e.damage_before_weakness,e.weakness_percent,e.weakness_damage,e.weakness_percent,e.weakness_accuracy,e.base_attack_roll,if e.tome { "Matching charged tome multiplies damage by 1.10 after weakness." } else { "" },r.max_hit));
         } else {

@@ -763,6 +763,36 @@ pub fn elemental_candidates(
         .filter(|s| elements.insert(s.element.as_deref()))
         .collect()
 }
+/// Explain a missing element row without treating spells as bank items.
+pub fn elemental_unavailability(
+    member: &Member,
+    set: &[Option<i32>],
+    settings: &crate::defence::Settings,
+    element: &str,
+) -> String {
+    let Some(rule) = set.get(3).copied().flatten().and_then(weapon) else {
+        return "Choose a supported spellcasting weapon.".into();
+    };
+    if rule.family.formula == Formula::Powered {
+        return "Powered staff: no elemental spell bonus.".into();
+    }
+    if rule.family.formula != Formula::Elemental {
+        return "This weapon uses a non-elemental spell.".into();
+    }
+    let Some(magic) = crate::modifiers::level(member, "Magic", &settings.boosts) else {
+        return "Enter your Magic level.".into();
+    };
+    let minimum = spells()
+        .iter()
+        .filter(|s| s.family == rule.weapon.family && s.element.as_deref() == Some(element))
+        .map(|s| s.level)
+        .min();
+    match minimum {
+        Some(level) if magic < level => format!("Requires at least {level} Magic."),
+        Some(_) => format!("Insufficient runes for {DEFAULT_CASTS} casts."),
+        None => "Elemental casting is not supported for this weapon.".into(),
+    }
+}
 pub fn rune_supplies(spell: &str, casts: u32) -> Vec<(i32, u32)> {
     spells()
         .iter()

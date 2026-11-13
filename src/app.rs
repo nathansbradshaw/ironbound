@@ -1609,7 +1609,10 @@ fn act(action: &str) {
             }
         } else if let Some(style) = action.strip_prefix("edit-style:") {
             if crate::rules::STYLES.contains(&style) {
-                s.edit_style = Some(style.into());
+                // Clicking the active Melee tab retains its selected attack type.
+                if style != "Melee" || crate::rules::base_style(comparison_style(&s)) != "Melee" {
+                    s.edit_style = Some(style.into());
+                }
             }
         } else if let Some(i) = action.strip_prefix("phase:") {
             s.phase = i.parse().ok();
@@ -3100,6 +3103,114 @@ fn combat_breakdown(
     html.push_str("</div>");
     html
 }
+fn combat_style_controls(s: &State, set: &[Option<i32>], style: &str) -> String {
+    let main_style = crate::rules::base_style(style);
+    let rule = set.get(3).copied().flatten().and_then(crate::rules::weapon);
+    let mut html = String::from("<nav class=\"combat-style-tabs\" aria-label=\"Combat style\">");
+    for candidate in ["Melee", "Ranged", "Magic"] {
+        html.push_str(&format!("<button class=\"phase {}\" data-action=\"edit-style:{candidate}\" aria-pressed=\"{}\">{candidate}</button>", if candidate == main_style { "active" } else { "" }, candidate == main_style));
+    }
+    html.push_str(&format!(
+        "</nav><div class=\"combat-subtypes\" role=\"group\" aria-label=\"{main_style} subtypes\">"
+    ));
+    let label = match main_style {
+        "Melee" => "Attack type",
+        "Ranged" => "Ammunition type",
+        _ => "Spell element",
+    };
+    html.push_str(&format!(
+        "<span class=\"combat-subtype-label\">{label}</span><div class=\"combat-subtype-options\">"
+    ));
+    let note;
+    if main_style == "Melee" {
+        let selected = if style == "Melee" {
+            rule.as_ref()
+                .filter(|r| r.family.style == "Melee")
+                .and_then(|r| r.family.attack_types.first())
+                .map(String::as_str)
+                .unwrap_or("")
+        } else {
+            style
+        };
+        for kind in ["Stab", "Slash", "Crush"] {
+            let active = selected.eq_ignore_ascii_case(kind);
+            html.push_str(&format!("<button class=\"phase combat-subtype {}\" data-action=\"edit-style:{kind}\" aria-pressed=\"{active}\">{kind}</button>", if active { "active" } else { "" }));
+        }
+        note = "Choose an attack type to compare its loadout.";
+    } else {
+        let spell = s
+            .saved
+            .snapshot
+            .selected()
+            .zip(comparison_monster(s))
+            .map(|(member, target)| comparison_spell(s, member, set, target))
+            .unwrap_or("");
+        let element = crate::rules::spells()
+            .iter()
+            .find(|recipe| recipe.name == spell)
+            .and_then(|recipe| recipe.element.as_deref());
+        let selected = if main_style == "Ranged" {
+            rule.as_ref()
+                .filter(|r| r.family.style == "Ranged")
+                .and_then(|r| r.family.attack_types.first())
+                .map(String::as_str)
+        } else if rule
+            .as_ref()
+            .is_some_and(|r| r.family.formula == crate::rules::Formula::Elemental)
+        {
+            element
+        } else {
+            None
+        };
+        let kinds: &[(&str, &str)] = if main_style == "Ranged" {
+            &[
+                ("light", "Light"),
+                ("standard", "Standard"),
+                ("heavy", "Heavy"),
+            ]
+        } else {
+            &[
+                ("air", "Air"),
+                ("water", "Water"),
+                ("earth", "Earth"),
+                ("fire", "Fire"),
+            ]
+        };
+        for (kind, label) in kinds {
+            let active = selected == Some(*kind);
+            html.push_str(&format!(
+                "<span class=\"combat-subtype {}\">{label}{}</span>",
+                if active { "active" } else { "" },
+                if active {
+                    " <small>· selected</small>"
+                } else {
+                    ""
+                }
+            ));
+        }
+        if main_style == "Magic" {
+            if let Some(rule) = rule.filter(|r| {
+                r.family.style == "Magic" && r.family.formula != crate::rules::Formula::Elemental
+            }) {
+                html.push_str(&format!(
+                    "<span class=\"combat-subtype active\">{} <small>· selected</small></span>",
+                    if rule.family.formula == crate::rules::Formula::Powered {
+                        "Powered staff"
+                    } else {
+                        "Non-elemental"
+                    }
+                ));
+            }
+        }
+        note = if main_style == "Ranged" {
+            "Determined by your weapon and ammunition."
+        } else {
+            "Determined by the selected spell. Element comparisons are below."
+        };
+    }
+    html.push_str(&format!("</div><p class=\"small-note\">{note}</p></div>"));
+    html
+}
 fn combat_panel(s: &State, p: &Plan) -> String {
     if s.shared_setup.is_some() {
         return String::new();
@@ -3110,9 +3221,7 @@ fn combat_panel(s: &State, p: &Plan) -> String {
     let mut html = String::from(
         r#"<section class="panel combat-panel"><div class="panel-heading"><h2>Combat stats</h2></div><div class="combat-body">"#,
     );
-    for candidate in crate::rules::STYLES {
-        html.push_str(&format!("<button class=\"phase {}\" data-action=\"edit-style:{candidate}\" aria-pressed=\"{}\">{candidate}</button>",if candidate == style { "active" } else { "" },candidate == style));
-    }
+    html.push_str(&combat_style_controls(s, &set, style));
     html.push_str(r#"<label>Against<select id="compare-target">"#);
     let mut priority_ids = std::collections::BTreeSet::new();
     for id in encounter_targets(s)

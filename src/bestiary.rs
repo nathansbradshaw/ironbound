@@ -21,6 +21,77 @@ pub const FILTERS: [&str; 11] = [
     "Groups",
     "All",
 ];
+pub const CATEGORY_FILTERS: [&str; 6] = ["For you", "Bosses", "Raids", "Groups", "All", "Popular"];
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum GearFilter {
+    #[default]
+    Any,
+    WellEquipped,
+    Doable,
+    Struggle,
+    Unknown,
+}
+impl GearFilter {
+    pub const ALL: [Self; 5] = [
+        Self::Any,
+        Self::WellEquipped,
+        Self::Doable,
+        Self::Struggle,
+        Self::Unknown,
+    ];
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Any => "Any gear",
+            Self::WellEquipped => "Well equipped",
+            Self::Doable => "Doable",
+            Self::Struggle => "A struggle",
+            Self::Unknown => "Not assessed",
+        }
+    }
+    pub fn parse(s: &str) -> Option<Self> {
+        Self::ALL.into_iter().find(|v| v.label() == s)
+    }
+    pub fn matches(self, a: &Assessment) -> bool {
+        self == Self::Any || a.readiness.label() == self.label()
+    }
+}
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum RequirementsFilter {
+    #[default]
+    Any,
+    LevelsMet,
+    Missing,
+    Unknown,
+}
+impl RequirementsFilter {
+    pub const ALL: [Self; 4] = [Self::Any, Self::LevelsMet, Self::Missing, Self::Unknown];
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Any => "Any requirements",
+            Self::LevelsMet => "Known levels met",
+            Self::Missing => "Requirements missing",
+            Self::Unknown => "Level unknown",
+        }
+    }
+    pub fn parse(s: &str) -> Option<Self> {
+        Self::ALL.into_iter().find(|v| v.label() == s)
+    }
+    pub fn matches(self, a: &Assessment) -> bool {
+        match self {
+            Self::Any => true,
+            Self::LevelsMet => matches!(
+                a.requirements.status,
+                RequirementStatus::LevelMet | RequirementStatus::NoLevelGate
+            ),
+            Self::Missing => a.requirements.status == RequirementStatus::Missing,
+            Self::Unknown => a.requirements.status == RequirementStatus::Unverified,
+        }
+    }
+}
+pub fn matches_filters(a: &Assessment, gear: GearFilter, requirements: RequirementsFilter) -> bool {
+    gear.matches(a) && requirements.matches(a)
+}
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub enum Readiness {
@@ -51,6 +122,7 @@ impl Readiness {
 pub enum RequirementStatus {
     Missing,
     LevelMet,
+    NoLevelGate,
     Unverified,
 }
 impl RequirementStatus {
@@ -59,6 +131,7 @@ impl RequirementStatus {
             Self::Missing => "Requirements missing",
             Self::LevelMet => "Slayer level met",
             Self::Unverified => "Access unverified",
+            Self::NoLevelGate => "Access unverified",
         }
     }
     fn class(self) -> &'static str {
@@ -66,6 +139,7 @@ impl RequirementStatus {
             Self::Missing => "missing",
             Self::LevelMet => "level-met",
             Self::Unverified => "unverified",
+            Self::NoLevelGate => "unverified",
         }
     }
 }
@@ -361,6 +435,12 @@ fn requires_all(name: &str) -> bool {
 pub fn assess_catalog(snapshot: &Snapshot, preferences: &Options) -> Vec<Assessment> {
     let mut assessments = assess_gear_catalog(snapshot, preferences);
     for (entry, assessment) in crate::encounters::catalog().iter().zip(&mut assessments) {
+        if snapshot.selected().is_some() && profile(&entry.name).is_some_and(|p| p.slayer == 0) {
+            assessment.requirements = Requirements {
+                status: RequirementStatus::NoLevelGate,
+                reason: "No recorded Slayer level requirement. Quest, key, task and other access checks remain unverified.".into(),
+            };
+        }
         let Some(minimum) = profile(&entry.name).map(|p| p.slayer).filter(|n| *n > 0) else {
             continue;
         };

@@ -11,7 +11,7 @@ use std::collections::BTreeMap;
 
 /// Bump when fight timeline or consumption semantics change. A fitted worksheet
 /// must not silently validate another version of the simulation engine.
-pub const MODEL_REVISION: u32 = 1;
+pub const MODEL_REVISION: u32 = 2;
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(default, deny_unknown_fields)]
@@ -44,6 +44,7 @@ pub struct Settings {
     pub prayer_rotation: u32,
     pub skull_ticks: u32,
     pub skull_damage: u32,
+    pub burn_phase_resets: u32,
 }
 impl Default for Settings {
     fn default() -> Self {
@@ -76,6 +77,7 @@ impl Default for Settings {
             prayer_rotation: 21,
             skull_ticks: 16,
             skull_damage: 5,
+            burn_phase_resets: 1,
         }
     }
 }
@@ -83,6 +85,13 @@ impl Settings {
     /// Public metadata for the same bounded controls used by validation and UI.
     pub fn fields(&self) -> Vec<(&'static str, &'static str, u32, u32, u32)> {
         vec![
+            (
+                "burn_phase_resets",
+                "Clear burns at phase boundaries (0 no, 1 yes)",
+                self.burn_phase_resets,
+                0,
+                1,
+            ),
             ("trials", "Trials", self.trials, 16, 256),
             ("seed", "Random seed", self.seed, 1, 1_000_000),
             ("trip_limit", "Trip fight cap", self.trip_limit, 1, 20),
@@ -251,6 +260,7 @@ impl Settings {
         };
         let n = n.clamp(min, max);
         match key {
+            "burn_phase_resets" => self.burn_phase_resets = n,
             "trials" => self.trials = n,
             "seed" => self.seed = n,
             "trip_limit" => self.trip_limit = n,
@@ -336,8 +346,12 @@ pub struct Attack {
     pub prayer: f64,
 }
 impl Attack {
-    fn roll(&self, rng: &mut Rng, hp: u32, player_hp: f64) -> (i32, bool) {
+    fn roll(&self, rng: &mut Rng, hp: u32, player_hp: f64) -> (i32, bool, bool) {
         let mut pick = rng.unit();
+        if let Some(burn) = &self.hits.burn {
+            let hit = burn.sample(pick);
+            return (hit.damage, false, hit.applies_burn);
+        }
         let proc = self.hits.hp_dependent;
         let no_ruby = proc.is_some() && player_hp < 10.0;
         let count =
@@ -349,19 +363,19 @@ impl Attack {
                 *p
             };
             if pick < p {
-                return (*damage, false);
+                return (*damage, false, false);
             }
             pick -= p;
         }
         if let Some(proc) = proc.filter(|_| !no_ruby) {
             for (damage, p) in proc.outcomes(hp) {
                 if pick < p {
-                    return (damage, true);
+                    return (damage, true, false);
                 }
                 pick -= p;
             }
         }
-        (0, false)
+        (0, false, false)
     }
 }
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -445,9 +459,6 @@ fn attack(
     let spell = rules::spell_name_for_target(member, set, &stock, &settings, &target, o.raid_level);
     let hits =
         combat::calculate_configured(member, set, style, &target, spell, o.raid_level, &settings)?;
-    if hits.burn_dps > 0.0 {
-        return Err("Burn stack timing is not yet verified in this fight simulator. Use another packed set for this scenario.".into());
-    }
     if (hits.expected_attack_ticks - hits.attack_ticks as f64).abs() > 1e-8 {
         return Err("Conditional attack-speed procs need a verified per-attack timing model. Use another packed set for this simulation.".into());
     }
@@ -593,6 +604,7 @@ impl Model {
         foods.sort_by_key(|(_, heal, _)| std::cmp::Reverse(*heal));
         notes.push("Incoming HP/min applies during exposed attack phases after protection, excluding separate failed mechanics. It is not inferred from unverified attack mixtures. Yama prioritizes killing all flares rather than glyph-skipping them; melee-range autos can spawn extra final flares.".into());
         notes.push("Timing, uptime, missed mechanics, flare healing/regeneration, skull damage and recovery are editable scenario inputs. Defaults are illustrative, not measured player performance.".into());
+        notes.push(format!("Eclipse burns use target-local timed stacks, not steady-state DPS. Phase-boundary clearing: {}. This is an explicit scenario assumption; confirm it for the encounter. Invulnerable downtime ages retained stacks without damage, new targets/fights start empty, and dead targets receive no more pulses or attacks.",if o.simulation.burn_phase_resets==1 {"on"} else {"off"}));
         notes.push("Every fight starts with full boss HP. The comparison panel's current-target-HP and fixed-player-HP assumptions are not fight starting conditions. Player HP/Prayer and supplies carry between fights.".into());
         notes.push("No special attacks, passive healing, boost decay, combo eating, projectile travel, armour degradation, tome pages, poison/venom or potion protection expiry. Keep protection/boosts maintained manually. Weapon charges and blowpipe scales are reported separately.".into());
         if encounter == Encounter::Wardens {
@@ -655,6 +667,10 @@ pub struct Usage {
     pub extra_doses: u32,
     pub damage_taken: f64,
     pub ruby_damage: f64,
+    pub burn_damage: u32,
+    pub burns_applied: u32,
+    pub burns_discarded: u32,
+    pub burns_cleared: u32,
     pub resources: BTreeMap<i32, u32>,
     pub charges: BTreeMap<i32, u32>,
     pub scales: u32,
@@ -726,6 +742,11 @@ impl Rng {
         (self.unit() * (max + 1) as f64) as u32
     }
 }
+struct TargetBurn {
+    stacks: crate::burn::Burns,
+    pulse: u32,
+    rule: crate::burn::PulseRule,
+}
 struct Runner<'a> {
     m: &'a Model,
     rng: Rng,
@@ -740,6 +761,7 @@ struct Runner<'a> {
     alive: bool,
     deadline: u32,
     mark_ready: u32,
+    burns: BTreeMap<u32, TargetBurn>,
 }
 impl<'a> Runner<'a> {
     fn new(m: &'a Model, seed: u64) -> Self {
@@ -757,6 +779,7 @@ impl<'a> Runner<'a> {
             alive: true,
             deadline: 6000,
             mark_ready: 0,
+            burns: BTreeMap::new(),
         }
     }
     fn spend(&mut self, id: i32, n: u32) {
@@ -802,6 +825,11 @@ impl<'a> Runner<'a> {
             return false;
         }
         let now = self.usage.ticks;
+        for burn in self.burns.values_mut() {
+            burn.pulse = burn.stacks.tick();
+        }
+        self.burns
+            .retain(|_, b| b.stacks.stacks() > 0 || b.pulse > 0);
         if self.m.mark_ticks > 0 && now >= self.mark_ready {
             for (id, n) in rules::mark_darkness_supplies() {
                 self.spend(id, n);
@@ -864,9 +892,20 @@ impl<'a> Runner<'a> {
         }
         true
     }
-    fn hit(&mut self, index: usize, hp: u32, uptime: u32) -> Option<u32> {
+    fn hit(&mut self, index: usize, hp: u32, uptime: u32, target: u32) -> Option<u32> {
+        self.hit_scaled(index, hp, uptime, target, 1, 1)
+    }
+    fn hit_scaled(
+        &mut self,
+        index: usize,
+        hp: u32,
+        uptime: u32,
+        target: u32,
+        divisor: u32,
+        multiplier: u32,
+    ) -> Option<u32> {
         let now = self.usage.ticks;
-        if now < self.ready || !self.alive {
+        if now < self.ready || !self.alive || hp == 0 {
             return None;
         }
         if !self.rng.chance(uptime) {
@@ -876,8 +915,24 @@ impl<'a> Runner<'a> {
             return None;
         }
         let a = &self.m.attacks[index];
-        let (n, ruby) = a.roll(&mut self.rng, hp, self.hp);
-        let n = n.max(0) as u32;
+        let (n, ruby, proc_burn) = a.roll(&mut self.rng, hp, self.hp);
+        let n = (n.max(0) as u32 / divisor.max(1)).saturating_mul(multiplier);
+        if n >= hp {
+            self.burns.remove(&target);
+        } else if proc_burn {
+            let rule = a.hits.burn.as_ref().expect("burn proc profile").pulse;
+            let pending = self.burns.entry(target).or_insert_with(|| TargetBurn {
+                stacks: Default::default(),
+                pulse: 0,
+                rule,
+            });
+            pending.rule = rule;
+            if pending.stacks.apply() {
+                self.usage.burns_applied += 1;
+            } else {
+                self.usage.burns_discarded += 1;
+            }
+        }
         self.ready = now + a.hits.attack_ticks.max(1) as u32;
         self.usage.attacks += 1;
         let ruby_cost = if ruby { (self.hp / 10.0).floor() } else { 0.0 };
@@ -912,12 +967,45 @@ impl<'a> Runner<'a> {
         }
         Some(n)
     }
+    fn burn_damage(&mut self, target: u32, hp: &mut u32, index: usize, divisor: Option<u32>) {
+        if let Some(pending) = self.burns.get_mut(&target) {
+            let mut rule = self.m.attacks[index]
+                .hits
+                .burn
+                .as_ref()
+                .map(|b| b.pulse)
+                .unwrap_or(pending.rule);
+            if let Some(divisor) = divisor {
+                rule.divisor = divisor;
+            }
+            let damage = rule.damage(pending.pulse).min(*hp);
+            pending.pulse = 0;
+            *hp -= damage;
+            self.usage.burn_damage += damage;
+        }
+        if *hp == 0 {
+            self.burns.remove(&target);
+        }
+    }
+    fn clear_burns(&mut self) {
+        self.usage.burns_cleared += self.burns.values().map(|b| b.stacks.stacks()).sum::<u32>();
+        self.burns.clear();
+    }
+    fn phase_reset(&mut self) {
+        if self.m.settings.burn_phase_resets == 1 {
+            self.clear_burns();
+        }
+    }
     fn attack_until(&mut self, hp: &mut u32, stop: u32, index: usize, phase: &str) -> bool {
         while *hp > stop {
             if !self.tick(phase, index, true) {
                 return false;
             }
-            if let Some(n) = self.hit(index, *hp, self.m.settings.uptime) {
+            self.burn_damage(0, hp, index, None);
+            if *hp <= stop {
+                break;
+            }
+            if let Some(n) = self.hit(index, *hp, self.m.settings.uptime, 0) {
                 *hp = hp.saturating_sub(n);
             }
         }
@@ -931,13 +1019,18 @@ impl<'a> Runner<'a> {
                 if !self.tick("Normal attacks", 0, true) {
                     return false;
                 }
-                if let Some(n) = self.hit(0, hp, self.m.settings.uptime) {
+                self.burn_damage(0, &mut hp, 0, None);
+                if hp == 0 {
+                    return true;
+                }
+                if let Some(n) = self.hit(0, hp, self.m.settings.uptime, 0) {
                     hp = hp.saturating_sub(n);
                 }
                 if hp == 0 {
                     return true;
                 }
             }
+            self.phase_reset();
             if acid {
                 self.usage.acid += 1;
                 for _ in 0..self.m.settings.acid_ticks {
@@ -951,7 +1044,11 @@ impl<'a> Runner<'a> {
                         let hit = self.rng.damage(16) + 25;
                         self.hurt(hit as f64 + heal as f64);
                     }
-                    if let Some(n) = self.hit(1, hp, self.m.settings.acid_uptime) {
+                    self.burn_damage(0, &mut hp, 1, Some(2));
+                    if hp == 0 {
+                        return self.alive;
+                    }
+                    if let Some(n) = self.hit(1, hp, self.m.settings.acid_uptime, 0) {
                         hp = hp.saturating_sub(n);
                     }
                     if hp == 0 {
@@ -972,6 +1069,7 @@ impl<'a> Runner<'a> {
                 self.fail(60);
             }
             acid = !acid;
+            self.phase_reset();
             if !self.alive {
                 return false;
             }
@@ -990,7 +1088,7 @@ impl<'a> Runner<'a> {
             let attack = usize::from(stage == 2);
             let mut elapsed = 0u32;
             let mut flare_total = 0;
-            let mut flares: Vec<(u32, u32, u32)> = Vec::new();
+            let mut flares: Vec<(u32, u32, u32, u32)> = Vec::new();
             while hp > stop {
                 elapsed += 1;
                 if !self.tick(
@@ -1004,13 +1102,29 @@ impl<'a> Runner<'a> {
                 ) {
                     return false;
                 }
+                self.burn_damage(0, &mut hp, attack, None);
+                if hp == 0 {
+                    return self.alive;
+                }
+                for flare in &mut flares {
+                    self.burn_damage(flare.3, &mut flare.0, if stage == 2 { 5 } else { 4 }, None);
+                }
+                flares.retain(|f| f.0 > 0);
+                if hp <= stop {
+                    break;
+                }
                 let auto = if stage == 2 { 7 } else { 8 };
                 if stage == 2
                     && elapsed.is_multiple_of(7)
                     && self.rng.chance(self.m.settings.melee_autos)
                     && flares.len() < 4
                 {
-                    flares.push((71, 71, elapsed + self.m.settings.flare_charge));
+                    flares.push((
+                        71,
+                        71,
+                        elapsed + self.m.settings.flare_charge,
+                        flare_total + 1,
+                    ));
                     flare_total += 1;
                     self.usage.flares += 1;
                 }
@@ -1027,7 +1141,12 @@ impl<'a> Runner<'a> {
                     for _ in 0..count {
                         if flares.len() < 4 {
                             let maximum = if stage == 2 { 71 } else { 140 };
-                            flares.push((maximum, maximum, elapsed + self.m.settings.flare_charge));
+                            flares.push((
+                                maximum,
+                                maximum,
+                                elapsed + self.m.settings.flare_charge,
+                                flare_total + 1,
+                            ));
                             flare_total += 1;
                             self.usage.flares += 1;
                         }
@@ -1044,6 +1163,7 @@ impl<'a> Runner<'a> {
                         self.usage.healing += heal;
                         self.usage.exploded += 1;
                         self.hurt((if stage == 2 { 24.0 } else { 43.0 }) * fraction);
+                        self.burns.remove(&flares[i].3);
                         flares.remove(i);
                     } else {
                         if elapsed.is_multiple_of(self.m.settings.flare_regen) {
@@ -1057,25 +1177,37 @@ impl<'a> Runner<'a> {
                         if stage == 2 { 5 } else { 4 },
                         flare.0,
                         self.m.settings.uptime,
+                        flare.3,
                     ) {
                         flare.0 = flare.0.saturating_sub(n);
                         if flare.0 == 0 {
                             flares.remove(0);
                         }
                     }
-                } else if let Some(n) = self.hit(attack, hp, self.m.settings.uptime) {
+                } else if let Some(n) = self.hit(attack, hp, self.m.settings.uptime, 0) {
                     hp = hp.saturating_sub(n);
                 }
             }
+            if hp == 0 {
+                return self.alive;
+            }
             if stage < 2 {
+                for flare in &flares {
+                    self.burns.remove(&flare.3);
+                }
+                self.phase_reset();
                 // Thresholds are soft: attacks already overkill into the next
                 // stage. Transition attacks continue at half damage.
                 for _ in 0..self.m.settings.transition {
                     if !self.tick("Yama transition", attack, false) {
                         return false;
                     }
-                    if let Some(n) = self.hit(attack, hp, self.m.settings.uptime) {
-                        hp = hp.saturating_sub(n / 2);
+                    self.burn_damage(0, &mut hp, attack, Some(2));
+                    if hp == 0 {
+                        return self.alive;
+                    }
+                    if let Some(n) = self.hit_scaled(attack, hp, self.m.settings.uptime, 0, 2, 1) {
+                        hp = hp.saturating_sub(n);
                     }
                 }
                 if !self.wait(self.m.settings.judge_travel, "Judge travel", 2, false) {
@@ -1084,16 +1216,23 @@ impl<'a> Runner<'a> {
                 let mut judge = self.m.hp[2];
                 let mut magic = true;
                 self.usage.judges += 1;
+                let judge_key = 10_000 + stage;
                 while judge > 0 {
                     let index = if magic { 2 } else { 3 };
                     if !self.tick("Judge alternation", index, true) {
                         return false;
                     }
-                    if let Some(n) = self.hit(index, judge, self.m.settings.uptime) {
+                    self.burn_damage(judge_key, &mut judge, index, None);
+                    if judge == 0 {
+                        break;
+                    }
+                    if let Some(n) = self.hit(index, judge, self.m.settings.uptime, judge_key) {
                         judge = judge.saturating_sub(n);
                         magic = !magic;
                     }
                 }
+                self.burns.remove(&judge_key);
+                self.phase_reset();
                 if !self.wait(
                     self.m.settings.transition,
                     "Return from Judge",
@@ -1132,11 +1271,16 @@ impl<'a> Runner<'a> {
                 if !self.tick("P2 shield", index, true) {
                     return false;
                 }
-                if let Some(n) = self.hit(index, shield, self.m.settings.uptime) {
+                self.burn_damage(1, &mut shield, index, None);
+                if shield == 0 {
+                    break;
+                }
+                if let Some(n) = self.hit(index, shield, self.m.settings.uptime, 1) {
                     shield = shield.saturating_sub(n);
                 }
             }
             self.usage.core_downs += 1;
+            self.phase_reset();
             if !self.wait(self.m.settings.transition, "Core ejection", 3, false) {
                 return false;
             }
@@ -1145,8 +1289,12 @@ impl<'a> Runner<'a> {
                 if !self.tick("Core exposure", 3, false) {
                     return false;
                 }
-                if let Some(n) = self.hit(3, body, self.m.settings.uptime) {
-                    body = body.saturating_sub(n.saturating_mul(5));
+                self.burn_damage(2, &mut body, 3, None);
+                if body == 0 {
+                    break;
+                }
+                if let Some(n) = self.hit_scaled(3, body, self.m.settings.uptime, 2, 1, 5) {
+                    body = body.saturating_sub(n);
                 }
                 if body == 0 {
                     break;
@@ -1155,17 +1303,20 @@ impl<'a> Runner<'a> {
             if body > 0 && !self.wait(self.m.settings.transition, "Core return", 3, false) {
                 return false;
             }
+            self.phase_reset();
         }
         if !self.wait(self.m.settings.transition, "P2 to P3", 4, false) {
             return false;
         }
         let maximum = self.m.hp[4];
+        self.phase_reset();
         let mut hp = maximum;
         let mut skull = 80;
         let mut enraged = false;
         let p3_start = self.usage.ticks;
         while hp > 0 || !enraged {
             if skull > 0 && hp * 100 <= maximum * skull {
+                self.phase_reset();
                 self.usage.skulls += 1;
                 if !self.wait(self.m.settings.skull_ticks, "Skulls", 3, false) {
                     return false;
@@ -1179,6 +1330,7 @@ impl<'a> Runner<'a> {
                 continue;
             }
             if !enraged && hp * 100 <= maximum * 5 {
+                self.phase_reset();
                 hp = hp.saturating_add(maximum / 5);
                 self.usage.healing += maximum / 5;
                 self.usage.enrage += 1;
@@ -1194,7 +1346,14 @@ impl<'a> Runner<'a> {
             if (self.usage.ticks - p3_start).is_multiple_of(21) {
                 self.fail(40);
             }
-            if let Some(n) = self.hit(index, hp, self.m.settings.uptime) {
+            self.burn_damage(3, &mut hp, index, None);
+            if hp == 0 && enraged {
+                return self.alive;
+            }
+            if skull > 0 && hp * 100 <= maximum * skull || !enraged && hp * 100 <= maximum * 5 {
+                continue;
+            }
+            if let Some(n) = self.hit(index, hp, self.m.settings.uptime, 3) {
                 hp = hp.saturating_sub(n);
             }
         }
@@ -1205,6 +1364,7 @@ impl<'a> Runner<'a> {
         self.hurt(n as f64);
     }
     fn fight(&mut self) -> bool {
+        self.clear_burns();
         let start = self.usage.ticks;
         self.deadline = start + 6000;
         // Do not let an earlier fight's long-running clock consume this one's
@@ -1214,6 +1374,7 @@ impl<'a> Runner<'a> {
             Encounter::Yama => self.yama(),
             Encounter::Wardens => self.wardens(),
         };
+        self.clear_burns();
         completed && self.alive && self.usage.ticks - start <= 6000
     }
 }
@@ -1227,6 +1388,13 @@ pub fn core_exposure(remaining: u32, maximum: u32) -> u32 {
     }
 }
 pub fn simulate(model: &Model) -> Result<Report, String> {
+    if model
+        .attacks
+        .iter()
+        .any(|a| a.hits.burn_dps > 0.0 && a.hits.burn.is_none())
+    {
+        return Err("This saved scenario lacks the joint Eclipse burn outcomes. Rebuild it from the current gear before replaying.".into());
+    }
     let count = match model.encounter {
         Encounter::Vorkath => 2,
         _ => 6,
@@ -1241,7 +1409,9 @@ pub fn simulate(model: &Model) -> Result<Report, String> {
         || model.mark_ticks > 10_000
         || model.attacks.iter().any(|a| {
             !(1..=20).contains(&a.hits.attack_ticks)
-                || a.hits.burn_dps != 0.0
+                || a.hits.burn.as_ref().is_some_and(|b| {
+                    !b.matches(&a.hits.hit_distribution) || a.hits.hp_dependent.is_some()
+                })
                 || a.projectile_loss.is_some_and(|n| n > 100)
                 || !(0.0..=100.0).contains(&a.prayer)
                 || a.runes.len() > 32
@@ -1330,6 +1500,111 @@ pub fn simulate(model: &Model) -> Result<Report, String> {
 #[cfg(test)]
 mod consumption_tests {
     use super::*;
+    fn eclipse_model() -> Model {
+        let mut member = crate::account::Member::default();
+        for skill in crate::account::SKILLS {
+            member.level_overrides.insert(skill.into(), 99);
+        }
+        let mut set = vec![None; 14];
+        for (slot, id) in [(0, 29010), (4, 29004), (7, 29007), (3, 29000), (13, 28991)] {
+            set[slot] = Some(id);
+        }
+        let mut hits =
+            combat::calculate(&member, &set, "Ranged", planner::monster(26).unwrap(), "").unwrap();
+        hits.hit_distribution = vec![(0, 1.0)];
+        hits.attack_ticks = 3;
+        hits.expected_attack_ticks = 3.0;
+        hits.burn = Some(crate::burn::BurnAttack {
+            hits: vec![crate::burn::BurnHit {
+                damage: 0,
+                probability: 1.0,
+                applies_burn: true,
+            }],
+            pulse: Default::default(),
+        });
+        let attack = Attack {
+            hits,
+            weapon: 29000,
+            runes: vec![],
+            projectile: None,
+            projectile_loss: None,
+            charge: false,
+            charge_on_damage: false,
+            scales: false,
+            prayer: 0.0,
+        };
+        Model {
+            encounter: Encounter::Vorkath,
+            settings: Settings {
+                incoming: 0,
+                mistakes: 0,
+                ..Default::default()
+            },
+            attacks: vec![attack; 2],
+            max_hp: 99,
+            max_prayer: 99,
+            hp: vec![100; 2],
+            available: BTreeMap::new(),
+            foods: vec![],
+            potions: vec![],
+            notes: vec![],
+            mark_ticks: 0,
+        }
+    }
+    #[test]
+    fn burns_stay_on_their_target_survive_weapon_switches_and_expire_in_downtime() {
+        let mut model = eclipse_model();
+        model.attacks[1].hits.burn = None;
+        let mut r = Runner::new(&model, 1);
+        assert!(r.tick("Attack", 0, false));
+        assert_eq!(r.hit(0, 100, 100, 7), Some(0));
+        assert!(r.wait(4, "Invulnerable downtime", 0, false));
+        let mut other = 100;
+        r.burn_damage(8, &mut other, 1, None);
+        assert_eq!(other, 100);
+        let mut first = 100;
+        r.burn_damage(7, &mut first, 1, None);
+        assert_eq!(first, 99);
+        assert!(r.wait(50, "Invulnerable downtime", 0, false));
+        r.burn_damage(7, &mut first, 1, None);
+        assert_eq!(first, 99, "expired pulses are not queued for later");
+        assert!(r.burns.is_empty());
+    }
+    #[test]
+    fn reset_discards_target_stacks_without_resetting_attack_cooldown() {
+        let model = eclipse_model();
+        let mut r = Runner::new(&model, 1);
+        r.tick("Attack", 0, false);
+        r.hit(0, 100, 100, 7);
+        let ready = r.ready;
+        r.phase_reset();
+        assert!(r.burns.is_empty());
+        assert_eq!(r.ready, ready);
+        assert_eq!(r.usage.burns_cleared, 1);
+        let mut hp = 100;
+        r.wait(4, "Next phase", 0, false);
+        r.burn_damage(7, &mut hp, 0, None);
+        assert_eq!(hp, 100);
+    }
+    #[test]
+    fn phase_scaled_hits_apply_burn_and_death_checks_using_actual_damage() {
+        let mut model = eclipse_model();
+        model.attacks[0].hits.hit_distribution = vec![(4, 1.0)];
+        model.attacks[0].hits.burn.as_mut().unwrap().hits[0].damage = 4;
+        let mut r = Runner::new(&model, 1);
+        r.tick("Transition", 0, false);
+        assert_eq!(r.hit_scaled(0, 3, 100, 7, 2, 1), Some(2));
+        assert_eq!(
+            r.burns[&7].stacks.stacks(),
+            1,
+            "halved hit did not kill the target"
+        );
+        let mut r = Runner::new(&model, 1);
+        r.tick("Core", 0, false);
+        assert_eq!(r.hit_scaled(0, 9, 100, 7, 1, 5), Some(20));
+        assert!(!r.burns.contains_key(&7));
+        assert_eq!(r.usage.burns_applied, 0);
+    }
     #[test]
     fn real_weapon_adapters_distinguish_racks_charged_and_corrupted_crystal_bows() {
         let mut snapshot = crate::account::demo();

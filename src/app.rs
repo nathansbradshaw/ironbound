@@ -60,6 +60,9 @@ struct State {
     filler_cap: u32,
     switch_preferences_open: bool,
     packing_limits_open: bool,
+    compact_open: bool,
+    encounter_filters_open: bool,
+    wilderness_options_open: bool,
     combat_options_open: bool,
     attack_budget_open: bool,
     simulation_open: bool,
@@ -178,6 +181,9 @@ impl State {
                 .unwrap_or(crate::wilderness::DEFAULT_CAP),
             switch_preferences_open: false,
             packing_limits_open: false,
+            compact_open: false,
+            encounter_filters_open: false,
+            wilderness_options_open: false,
             combat_options_open: false,
             attack_budget_open: false,
             simulation_open: false,
@@ -995,6 +1001,16 @@ pub fn start() -> Result<(), JsValue> {
             } else if el.id() == "switch-preferences" {
                 STATE.with(|state| {
                     state.borrow_mut().switch_preferences_open = el.has_attribute("open")
+                });
+            } else if el.id() == "compact-setup" {
+                STATE.with(|state| state.borrow_mut().compact_open = el.has_attribute("open"));
+            } else if el.id() == "encounter-extra-filters" {
+                STATE.with(|state| {
+                    state.borrow_mut().encounter_filters_open = el.has_attribute("open")
+                });
+            } else if el.id() == "wilderness-options" {
+                STATE.with(|state| {
+                    state.borrow_mut().wilderness_options_open = el.has_attribute("open")
                 });
             } else if el.id() == "packing-limits" {
                 STATE.with(|state| {
@@ -1883,6 +1899,8 @@ fn act(action: &str) {
             }
         } else if let Some(value)=action.strip_prefix("simulation-warden:").and_then(|v|v.parse::<u32>().ok()) {
             s.saved.options.simulation.warden=value.min(1);
+        } else if let Some(value)=action.strip_prefix("simulation-burn-reset:").and_then(|v|v.parse::<u32>().ok()) {
+            s.saved.options.simulation.burn_phase_resets=value.min(1);
         } else if action == "simulate-fight" {
             let plan=s.plan();
             let key=simulation_key(&s,&plan);
@@ -1936,6 +1954,7 @@ fn act(action: &str) {
                         if action=="efficient-compare" {
                             s.saved.budget_caps=[cap,result.candidates[best].budget.cap];
                             s.budget_comparison_open=true;
+                            s.compact_open=false;
                         } else {
                             apply_number(&mut s,"max-switches",&cap.to_string());
                             s.saved.options.inventory_overrides.clear();
@@ -2517,6 +2536,11 @@ fn act(action: &str) {
         s.persist();
     });
     render();
+    if action == "efficient-compare" {
+        if let Some(panel) = document().get_element_by_id("budget-comparison") {
+            panel.scroll_into_view();
+        }
+    }
     if action.starts_with("tab:")
         || action.starts_with("choose-encounter:")
         || ["demo", "restore-account"].contains(&action)
@@ -2815,7 +2839,7 @@ fn render_with_edit(edit: Option<&str>) {
         match s.view.as_str(){
             "combat"=>{html.push_str("<div class=\"analysis-layout\">");html.push_str(&combat_panel(&s,&plan));html.push_str(&simulation_panel(&s,&plan));html.push_str(&switch_panel(&s,&plan));html.push_str("</div>");},
             "prepare"=>{html.push_str("<div class=\"prepare-layout\">");html.push_str(&checks_panel(&s,&plan));if s.shared_setup.is_none(){html.push_str(&manual_checks(&s));html.push_str(&coverage_panel(&s.saved.options));}if !plan.missing.is_empty(){html.push_str("<section class=\"panel\"><div class=\"panel-heading\"><h2>Missing trip items</h2></div><ul class=\"missing-list\">");for missing in &plan.missing{html.push_str(&format!("<li>{}</li>",esc(missing)));}html.push_str("</ul></section>");}if s.shared_setup.is_none(){html.push_str(&next_goal(&s));}html.push_str("</div>");},
-            _=>{html.push_str("<div class=\"loadout-layout\">");html.push_str(&loadout_panel(&s,&plan));html.push_str(&inventory_panel(&s,&plan));html.push_str("</div>");}
+            _=>{html.push_str(&phase_navigation(&s,&plan));html.push_str("<div class=\"loadout-layout\">");html.push_str(&loadout_panel(&s,&plan));html.push_str(&inventory_panel(&s,&plan));html.push_str("</div>");}
         }
         html.push_str("</section><div class=\"plan-actions\">");html.push_str(&export_panel(&s,&plan));html.push_str("</div>");
         if s.shared_setup.is_none(){html.push_str("<div class=\"plan-tools\">");html.push_str(&efficient_panel(&s,&plan));html.push_str(&budget_comparison(&s));html.push_str(&named_setups(&s));html.push_str("</div>");}
@@ -2940,17 +2964,51 @@ fn slot(id: Option<i32>, label: &str, class: &str, quantity: Option<u32>) -> Str
         esc(label)
     )
 }
+fn phase_navigation(s: &State, p: &Plan) -> String {
+    if p.phases.is_empty() {
+        return String::new();
+    }
+    let mut html = String::from(
+        "<nav class=\"panel loadout-preview\" aria-label=\"Loadout preview\"><div class=\"phase-tabs\">",
+    );
+    if p.phases.len() > 6 {
+        html.push_str("<label class=\"phase-select-label\">Preview<select id=\"phase-select\"><option value=\"start\">Start gear</option>");
+        for (i, phase) in p.phases.iter().enumerate() {
+            html.push_str(&format!(
+                "<option value=\"{i}\" {}>{}</option>",
+                if s.phase == Some(i) { "selected" } else { "" },
+                esc(&phase.name)
+            ));
+        }
+        html.push_str("</select></label>");
+    } else if !p.phases.is_empty() {
+        html.push_str(&format!("<button class=\"phase {}\" data-action=\"starting\" aria-pressed=\"{}\">Start gear</button>",if s.phase.is_none(){"active"}else{""},s.phase.is_none()));
+        for (i, phase) in p.phases.iter().enumerate() {
+            let label = if s.saved.options.boss == Boss::Barrows {
+                if i == 0 { "Five brothers" } else { "Ahrim" }
+            } else {
+                s.saved
+                    .options
+                    .targets
+                    .get(i)
+                    .and_then(|target| crate::encounters::window(target.id))
+                    .filter(|window| !window.label.is_empty())
+                    .map(|window| window.label.as_str())
+                    .unwrap_or(&phase.name)
+            };
+            html.push_str(&format!("<button class=\"phase {}\" data-action=\"phase:{i}\" aria-pressed=\"{}\">{}</button>",if s.phase==Some(i){"active"}else{""},s.phase==Some(i),esc(label)));
+        }
+    }
+    html.push_str("</div></nav>");
+    html
+}
 fn loadout_panel(s: &State, p: &Plan) -> String {
     let current = s.phase.and_then(|i| p.phases.get(i));
     let set = current.map(|p| &p.equipment).unwrap_or(&p.equipment);
     let mut html = format!(
         "<section class=\"panel loadout-panel\"><div class=\"panel-heading\"><h2>{} {}</h2>{}</div><div class=\"loadout-content\"><div class=\"equipment-paper\"><div class=\"paper-header\">{}</div><div class=\"equipment-grid\">",
         image(12954),
-        if current.is_some() {
-            "Phase preview"
-        } else {
-            "Equipment"
-        },
+        "Equipment",
         badge(
             if s.shared_setup.is_some() {
                 "SHARED SETUP"
@@ -3028,36 +3086,7 @@ fn loadout_panel(s: &State, p: &Plan) -> String {
         ));
     }
     html.push_str("</div></details>");
-    html.push_str("</details></div><div class=\"phase-tabs\">");
-    if p.phases.len() > 6 {
-        html.push_str("<label class=\"phase-select-label\">Preview<select id=\"phase-select\"><option value=\"start\">Start gear</option>");
-        for (i, phase) in p.phases.iter().enumerate() {
-            html.push_str(&format!(
-                "<option value=\"{i}\" {}>{}</option>",
-                if s.phase == Some(i) { "selected" } else { "" },
-                esc(&phase.name)
-            ));
-        }
-        html.push_str("</select></label>");
-    } else if !p.phases.is_empty() {
-        html.push_str(&format!("<button class=\"phase {}\" data-action=\"starting\" aria-pressed=\"{}\">Start gear</button>",if s.phase.is_none(){"active"}else{""},s.phase.is_none()));
-        for (i, phase) in p.phases.iter().enumerate() {
-            let label = if s.saved.options.boss == Boss::Barrows {
-                if i == 0 { "Five brothers" } else { "Ahrim" }
-            } else {
-                s.saved
-                    .options
-                    .targets
-                    .get(i)
-                    .and_then(|target| crate::encounters::window(target.id))
-                    .filter(|window| !window.label.is_empty())
-                    .map(|window| window.label.as_str())
-                    .unwrap_or(&phase.name)
-            };
-            html.push_str(&format!("<button class=\"phase {}\" data-action=\"phase:{i}\" aria-pressed=\"{}\">{}</button>",if s.phase==Some(i){"active"}else{""},s.phase==Some(i),esc(label)));
-        }
-    }
-    html.push_str("</div>");
+    html.push_str("</details></div>");
     if let Some(phase) = current {
         html.push_str(&format!(
             "<p class=\"phase-note\"><strong>{}</strong> · {}</p>",
@@ -3446,21 +3475,57 @@ fn bestiary_assessments(s: &State) -> Vec<crate::bestiary::Assessment> {
         cache.as_ref().unwrap().1.clone()
     })
 }
+fn extra_filter_label(s: &State) -> String {
+    if ["For you", "Bosses", "Raids", "Groups", "All"].contains(&s.encounter_filter.as_str()) {
+        "More filters".into()
+    } else {
+        format!("More filters · {}", s.encounter_filter)
+    }
+}
 fn encounter_catalog(s: &State) -> String {
     let mut html = format!(
         r#"<section class="encounter-browser"><h2>Choose your fight</h2><p>Based on your bank and levels.</p><label><span class="slot-caption">Search encounters</span><input id="encounter-search" type="search" placeholder="Search bosses or raids" value="{}" autocomplete="off"></label><nav class="encounter-filters" aria-label="Encounter categories">"#,
         esc(&s.encounter_query)
     );
-    for filter in crate::bestiary::FILTERS {
-        html.push_str(&format!(r#"<button id="enc-filter-{}" class="encounter-filter {}" data-action="encounter-filter:{filter}" aria-pressed="{}">{filter}</button>"#,filter.replace(' ', "-"),if s.encounter_filter==filter{"active"}else{""},s.encounter_filter==filter));
+    let filter_button = |filter: &str| {
+        format!(
+            r#"<button id="enc-filter-{}" class="encounter-filter {}" data-action="encounter-filter:{filter}" aria-pressed="{}">{filter}</button>"#,
+            filter.replace(' ', "-"),
+            if s.encounter_filter == filter {
+                "active"
+            } else {
+                ""
+            },
+            s.encounter_filter == filter
+        )
+    };
+    for filter in ["For you", "Bosses", "Raids", "Groups", "All"] {
+        html.push_str(&filter_button(filter));
     }
-    html.push_str("</nav>");
+    html.push_str(&format!("</nav><div class=\"encounter-tools\"><details id=\"encounter-extra-filters\" class=\"secondary-section\" {}><summary id=\"encounter-filter-label\">{}</summary><nav class=\"encounter-filters\" aria-label=\"Readiness filters\">",if s.encounter_filters_open {"open"}else{""},esc(&extra_filter_label(s))));
+    for filter in crate::bestiary::FILTERS {
+        if !["For you", "Bosses", "Raids", "Groups", "All"].contains(&filter) {
+            html.push_str(&filter_button(filter));
+        }
+    }
+    let location = match s.wilderness_location.as_str() {
+        "safe" => " · avoiding Wilderness",
+        "wild" => " · Wilderness only",
+        _ => "",
+    };
+    let kit = if s.scaredy_cat {
+        " · 3-item kit on"
+    } else {
+        ""
+    };
+    html.push_str(&format!("</nav></details><details id=\"wilderness-options\" class=\"secondary-section\" {}><summary>Wilderness options{location}{kit}</summary>",if s.wilderness_options_open {"open"}else{""}));
     html.push_str(&wilderness_controls(s));
-    html.push_str("<p class=\"bestiary-disclaimer\">Gear readiness only. Check access, supplies and mechanics in each card.</p><div id=\"encounter-results\">");
+    html.push_str("</details></div><p class=\"bestiary-disclaimer\">Gear readiness only. Check access, supplies and mechanics in each card.</p><div id=\"encounter-results\">");
     html.push_str(&encounter_results(s));
     html.push_str("</div></section>");
     html
 }
+
 fn encounter_results(s: &State) -> String {
     let query = s.encounter_query.trim().to_lowercase();
     let popular = &crate::encounters::browser_catalog().popular;
@@ -3536,6 +3601,9 @@ fn encounter_results(s: &State) -> String {
     html
 }
 fn refresh_encounter_browser(s: &State) {
+    if let Some(label) = document().get_element_by_id("encounter-filter-label") {
+        label.set_text_content(Some(&extra_filter_label(s)));
+    }
     if let Some(results) = document().get_element_by_id("encounter-results") {
         results.set_inner_html(&encounter_results(s));
     }
@@ -4618,9 +4686,12 @@ fn combat_panel(s: &State, p: &Plan) -> String {
                     esc(&r.attack_type),
                     r.expected_attack_ticks * 0.6
                 );
+                if r.burn.is_some() {
+                    headline = headline.replace("Outgoing DPS", "Sustained DPS");
+                }
                 html.push_str(&attack_window_budget(s, target, &set, &r));
                 if r.burn_dps > 0.0 {
-                    html.push_str(&format!("<p>Eclipse burn: {:.3} of the DPS above is delayed steady-state damage (1 every 4 ticks, 10 per stack, at most 5 stacks). Short fights, phase resets and target death reduce this contribution; no finite-HP attack-time estimate is credited.</p>", r.burn_dps));
+                    html.push_str(&format!("<p>Eclipse's long-run burn reference is {:.3} HP/s. The finite-HP estimate above instead starts empty and advances actual burn pulses, stack expiry and target death. Each separate attack window or target starts fresh; use the full-fight scenario for transitions and downtime.</p>", r.burn_dps));
                 }
                 if r.expected_attack_ticks != f64::from(r.attack_ticks) {
                     html.push_str(&format!("<p>Bloodrager average delay: {:.3} ticks ({:.3}s), including the 33% chance per accurate splat to attack one tick sooner.</p>",r.expected_attack_ticks,r.expected_attack_ticks*0.6));
@@ -4715,7 +4786,11 @@ fn attack_window_budget(
         .unwrap_or_default();
     let mut html = format!(
         "<details id=\"attack-budget\" class=\"attack-budget\" {}><summary>Attack window & supply budget</summary><label>Current target HP<input id=\"target-hp\" type=\"number\" min=\"{min}\" max=\"{max}\" placeholder=\"{max}\" value=\"{current}\"></label><p class=\"small-note\">Leave empty for this window's starting HP. Ruby bolts and HP-dependent NPC stats use this HP; the attack budget recalculates them as HP falls.</p>",
-        if s.attack_budget_open { "open" } else { "" }
+        if s.attack_budget_open || result.burn.is_some() {
+            "open"
+        } else {
+            ""
+        }
     );
     if let Some(window) = crate::encounters::window(target.id) {
         html.push_str(&format!("<p>{}</p>", esc(&window.description)));
@@ -4739,6 +4814,11 @@ fn attack_window_budget(
         crate::attack_budget::for_window(target, result, &s.saved.options, set)
     };
     match budget {
+        Ok(budget) if budget.burn.is_some() => {
+            let burn=budget.burn.as_ref().unwrap();
+            let spread=f64::from(budget.entities);
+            html.push_str(&format!("<dl class=\"combat-values\"><div><dt>Estimated attacks</dt><dd>{:.2} ± {:.2}</dd></div><div><dt>Attack cooldown budget</dt><dd>{:.2}s ± {:.2}s</dd></div><div><dt>HP window · each of {} target(s)</dt><dd>{} → {}</dd></div><div><dt>Burn damage · each target</dt><dd>{:.2}</dd></div></dl><p>Time to HP boundary from the first attack: {:.2}s ± {:.2}s per target, excluding projectile travel. No attacks or burn damage are credited after that boundary.</p><p class=\"small-note\">{} seeded trials; ± is an approximate 95% confidence interval for the estimated mean, not an outcome range or safe supply minimum. Five-stack cap, expiry, misses, accurate zeroes and overkill are included. The cooldown budget retains the finishing attack's committed delay. Each entity/window starts with no burns. Transition clearing and downtime are handled separately in the full-fight scenario.</p>",budget.attacks,1.96*burn.attacks_error*spread,budget.seconds,1.96*burn.cooldown_error*0.6*spread,budget.entities,budget.start_hp,budget.stop_hp,burn.burn_damage,burn.death_ticks*0.6,1.96*burn.death_error*0.6,burn.trials));
+        },
         Ok(budget) => html.push_str(&format!("<dl class=\"combat-values\"><div><dt>Expected attacks</dt><dd>{:.1}</dd></div><div><dt>Attack cooldown budget</dt><dd>{:.1}s</dd></div><div><dt>HP window · each of {} target(s)</dt><dd>{} → {}</dd></div></dl><p class=\"small-note\">Includes misses, overkill and the finishing cooldown. This is an expectation, not a safe supply minimum or kill-time prediction. Compare with your {}-cast / {}-projectile packing budgets; projectile recovery, ruby self-damage, movement, specials, regeneration and eating are excluded.</p>", budget.attacks, budget.seconds, budget.entities, budget.start_hp, budget.stop_hp, s.saved.options.combat.spell_casts, s.saved.options.combat.ammo_shots)),
         Err(reason) => html.push_str(&format!("<p class=\"small-note\">{}</p>", esc(&reason))),
     }
@@ -4789,7 +4869,13 @@ fn simulation_panel(s: &State, p: &Plan) -> String {
         } else {
             true
         };
-        if relevant && key == "warden" {
+        if relevant && key == "burn_phase_resets" {
+            html.push_str("<div role=\"group\" aria-label=\"Burn stacks at phase changes\"><span>Burn stacks at phase changes</span><div class=\"combat-subtype-options\">");
+            for (n, label) in [(1, "Clear stacks"), (0, "Keep aging stacks")] {
+                html.push_str(&format!("<button class=\"phase {}\" data-action=\"simulation-burn-reset:{n}\" aria-pressed=\"{}\">{label}</button>",if value==n {"active"}else{""},value==n));
+            }
+            html.push_str("</div><p class=\"small-note\">Scenario assumption: confirm phase clearing for this encounter. Retained burns expire during invulnerable downtime without damaging the target.</p></div>");
+        } else if relevant && key == "warden" {
             html.push_str("<div role=\"group\" aria-label=\"P2 Warden\"><span>Fight in P2</span><div class=\"combat-subtype-options\">");
             for (n, label) in [(0, "Elidinis"), (1, "Tumeken")] {
                 html.push_str(&format!("<button class=\"phase {}\" data-action=\"simulation-warden:{n}\" aria-pressed=\"{}\">{label}</button>",if value==n {"active"}else{""},value==n));
@@ -4818,7 +4904,9 @@ fn simulation_panel(s: &State, p: &Plan) -> String {
                 let mut failures=BTreeMap::new();for run in report.runs.iter().filter(|r|!r.completed){*failures.entry(run.reason.as_str()).or_insert(0usize)+=1;}
                 if !failures.is_empty(){html.push_str("<p>Unfinished first fights: ");for (reason,n) in failures {html.push_str(&format!("{}: {n}. ",esc(reason)));}html.push_str("</p>");}
                 html.push_str("<table class=\"wiki-table\"><thead><tr><th>First-fight demand</th><th>Median</th><th>90th percentile</th></tr></thead><tbody>");
-                let rows:[(&str,fn(&crate::simulation::Usage)->f64);15]=[
+                let rows:[(&str,fn(&crate::simulation::Usage)->f64);19]=[
+                    ("Burn damage (HP)",|u|u.burn_damage as f64),("Burn stacks applied",|u|u.burns_applied as f64),
+                    ("Burn procs discarded at cap",|u|u.burns_discarded as f64),("Burn stacks cleared",|u|u.burns_cleared as f64),
                     ("Duration (seconds)",|u|u.ticks as f64*0.6),("Attacks",|u|u.attacks as f64),
                     ("Rune casts",|u|u.casts as f64),("Projectiles fired",|u|u.shots as f64),
                     ("Weapon charges",|u|u.charges.values().sum::<u32>() as f64),("Blowpipe scales",|u|u.scales as f64),
@@ -5077,8 +5165,9 @@ fn switch_controls(s: &State, p: &Plan) -> String {
 fn efficient_panel(s: &State, _plan: &Plan) -> String {
     ensure_efficient(s);
     let limits = crate::efficient::Tolerances::from_options(&s.saved.options);
-    let mut html = String::from(
-        "<section class=\"panel efficient-panel\" aria-label=\"Compact setup recommendation\"><h3>Save bag space</h3>",
+    let mut html = format!(
+        "<details id=\"compact-setup\" class=\"panel efficient-panel\" aria-label=\"Compact setup recommendation\" {}><summary><h3>Save bag space</h3></summary><div class=\"efficient-body\">",
+        if s.compact_open { "open" } else { "" }
     );
     html.push_str(&format!("<details id=\"packing-limits\" class=\"packing-limits\" {}><summary>Allowances <span>{}% DPS · {}% damage · {}% prayer</span></summary><div class=\"tradeoff-limits\">",if s.packing_limits_open {"open"}else{""},limits.dps_loss,limits.damage_taken,limits.prayer_drain));
     for (id, label, value) in [
@@ -5098,12 +5187,12 @@ fn efficient_panel(s: &State, _plan: &Plan) -> String {
     }
     html.push_str("</div><p id=\"tolerance-help\" class=\"small-note\">Effective encounter DPS. Prayer drain is points per minute; longer fights can use more prayer overall.</p></details>");
     let Some(result) = efficient_result(s) else {
-        html.push_str("<p role=\"status\">Checking switch limits…</p></section>");
+        html.push_str("<p role=\"status\">Checking switch limits…</p></div></details>");
         return html;
     };
     let Some((selected, best)) = result.compact.zip(result.best) else {
         html.push_str(&format!(
-            "<p>{}</p></section>",
+            "<p>{}</p></div></details>",
             esc(result
                 .reason
                 .as_deref()
@@ -5157,7 +5246,7 @@ fn efficient_panel(s: &State, _plan: &Plan) -> String {
         && s.saved.options.inventory_overrides.is_empty()
         && s.saved.options.inventory_quantities.is_empty();
     html.push_str(&format!("<div class=\"efficient-actions\"><button class=\"phase\" data-action=\"efficient-apply\" {}>{}</button>{}</div>",if using {"disabled"}else{""},if using {"Using compact setup"}else if edited_inventory {"Repack & use compact setup"}else{"Use compact setup"},button("efficient-compare","Compare with fastest","text-button")));
-    html.push_str(&format!("<details><summary>How we choose</summary><p>Limits: {limits}. DPS loss uses effective encounter DPS, not a percentage increase in attack time. Damage checks include known incoming rates and total exposure where modelled. Prayer checks use drain rates, not total points consumed.</p><p>Tests caps 0–11 with the same bank, gear pins, combat settings and supply counts. Keeps identical workload coverage and your switch ceiling. Prioritizes peak bag space, then carried gear and actual changes. Applying restores automatic inventory packing. This bounded search does not prove a global BIS.</p><p>Fastest tested: {}-change cap · {} gear pieces · {:.1}s · {:.1} prayer points. Suggested cap: {}.</p></details></section>",benchmark.budget.cap,benchmark.budget.carried_gear,b.seconds,b.prayer_points,chosen.budget.cap));
+    html.push_str(&format!("<details><summary>How we choose</summary><p>Limits: {limits}. DPS loss uses effective encounter DPS, not a percentage increase in attack time. Damage checks include known incoming rates and total exposure where modelled. Prayer checks use drain rates, not total points consumed.</p><p>Tests caps 0–11 with the same bank, gear pins, combat settings and supply counts. Keeps identical workload coverage and your switch ceiling. Prioritizes peak bag space, then carried gear and actual changes. Applying restores automatic inventory packing. This bounded search does not prove a global BIS.</p><p>Fastest tested: {}-change cap · {} gear pieces · {:.1}s · {:.1} prayer points. Suggested cap: {}.</p></details></div></details>",benchmark.budget.cap,benchmark.budget.carried_gear,b.seconds,b.prayer_points,chosen.budget.cap));
     html
 }
 

@@ -162,6 +162,25 @@ fn kept_trident_retains_charges_but_unkept_trident_loses_the_entered_contents() 
         r.known_gp,
         500 + 10 * (unit(560) + unit(562) + 5 * unit(554) + 10)
     );
+    // A partially depleted formerly-full trident cannot retain the full
+    // tradeable variant's automatic protection value.
+    p.equipment[3] = Some(11905);
+    let mut partial = Settings::default();
+    partial.bind(&p);
+    partial.items.entry(11905).or_default().charges = Some(100);
+    let r = death_risk::report(&p, &partial);
+    assert!(!r.kept_complete);
+    assert_eq!(r.rows[0].protection, None);
+    partial.manual_kept = true;
+    partial.kept.insert(11905, 1);
+    assert!(death_risk::report(&p, &partial).complete);
+    partial.scenario = Scenario::None;
+    let r = death_risk::report(&p, &partial);
+    assert!(r.complete);
+    assert_eq!(
+        r.known_gp,
+        unit(11908) + 100 * (unit(560) + unit(562) + 5 * unit(554) + 10)
+    );
 }
 #[test]
 fn loaded_darts_use_actual_declared_count_and_do_not_double_count_planned_loading() {

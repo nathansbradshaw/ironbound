@@ -311,11 +311,19 @@ pub fn report(plan: &Plan, declared: &Settings) -> Report {
         let input = settings.items.get(&id).cloned().unwrap_or_default();
         let never = death_rules().never_kept.contains(&id);
         let always = death_rules().always_kept.contains(&id);
-        let protection = input
-            .protection
-            .or_else(|| values().items.get(&id).and_then(|v| v.protect));
-        let raw = values().items.get(&id);
         let rule = charge_rule(id);
+        // A full, GE-tradeable variant no longer describes the carried object
+        // once its declared contents differ. Do not reuse its protection price.
+        let changed_full_state = rule.is_some_and(|r| {
+            r.full_ids.contains(&id)
+                && input.charges.is_some_and(|n| n != r.max.saturating_mul(q))
+        });
+        let protection = input.protection.or_else(|| {
+            (!changed_full_state)
+                .then(|| values().items.get(&id).and_then(|v| v.protect))
+                .flatten()
+        });
+        let raw = values().items.get(&id);
         let unit_loss = input.loss.or_else(|| {
             if let Some(rule) = rule {
                 price(rule.base)

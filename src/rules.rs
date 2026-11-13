@@ -586,6 +586,14 @@ pub fn all_ammo_ids() -> Vec<i32> {
 }
 
 pub const DEFAULT_CASTS: u32 = 150;
+/// Temporary calculator choice; this does not alter the planned trip's spells or supplies.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub enum SpellComparison {
+    #[default]
+    Auto,
+    Element(String),
+    Spell(String),
+}
 #[derive(Debug, Deserialize)]
 pub struct SpellRecipe {
     pub name: String,
@@ -762,6 +770,78 @@ pub fn elemental_candidates(
         })
         .filter(|s| elements.insert(s.element.as_deref()))
         .collect()
+}
+pub fn comparison_spell_name(
+    member: &Member,
+    set: &[Option<i32>],
+    owned: &BTreeMap<i32, u32>,
+    settings: &crate::defence::Settings,
+    target: &crate::planner::Monster,
+    invocation: u32,
+    choice: &SpellComparison,
+) -> &'static str {
+    let auto = || spell_name_for_target(member, set, owned, settings, target, invocation);
+    let Some(rule) = set.get(3).copied().flatten().and_then(weapon) else {
+        return auto();
+    };
+    match choice {
+        SpellComparison::Auto => auto(),
+        SpellComparison::Spell(name) => spells()
+            .iter()
+            .find(|s| s.name == *name && s.family == rule.weapon.family)
+            .map(|s| s.name.as_str())
+            .unwrap_or_else(auto),
+        SpellComparison::Element(element) => {
+            let magic = crate::modifiers::level(member, "Magic", &settings.boosts).unwrap_or(0);
+            let recipes: Vec<_> = spells()
+                .iter()
+                .filter(|s| {
+                    s.family == rule.weapon.family && s.element.as_deref() == Some(element.as_str())
+                })
+                .collect();
+            recipes
+                .iter()
+                .find(|s| magic >= s.level && has_runes(s, set, owned, settings.spell_casts))
+                .or_else(|| recipes.iter().find(|s| magic >= s.level))
+                .or_else(|| recipes.last())
+                .map(|s| s.name.as_str())
+                .unwrap_or_else(auto)
+        }
+    }
+}
+/// Availability is separate from hypothetical damage: missing runes need not hide an estimate.
+pub fn spell_comparison_requirement(
+    member: &Member,
+    set: &[Option<i32>],
+    owned: &BTreeMap<i32, u32>,
+    settings: &crate::defence::Settings,
+    name: &str,
+) -> Option<String> {
+    let recipe = spells().iter().find(|s| s.name == name)?;
+    let rule = set.get(3).copied().flatten().and_then(weapon)?;
+    if recipe.family != rule.weapon.family {
+        return Some("Requires a compatible spellcasting weapon.".into());
+    }
+    let Some(magic) = crate::modifiers::level(member, "Magic", &settings.boosts) else {
+        return Some("Enter your Magic level.".into());
+    };
+    if magic < recipe.level {
+        return Some(format!("Requires {} Magic.", recipe.level));
+    }
+    let missing: Vec<_> = rune_supplies_for_set(name, settings.spell_casts, set)
+        .into_iter()
+        .filter_map(|(id, need)| {
+            let short = need.saturating_sub(owned.get(&id).copied().unwrap_or(0));
+            (short > 0).then(|| format!("{} ×{short}", crate::planner::item_name(id)))
+        })
+        .collect();
+    (!missing.is_empty()).then(|| {
+        format!(
+            "Missing runes for {} casts: {}. Damage shown is hypothetical.",
+            settings.spell_casts,
+            missing.join(", ")
+        )
+    })
 }
 /// Explain a missing element row without treating spells as bank items.
 pub fn elemental_unavailability(

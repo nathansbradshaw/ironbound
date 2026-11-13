@@ -308,6 +308,6 @@ fn coverage_never_hides_wardens_or_enables_archive_dps() {
             ..Default::default()
         })
         .iter()
-        .all(|r| !r.supported)
+        .all(|r| r.supported && r.reason.contains("Recorded Archive"))
     );
 }

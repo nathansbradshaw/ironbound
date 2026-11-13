@@ -12,7 +12,7 @@ fn result(name: &str, account: &account::Snapshot, options: &Options) -> bestiar
     bestiary::assess_catalog(account, options)[index].clone()
 }
 #[test]
-fn missing_levels_and_unsupported_raids_are_not_called_ready() {
+fn missing_levels_are_unknown_and_reviewed_raid_gear_can_be_rated() {
     let mut account = account::demo();
     account.members[0].skills = None;
     account.members[0].level_overrides.clear();
@@ -21,7 +21,7 @@ fn missing_levels_and_unsupported_raids_are_not_called_ready() {
             .iter()
             .all(|a| a.readiness == Readiness::Unknown)
     );
-    assert_eq!(
+    assert_ne!(
         result("Theatre of Blood", &account::demo(), &Options::default()).readiness,
         Readiness::Unknown
     );
@@ -377,9 +377,6 @@ fn aliases_agree_and_unreviewed_modes_explain_the_blocker() {
     );
     assert_eq!(row("Lunar Chests").reason, row("Moons of Peril").reason);
     for name in [
-        "Nex",
-        "Theatre of Blood",
-        "The Fractured Archive",
         "Phantom Muspah",
     ] {
         assert_eq!(row(name).readiness, Readiness::Unknown, "{name}");
@@ -391,11 +388,8 @@ fn aliases_agree_and_unreviewed_modes_explain_the_blocker() {
         );
     }
     assert!(row("The Gauntlet").reason.contains("equipment or skilling"));
-    assert!(
-        row("Tombs of Amascut: Expert Mode")
-            .reason
-            .contains("scaling")
-    );
+    assert_ne!(row("Tombs of Amascut: Expert Mode").readiness,Readiness::Unknown);
+    assert!(row("Tombs of Amascut: Expert Mode").reason.contains("300"));
     assert!(row("Tombs of Amascut").detail.contains("raid-level-0"));
     assert!(
         row("Tombs of Amascut")

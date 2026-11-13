@@ -202,7 +202,7 @@ fn moons_are_three_different_melee_attack_types() {
 
 #[test]
 fn special_mechanic_fights_do_not_masquerade_as_standard_dps() {
-    for id in [7550, 7540, 8369, 11278, 14015, 16673, 11763, 496, 493] {
+    for id in [14015, 11763, 496, 493] {
         let target = planner::monster(id).unwrap();
         assert!(
             encounters::limitation(target).is_some(),

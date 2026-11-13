@@ -5,6 +5,7 @@
     {"accuracy_percent":0,"damage_percent":10,"element":"earth","ids":[30064],"rune":557}
   ],
   "families": {
+    "dawnbringer":{"accuracy_bonus":11,"attack_types":["magic"],"denominator":3,"formula":"powered","numerator":1,"offset":-2,"style":"Magic","ticks":5},
     "magic_dart":{"accuracy_bonus":9,"attack_types":["magic"],"formula":"spell","style":"Magic","ticks":5},
     "pickaxe":{"attack_types":["stab","crush"],"stances":{"crush":"aggressive"},"formula":"standard","style":"Melee"},
     "obligator":{"attack_types":["crush"],"effects":["obligator"],"formula":"standard","style":"Melee"},
@@ -60,6 +61,7 @@
     "wood_blowpipe":{"attack_types":["light"],"formula":"standard","internal_ammo":[806,807,808,3093,809,810],"rapid":true,"style":"Ranged"}
   },
   "weapons": [
+    {"family":"dawnbringer","ids":[22516],"requirements":{}},
     {"family":"magic_dart","ids":[4170],"requirements":{"Magic":50,"Slayer":55}},
     {"family":"magic_dart","ids":[21255],"requirements":{"Magic":75,"Slayer":55}},
     {"family":"pickaxe","ids":[20014],"requirements":{"Attack":65}},
@@ -85,9 +87,9 @@
     {"family":"twinflame","ids":[30634],"requirements":{"Magic":60},"spell_families":["wind"],"supplied_runes":[554,555]},
     {"family":"smoke","ids":[11998],"requirements":{"Attack":30,"Magic":30},"spell_families":["wind"],"supplied_runes":[554,556]},
     {"family":"smoke","ids":[12000],"requirements":{"Attack":40,"Magic":40},"spell_families":["wind"],"supplied_runes":[554,556]},
-    {"family":"dragon_wand","ids":[30070],"requirements":{"Magic":65},"spell_families":["wind","ancient"],"multipliers":[{"attribute":"dragon","accuracy":true,"numerator":7,"denominator":4},{"attribute":"dragon","damage":true,"numerator":7,"denominator":5}]},
-    {"family":"scorching_bow","ids":[29591],"requirements":{"Ranged":77},"multipliers":[{"attribute":"demon","accuracy":true,"numerator":13,"denominator":10},{"attribute":"demon","damage":true,"numerator":13,"denominator":10,"additive_with_task_damage":true}]},
-    {"family":"slash_sword","ids":[29577],"requirements":{"Attack":60},"effects":["demonbane"],"demonbane_percent":5},
+    {"family":"dragon_wand","ids":[30070],"multipliers":[{"accuracy":true,"attribute":"dragon","denominator":4,"numerator":7},{"attribute":"dragon","damage":true,"denominator":5,"numerator":7}],"requirements":{"Magic":65},"spell_families":["wind","ancient"]},
+    {"family":"scorching_bow","ids":[29591],"multipliers":[{"accuracy":true,"attribute":"demon","denominator":10,"numerator":13},{"additive_with_task_damage":true,"attribute":"demon","damage":true,"denominator":10,"numerator":13}],"requirements":{"Ranged":77}},
+    {"demonbane_percent":5,"effects":["demonbane"],"family":"slash_sword","ids":[29577],"requirements":{"Attack":60}},
     {"family":"slash_sword","ids":[29796],"requirements":{"Attack":80}},
     {"family":"slash_sword","ids":[30955],"requirements":{"Attack":60}},
     {"family":"twin_crush","ids":[29889],"requirements":{"Attack":55}},

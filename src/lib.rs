@@ -29,6 +29,7 @@ pub mod planner;
 pub mod prayer;
 pub mod preparation;
 pub mod raids;
+pub mod raid_scaling;
 pub mod ranking;
 pub mod recommendation;
 pub mod reference;

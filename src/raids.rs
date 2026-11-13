@@ -2,6 +2,8 @@
 use crate::planner::Target;
 use serde::Deserialize;
 use std::collections::{BTreeMap, BTreeSet};
+fn source(id:i32)->i32 {crate::encounters::source_npc_id(id)}
+fn scale(id:i32)->Option<&'static crate::raid_scaling::Scale> {crate::encounters::window(id).and_then(|w|w.raid_scale.as_ref())}
 
 #[derive(Clone, Debug, Deserialize)]
 pub struct Raid {
@@ -26,7 +28,7 @@ impl Room {
     pub fn selected(&self, targets: &[Target]) -> bool {
         self.targets
             .iter()
-            .all(|phase| targets.iter().any(|t| t.id == phase.id))
+            .all(|phase| targets.iter().any(|t| source(t.id) == phase.id))
     }
 }
 
@@ -43,7 +45,8 @@ impl Raid {
         if targets.iter().any(|target| !target.valid()) {
             return false;
         }
-        let ids: BTreeSet<_> = targets.iter().map(|t| t.id).collect();
+        if targets.first().is_some_and(|first| targets.iter().any(|t|scale(t.id)!=scale(first.id))) {return false;}
+        let ids: BTreeSet<_> = targets.iter().map(|t| source(t.id)).collect();
         if ids.len() != targets.len() {
             return false;
         }
@@ -93,9 +96,13 @@ impl Raid {
                     next.push(
                         targets
                             .iter()
-                            .find(|t| t.id == phase.id)
+                            .find(|t| source(t.id) == phase.id)
                             .cloned()
-                            .unwrap_or_else(|| phase.clone()),
+                            .or_else(||{
+                                let context=targets.first().and_then(|t|scale(t.id));
+                                crate::encounters::mechanics().windows.iter().find(|w|w.npc_id==phase.id && w.raid_scale.as_ref()==context && (context.is_some() || w.id==phase.id)).map(|w|Target{id:w.id,style:phase.style.clone()})
+                            })
+                            .ok_or("This raid room has no reviewed target at the selected party scale.")?,
                     );
                 }
             }

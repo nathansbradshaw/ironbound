@@ -3928,20 +3928,7 @@ fn encounter_targets(s: &State) -> Vec<i32> {
     if targets.contains(&14176) || targets.contains(&100011) {
         targets.push(100030);
     }
-    let sources = targets.clone();
-    targets.extend(
-        crate::encounters::mechanics()
-            .windows
-            .iter()
-            .filter(|w| {
-                w.comparison_alternative && sources.contains(&w.npc_id)
-                    || w.comparison_sources.iter().any(|id| sources.contains(id))
-            })
-            .map(|w| w.id),
-    );
-    let mut seen = std::collections::BTreeSet::new();
-    targets.retain(|id| seen.insert(*id));
-    targets
+    crate::encounters::comparison_targets(&targets)
 }
 fn comparison_style(s: &State) -> &str {
     s.edit_style
@@ -4781,6 +4768,9 @@ fn combat_panel(s: &State, p: &Plan) -> String {
     }
     html.push_str("</div></div>");
     if let (Some(m), Some(target)) = (s.saved.snapshot.selected(), comparison_monster(s)) {
+        if crate::encounters::window(target.id).is_some_and(|w|w.comparison_weapon.is_some()) {
+            html.push_str("<p class=\"small-note\"><strong>Raid-loaned Dawnbringer comparison.</strong> This calculation supplies Dawnbringer in the weapon slot. It does not require bank ownership or add the loan to your saved equipment. The single-special probe excludes energy regeneration, transfers and full-phase timing.</p>");
+        }
         if let Some(hp) = s.saved.options.combat.target_hp.get(&target.id) {
             html.push_str(&format!(
                 "<p class=\"small-note\">{}: {hp}. {}</p>",

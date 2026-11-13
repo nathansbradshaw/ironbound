@@ -154,6 +154,9 @@ pub fn target_hitpoints(monster: &Monster, invocation: u32) -> Option<i32> {
 pub fn target_hp_bounds(monster: &Monster, invocation: u32) -> Result<(u32, u32), String> {
     let full = target_hitpoints(monster, invocation).ok_or("Target HP unavailable.")? as u32;
     let window = crate::encounters::window(monster.id);
+    if window.is_some_and(|w|w.hp_probe.is_some()) {
+        return Ok((1,window.and_then(|w|w.hp_probe_max).unwrap_or(30000)));
+    }
     let max = window.and_then(|w| w.start_hp).unwrap_or(full);
     let min = window.and_then(|w| w.min_hp).unwrap_or(1);
     if min == 0 || min > max || max > full {
@@ -167,7 +170,7 @@ pub fn current_target_hp(
     settings: &crate::defence::Settings,
 ) -> Result<u32, String> {
     let (min, max) = target_hp_bounds(monster, invocation)?;
-    let hp = settings.target_hp.get(&monster.id).copied().unwrap_or(max);
+    let hp = settings.target_hp.get(&monster.id).copied().unwrap_or_else(||crate::encounters::window(monster.id).and_then(|w|w.hp_probe).unwrap_or(max));
     if hp < min || hp > max {
         return Err(format!(
             "Current target HP must be {min}–{max} for this attack window."
@@ -237,6 +240,14 @@ pub fn calculate_configured(
     if !settings.valid() {
         return Err("Invalid combat settings.".into());
     }
+    let loan=crate::encounters::window(monster.id).and_then(|w|w.comparison_weapon);
+    let loan_set=loan.filter(|_|set.len()==14).map(|weapon| {
+        let mut result=set.to_vec(); result[3]=Some(weapon);
+        if crate::planner::gear(weapon).is_some_and(|g|g.two_handed) {result[5]=None;}
+        result
+    });
+    let set=loan_set.as_deref().unwrap_or(set);
+    let spell=if loan.is_some() {""} else {spell};
     let source_monster = monster;
     let hp = current_target_hp(monster, invocation, settings)?;
     let scaled = crate::monster_rules::hp_scaled(monster, hp)?;
@@ -357,13 +368,13 @@ pub fn calculate_configured(
         })
         .copied()
         .unwrap_or(0);
-    if flat_armour != 0 && style == "Ranged" {
-        return Err("This combination of flat armour and weapon effects needs a separate hit-distribution model.".into());
+    if flat_armour != 0 && style == "Ranged" && rule.has(Effect::Ascension) {
+        return Err("Ascension multi-bolt ordering against flat armour is not yet verified.".into());
     }
     if let Some(reason) = crate::encounters::limitation(monster) {
         return Err(reason.into());
     }
-    let toa = crate::encounters::mechanics().toa_ids.contains(&monster.id);
+    let toa = crate::encounters::mechanics().toa_ids.contains(&crate::encounters::source_npc_id(monster.id));
     let mut b = bonuses_in_context(set, toa);
     if style == "Ranged"
         && rule.family.quiver_ammo
@@ -703,7 +714,8 @@ pub fn calculate_configured(
     };
     let mut defence = (def_level as i64 + 9) * (def_bonus as i64 + 64);
     if toa {
-        defence = defence * (250 + invocation.min(150) as i64) / 250;
+        let fixed=crate::encounters::window(monster.id).and_then(|w|w.raid_scale.as_ref()).filter(|s|s.kind==crate::raid_scaling::Kind::Toa).map(|s|s.invocation);
+        defence = defence * (250 + fixed.unwrap_or(invocation.min(150)) as i64) / 250;
     }
     let (mut attack, mut max_hit) = rule.scale_equipment(set, attack, max_hit);
     if demonbane_spell {
@@ -804,6 +816,7 @@ pub fn calculate_configured(
         }
     }
     let always_max = always_max || crate::monster_rules::guaranteed_max(monster.id, attack_type);
+    if weapon==22516 { max_hit=(max_hit/2).max(2); }
     let mut hit = accuracy(attack, defence);
     let brimstone = style == "Magic" && rules::equipped_effect(set, "brimstone_accuracy");
     if brimstone {
@@ -834,6 +847,7 @@ pub fn calculate_configured(
     if crate::monster_rules::guaranteed_accuracy(monster.id, attack_type) {
         hit = 1.0;
     }
+    if weapon==22516 && crate::monster_rules::profile(monster.id).is_some_and(|p|p.kind==crate::monster_rules::Kind::VerzikP1) {hit=1.0;}
     if let Some(accuracy) = crate::monster_rules::elemental_accuracy(
         monster.id,
         attack_type,
@@ -892,6 +906,9 @@ pub fn calculate_configured(
     if warden_p2 {
         (min_hit, max_hit) = crate::effects::wardens_p2_bounds(attack, defence, max_hit);
         hit = 1.0;
+    }
+    if let Some([min,max])=crate::encounters::window(monster.id).and_then(|w|w.fixed_damage) {
+        min_hit=min;max_hit=max;hit=1.0;
     }
     let splat_base_max = max_hit;
     let counter = crate::encounters::window(monster.id)
@@ -974,8 +991,22 @@ pub fn calculate_configured(
         || rule.has(Effect::Scythe)
         || frostweaver
         || style == "Ranged" && rules::set_effect(set, "karil_damned");
-    let npc_transform =
+    let mut npc_transform =
         crate::monster_rules::transform_for(monster.id, weapon, attack_type, &b, spell);
+    if crate::encounters::window(monster.id).is_some_and(|w|w.ocellus_explosions.is_some()) {
+        npc_transform=crate::monster_rules::Transform::OcellusPulse{ticks:ticks as u32,accurate_zero:false};
+    }
+    if crate::monster_rules::profile(monster.id).is_some_and(|p|p.kind==crate::monster_rules::Kind::Guardian) {
+        let mining=member.level("Mining").ok_or("Enter Mining level to calculate Guardian pickaxe damage.")?;
+        let bonus=match crate::planner::gear(weapon).map(|g|g.name.as_str()).unwrap_or("") {
+            "Bronze pickaxe"|"Iron pickaxe"=>1,"Steel pickaxe"=>6,"Black pickaxe"=>11,
+            "Mithril pickaxe"=>21,"Adamant pickaxe"=>31,"Rune pickaxe"|"Gilded pickaxe"=>41,_=>61,
+        };
+        npc_transform=crate::monster_rules::Transform::Scaled{numerator:50+mining+bonus,denominator:150,cap:None};
+    }
+    if flat_armour != 0 && style=="Ranged" && !matches!(npc_transform,crate::monster_rules::Transform::Identity|crate::monster_rules::Transform::Immune) {
+        return Err("Combined NPC limiters and ranged flat armour require separate ordering verification.".into());
+    }
     let hit_effects = crate::effects::SetHitEffects {
         damage_rolls,
         accurate_min: if style == "Ranged"
@@ -1275,7 +1306,7 @@ pub fn calculate_configured(
                     return Err("Ruby bolt effects against shield and charge counters are unverified. Choose other supported ammunition.".into());
                 }
                 let hp = hp as i32;
-                let ruby = (hp * if zcb { 22 } else { 20 } / 100).min(if zcb { 110 } else { 100 });
+                let ruby = ((hp * if zcb { 22 } else { 20 } / 100).min(if zcb { 110 } else { 100 })-flat_armour).max(0);
                 for (_, p) in &mut distribution {
                     *p *= 1.0 - chance;
                 }
@@ -1285,18 +1316,18 @@ pub fn calculate_configured(
                     percent: if zcb { 22 } else { 20 },
                     cap: if zcb { 110 } else { 100 },
                     divisor: 1,
-                    transform: Default::default(),
+                    transform: if flat_armour!=0 {crate::monster_rules::Transform::Armour{amount:flat_armour}} else {Default::default()},
                     distribution_entries: 1,
                 });
                 max_hit = max_hit.max(ruby);
             }
             AmmoEffect::Diamond => {
-                let diamond = max_hit * if zcb { 126 } else { 115 } / 100;
+                let diamond = (if flat_armour!=0 {distribution_max} else {max_hit}) * if zcb { 126 } else { 115 } / 100;
                 for (_, p) in &mut distribution {
                     *p *= 1.0 - chance;
                 }
                 let (_, _, proc_hits) =
-                    conditional_hit(0, diamond, 0, &[], monster, None, &Default::default());
+                    conditional_hit(0, diamond, flat_armour, &[], monster, None, &Default::default());
                 distribution.extend(
                     proc_hits
                         .into_iter()
@@ -1344,13 +1375,13 @@ pub fn calculate_configured(
                     // not `extra + 1`. Keep it separate from a rolled one.
                     let p = 1.0 / f64::from(splat_base_max - min_hit + 1);
                     for damage in min_hit..=splat_base_max {
-                        next.push((damage.max(1), p * hit * (1.0 - chance)));
+                        next.push(((damage.max(1)-flat_armour).max(0), p * hit * (1.0 - chance)));
                         if effect == AmmoEffect::Onyx {
-                            let proc_max = ceiling * if zcb { 132 } else { 120 } / 100;
+                            let proc_max = (if flat_armour!=0 {splat_base_max} else {ceiling}) * if zcb { 132 } else { 120 } / 100;
                             let (_, _, proc_hits) = conditional_hit(
                                 0,
                                 proc_max,
-                                0,
+                                flat_armour,
                                 &[],
                                 monster,
                                 None,
@@ -1362,7 +1393,7 @@ pub fn calculate_configured(
                                     .map(|(d, q)| (d, q * p * hit * chance)),
                             );
                         } else {
-                            next.push(((damage + extra).max(1), p * hit * chance));
+                            next.push((((damage + extra).max(1)-flat_armour).max(0), p * hit * chance));
                         }
                     }
                     if hit < 1.0 {
@@ -1371,7 +1402,7 @@ pub fn calculate_configured(
                         } else {
                             next.push((0, (1.0 - hit) * (1.0 - chance)));
                             // Opal and pearl can proc on a failed accuracy roll.
-                            next.push((extra, (1.0 - hit) * chance));
+                            next.push(((extra-flat_armour).max(0), (1.0 - hit) * chance));
                         }
                     }
                     distribution = next;
@@ -1394,7 +1425,7 @@ pub fn calculate_configured(
         per_splat_npc,
     );
     // NPC limiters can lower or reroll the previously calculated maximum.
-    if crate::monster_rules::profile(monster.id).is_some() {
+    if crate::monster_rules::profile(monster.id).is_some() || flat_armour != 0 {
         max_hit = distribution
             .iter()
             .filter(|(_, p)| *p > 0.0)
@@ -1435,15 +1466,16 @@ pub fn calculate_configured(
         .iter()
         .map(|(damage, p)| *damage as f64 * p)
         .sum::<f64>();
-    let expected_ticks = f64::from(ticks) - blood_proc;
+    let expected_ticks = if crate::encounters::window(monster.id).is_some_and(|w|w.ocellus_explosions==Some(true)) {2.0} else {f64::from(ticks)-blood_proc};
     let burn_dps = if style == "Ranged"
         && rules::set_effect(set, "eclipse_moon")
         && !crate::moon::burn_immune(monster.id)
         && instant_defeat.is_none()
         && !crate::encounters::window(monster.id).is_some_and(|w| w.invulnerable)
     {
-        if crate::encounters::window(monster.id).is_some_and(|w| {
+        if flat_armour != 0 || crate::encounters::window(monster.id).is_some_and(|w| {
             w.npc_damage.is_some()
+                || w.ocellus_explosions.is_some()
                 || w.huey_pillar
                 || crate::monster_rules::profile(monster.id).is_some_and(|p| {
                     matches!(
@@ -1453,6 +1485,13 @@ pub fn calculate_configured(
                             | crate::monster_rules::Kind::Slagilith
                             | crate::monster_rules::Kind::Tormented
                             | crate::monster_rules::Kind::Leafy
+                            | crate::monster_rules::Kind::Tekton
+                            | crate::monster_rules::Kind::Crystal
+                            | crate::monster_rules::Kind::OlmMelee
+                            | crate::monster_rules::Kind::OlmMagic
+                            | crate::monster_rules::Kind::OlmHead
+                            | crate::monster_rules::Kind::IceDemon
+                            | crate::monster_rules::Kind::VerzikP1
                     )
                 })
                 || w.resource != crate::encounters::Resource::Hitpoints

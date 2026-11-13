@@ -534,11 +534,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 "simulation-release",
                 "calibration-release",
                 "monster-release",
+                "raid-release",
             ]
             .contains(&profile)
             {
                 return Err(
-                    "Build profile must be release, verify-release, simulation-release, calibration-release or monster-release".into(),
+                    "Build profile must be release, verify-release, simulation-release, calibration-release, monster-release or raid-release".into(),
                 );
             }
             pack_icons()?;

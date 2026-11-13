@@ -327,7 +327,7 @@ fn unsupported_encounters_still_withhold_damage() {
     let s = bank(RANGED);
     let id = planner::monsters()
         .iter()
-        .find(|m| m.name.contains("Archive Guardian"))
+        .find(|m| m.id==14015)
         .unwrap()
         .id;
     let o = options(id, "Ranged", true);

@@ -1912,6 +1912,13 @@ fn act(action: &str) {
             {
                 choose_plan_spell(&mut s, crate::rules::SpellSelection::Spell(name.into()));
             }
+        } else if let Some(kind) = action.strip_prefix("ranged-type:") {
+            use crate::rules::RangedType;
+            if let Some(selection) = [RangedType::Auto, RangedType::Light, RangedType::Standard, RangedType::Heavy]
+                .into_iter().find(|t| t.key().unwrap_or("auto") == kind)
+            {
+                choose_plan_ranged(&mut s, selection);
+            }
         } else if let Some(stance) = action.strip_prefix("ranged-stance:") {
             if ["Rapid", "Accurate"].contains(&stance) {
                 s.saved.options.combat.ranged_stance = stance.into();
@@ -3795,48 +3802,105 @@ fn magic_spell_book(s: &State, set: &[Option<i32>]) -> String {
     html.push_str("<p class=\"small-note\">Your spell choice is used for Magic phases, rune packing and exported setups. Auto restores automatic spell selection.</p></section>");
     html
 }
+fn choose_plan_ranged(s: &mut State, selection: crate::rules::RangedType) {
+    s.saved.options.combat.ranged_type = selection;
+    s.saved.options.gear_overrides.remove("Ranged:3");
+    s.saved.options.gear_overrides.remove("Ranged:13");
+    if selection.key().is_some()
+        && s.saved.options.boss == Boss::Custom
+        && !s.saved.options.targets.iter().any(|t| t.style == "Ranged")
+    {
+        let id = comparison_monster(s).map(|t| t.id);
+        if let Some(target) = s
+            .saved
+            .options
+            .targets
+            .iter_mut()
+            .find(|t| Some(t.id) == id)
+        {
+            target.style = "Ranged".into();
+            s.phase = None;
+        }
+    }
+    s.edit_style = Some("Ranged".into());
+}
 fn ranged_ammunition_card(s: &State, set: &[Option<i32>]) -> String {
     let weapon = set.get(3).copied().flatten();
     let rule = weapon.and_then(crate::rules::weapon);
-    let selected = rule
+    let equipped = rule
         .as_ref()
         .filter(|r| r.family.style == "Ranged")
         .and_then(|r| r.family.attack_types.first());
-    let mut html = String::from(
-        "<section class=\"combat-subtypes ranged-ammunition\" aria-label=\"Ranged ammunition\"><h4>Ammunition type</h4><div class=\"ranged-type-grid\">",
+    let selection = s.saved.options.combat.ranged_type;
+    let mut html = format!(
+        "<section class=\"combat-subtypes ranged-ammunition\" aria-label=\"Ranged ammunition\"><div class=\"ranged-type-heading\"><h4>Ammunition type</h4><button class=\"phase {}\" data-action=\"ranged-type:auto\" aria-pressed=\"{}\">Auto</button></div><div class=\"ranged-type-grid\" role=\"group\" aria-label=\"Ranged ammunition type\">",
+        if selection.key().is_none() {
+            "active"
+        } else {
+            ""
+        },
+        selection.key().is_none()
     );
     for (kind, label, detail, icon) in [
         ("light", "Light", "Darts & thrown", 811),
         ("standard", "Standard", "Arrows & crystal", 892),
         ("heavy", "Heavy", "Bolts & javelins", 9144),
     ] {
-        let active = selected.is_some_and(|s| s == kind);
-        html.push_str(&format!("<div class=\"ranged-type {}\" {}>{}<strong>{label}</strong><small>{detail}</small><span class=\"ranged-type-state\">{}</span></div>", if active {"active"} else {""}, if active {"aria-current=\"true\""} else {""}, image(icon), if active {"✓ In use"} else {""}));
+        let chosen = selection.key() == Some(kind);
+        let active = chosen || selection.key().is_none() && equipped.is_some_and(|s| s == kind);
+        html.push_str(&format!("<button type=\"button\" class=\"ranged-type {}\" data-action=\"ranged-type:{kind}\" aria-label=\"{label}\" aria-pressed=\"{chosen}\">{}<strong>{label}</strong><small>{detail}</small><span class=\"ranged-type-state\">{}</span></button>", if active {"active"}else{""}, image(icon), if chosen {"✓ Selected"}else if active {"In use"}else{""}));
     }
     html.push_str("</div><div class=\"ranged-equipped\">");
-    if let Some(id) = weapon.filter(|_| selected.is_some()) {
+    if let Some(id) = weapon.filter(|_| equipped.is_some()) {
         html.push_str(&format!(
             "<span>{}<span>{}</span></span>",
             image(id),
             esc(&planner::item_name(id))
         ));
         let ammo = set.get(13).copied().flatten().or_else(|| {
-            s.saved
-                .snapshot
-                .selected()
-                .and_then(|m| crate::rules::internal_ammo(m, id, &s.saved.options.combat))
+            s.saved.snapshot.selected().and_then(|m| {
+                let mut owned = s.saved.snapshot.available(s.saved.options.shared);
+                owned.retain(|id, _| !s.saved.options.excluded.contains(id));
+                let member = planner::member_with_stock(m, &owned);
+                crate::rules::internal_ammo(&member, id, &s.saved.options.combat)
+            })
         });
         if let Some(id) = ammo {
             html.push_str(&format!(
-                "<span>{}<span>{}</span></span>",
+                "<span>{}<span>{} × {}{}</span></span>",
                 image(id),
-                esc(&planner::item_name(id))
+                esc(&planner::item_name(id)),
+                planner::equipped_quantity(13, id, s.saved.options.combat.ammo_shots),
+                if set.get(13).copied().flatten().is_none() {
+                    " · loaded"
+                } else {
+                    ""
+                }
             ));
+        } else if rule
+            .as_ref()
+            .is_some_and(|r| !r.family.ammo.is_empty() || !r.family.internal_ammo.is_empty())
+        {
+            html.push_str(&format!("<p class=\"spell-requirement\" role=\"status\">Needs compatible ammunition for {} shots. Check Preparation.</p>", s.saved.options.combat.ammo_shots));
         }
     } else {
-        html.push_str("<span>Equip a ranged weapon to see its ammunition type.</span>");
+        html.push_str(&format!(
+            "<span>No usable owned {}ranged weapon. Check your bank and Ranged level.</span>",
+            if selection.key().is_some() {
+                format!("{} ", selection.label())
+            } else {
+                String::new()
+            }
+        ));
     }
-    html.push_str("</div><p class=\"small-note\">Your equipped weapon determines the type used against ranged defence.</p></section>");
+    html.push_str("</div>");
+    if weapon.is_some()
+        && selection.key().is_some()
+        && !weapon.is_some_and(|id| selection.permits_weapon(id))
+    {
+        html.push_str("<p class=\"spell-requirement\">This weapon does not match the selected type. Pick the type again to rebuild the weapon and ammo.</p>");
+    }
+    html.push_str(&format!("<p class=\"small-note\">Choose a type to plan with compatible owned gear. Uses your {}-shot budget. Auto restores automatic selection.</p></section>",s.saved.options.combat.ammo_shots));
     html
 }
 fn combat_style_controls(s: &State, set: &[Option<i32>], style: &str) -> String {

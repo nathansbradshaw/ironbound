@@ -856,3 +856,8 @@ footer{font-size:10px;padding:9px 4px 0}footer>span:last-child{display:none}
 .ranged-equipped>span{display:flex;align-items:center;gap:7px;min-width:0}
 .ranged-equipped img{width:32px;height:32px;object-fit:contain;image-rendering:pixelated}
 @media(max-width:440px){.ranged-type-grid{gap:5px}.ranged-type>strong{font-size:19px}.ranged-type>small{font-size:14px}}
+.ranged-type-heading{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:10px}
+.ranged-type-heading h4{margin:0}
+button.ranged-type{font:inherit;cursor:pointer;width:100%;border-radius:0;appearance:none}
+button.ranged-type:hover{border-color:#e4bc48;background:#443a29;color:#fff3bd}
+button.ranged-type:focus-visible{outline:3px solid #ffe087;outline-offset:2px}

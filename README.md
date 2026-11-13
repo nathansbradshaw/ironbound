@@ -34,6 +34,7 @@ If browser saving fails, a persistent warning offers a private backup and retry.
 - **Model your fight:** Combat → **Boosts, darts & debuffs**. Choose active boosts, loaded blowpipe darts and successful reductions for each target.
 - **See weaknesses:** Combat breaks ranged defence into Light / Standard / Heavy and magic into Air / Water / Earth / Fire. Compare supported owned spells, hit chance, max hit and DPS; the selected spell shows its base and elemental bonuses.
 - **Try spells manually:** Combat → Magic. Click an element and a spell in the icon grid, or choose **Auto**. Your selection is saved and used for the Magic plan, rune packing and exports. Missing runes are flagged; **Auto** restores automatic choice.
+- **Choose ranged ammunition:** Combat → Ranged → **Light / Standard / Heavy**. The plan chooses a compatible owned weapon and ammo using your shot budget. **Auto** restores automatic choice; missing gear or ammunition is flagged.
 - **Choose prayers:** click icons in the **Prayer book** to toggle protection, a stat prayer and Preserve. Grey icons show unmet levels. Ranged stance uses **Rapid / Accurate** buttons.
 - **Choose your switch limit:** this is a maximum. See how many changes the plan actually uses. Equal combat scores prefer lower prayer use, then fewer packed items. Numeric controls update while typing or using their arrows.
 - **Why this item?** Hover or keyboard-focus gear for its role and up to two owned alternatives with signed trade-offs. Supplies show their packing purpose.

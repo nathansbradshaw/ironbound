@@ -57,6 +57,8 @@ struct State {
     switch_preferences_open: bool,
     combat_options_open: bool,
     attack_budget_open: bool,
+    simulation_open: bool,
+    simulation_result: Option<(String, Result<crate::simulation::Report, String>)>,
     budget_comparison_open: bool,
     budget_phases_open: bool,
     budget_window: Option<String>,
@@ -160,6 +162,8 @@ impl State {
             switch_preferences_open: false,
             combat_options_open: false,
             attack_budget_open: false,
+            simulation_open: false,
+            simulation_result: None,
             budget_comparison_open: comparison_query.is_some(),
             budget_phases_open: false,
             budget_window: None,
@@ -343,6 +347,9 @@ thread_local! {
 }
 
 fn live_number(id: &str) -> bool {
+    if id.starts_with("sim-") {
+        return true;
+    }
     [
         "max-switches",
         "switch-tolerance",
@@ -368,6 +375,12 @@ fn live_number(id: &str) -> bool {
 fn apply_number(s: &mut State, id: &str, value: &str) -> bool {
     if s.shared_setup.is_some() && !id.starts_with("skill-") {
         return false;
+    }
+    if let Some(key) = id.strip_prefix("sim-") {
+        return value
+            .parse::<u32>()
+            .ok()
+            .is_some_and(|n| s.saved.options.simulation.set(key, n));
     }
     let target_id = comparison_monster(s).map(|m| m.id);
     let target_max = comparison_monster(s)
@@ -945,6 +958,8 @@ pub fn start() -> Result<(), JsValue> {
             } else if el.id() == "attack-budget" {
                 STATE
                     .with(|state| state.borrow_mut().attack_budget_open = el.has_attribute("open"));
+            } else if el.id() == "fight-simulation" {
+                STATE.with(|state| state.borrow_mut().simulation_open = el.has_attribute("open"));
             } else if el.id() == "budget-phases" {
                 STATE
                     .with(|state| state.borrow_mut().budget_phases_open = el.has_attribute("open"));
@@ -1709,6 +1724,20 @@ fn act(action: &str) {
                     s.saved.options.confirmations.insert(id.into(), token);
                 }
             }
+        } else if let Some(value)=action.strip_prefix("simulation-warden:").and_then(|v|v.parse::<u32>().ok()) {
+            s.saved.options.simulation.warden=value.min(1);
+        } else if action == "simulate-fight" {
+            let plan=s.plan();
+            let key=simulation_key(&s,&plan);
+            let report=crate::simulation::Model::from_plan(&s.saved.snapshot,&s.saved.options,&plan).and_then(|m|crate::simulation::simulate(&m));
+            s.simulation_result=Some((key,report));s.simulation_open=true;
+        } else if action == "download-simulation" {
+            let plan=s.plan();
+            if let Some((key,Ok(report)))=&s.simulation_result {
+                if *key==simulation_key(&s,&plan) {if let Ok(raw)=serde_json::to_string_pretty(report) {download("ironbound-fight-scenario.json",&raw);}}
+            }
+        } else if action == "reset-simulation" {
+            s.saved.options.simulation=Default::default();s.simulation_result=None;
         } else if action == "reset-target-hp" {
             if let Some(target) = comparison_monster(&s).map(|m| m.id) {
                 s.saved.options.combat.target_hp.remove(&target);
@@ -2593,7 +2622,7 @@ fn render_with_edit(edit: Option<&str>) {
         for (view,label) in [("loadout","Gear"),("combat","Combat"),("prepare","Preparation")] {let disabled=if view=="combat"&&s.shared_setup.is_some(){"disabled title=\"Rebuild using your items to calculate combat stats\""}else{""};html.push_str(&format!("<button class=\"workspace-tab {}\" data-action=\"view:{view}\" aria-pressed=\"{}\" {disabled}>{label}{}</button>",if s.view==view{"active"}else{""},s.view==view,if view=="prepare"&&!plan.missing.is_empty(){format!(" <span class=\"issue-count\">{}</span>",plan.missing.len())}else{String::new()}));}
         html.push_str("</nav><section class=\"workspace-view\">");
         match s.view.as_str(){
-            "combat"=>{html.push_str("<div class=\"analysis-layout\">");html.push_str(&combat_panel(&s,&plan));html.push_str(&switch_panel(&s,&plan));html.push_str("</div>");},
+            "combat"=>{html.push_str("<div class=\"analysis-layout\">");html.push_str(&combat_panel(&s,&plan));html.push_str(&simulation_panel(&s,&plan));html.push_str(&switch_panel(&s,&plan));html.push_str("</div>");},
             "prepare"=>{html.push_str("<div class=\"prepare-layout\">");html.push_str(&checks_panel(&s,&plan));if s.shared_setup.is_none(){html.push_str(&manual_checks(&s));html.push_str(&coverage_panel(&s.saved.options));}if !plan.missing.is_empty(){html.push_str("<section class=\"panel\"><div class=\"panel-heading\"><h2>Missing trip items</h2></div><ul class=\"missing-list\">");for missing in &plan.missing{html.push_str(&format!("<li>{}</li>",esc(missing)));}html.push_str("</ul></section>");}if s.shared_setup.is_none(){html.push_str(&next_goal(&s));}html.push_str("</div>");},
             _=>{html.push_str("<div class=\"loadout-layout\">");html.push_str(&loadout_panel(&s,&plan));html.push_str(&inventory_panel(&s,&plan));html.push_str("</div>");}
         }
@@ -4450,6 +4479,115 @@ fn attack_window_budget(
         Err(reason) => html.push_str(&format!("<p class=\"small-note\">{}</p>", esc(&reason))),
     }
     html.push_str("</details>");
+    html
+}
+fn simulation_key(s: &State, p: &Plan) -> String {
+    let phases: Vec<_> = p.phases.iter().map(|v| (&v.style, &v.equipment)).collect();
+    serde_json::to_string(&(
+        &s.saved.snapshot,
+        &s.saved.options,
+        &p.equipment,
+        &p.inventory,
+        phases,
+        &p.loaded_ammo,
+    ))
+    .unwrap_or_default()
+}
+fn simulation_panel(s: &State, p: &Plan) -> String {
+    use crate::simulation::Encounter;
+    let Some(encounter) = Encounter::selected(&s.saved.options) else {
+        return String::new();
+    };
+    let mut html = format!(
+        "<section class=\"panel fight-simulation-panel\"><details id=\"fight-simulation\" {}><summary>Full-fight & consumption simulation · {}</summary><p>Seeded encounter scenarios using the gear actually packed. Each run carries HP, Prayer, attack cooldowns and supplies through every phase. A trip reuses the remaining supplies and HP; it does not bank or receive drops.</p><p class=\"notice\">Execution assumptions: incoming damage, timing and mistakes are editable. Defaults illustrate a scenario; they are not measured performance or a guarantee of survival.</p>",
+        if s.simulation_open { "open" } else { "" },
+        encounter.name()
+    );
+    html.push_str("<div class=\"simulation-inputs\">");
+    for (key, label, value, min, max) in s.saved.options.simulation.fields() {
+        let relevant = if ["acid_ticks", "freeze_ticks", "acid_uptime"].contains(&key) {
+            encounter == Encounter::Vorkath
+        } else if [
+            "judge_travel",
+            "flare_interval",
+            "flare_charge",
+            "flare_heal",
+            "flare_regen",
+            "glyph_hp",
+            "glyph_prayer",
+            "melee_autos",
+        ]
+        .contains(&key)
+        {
+            encounter == Encounter::Yama
+        } else if ["warden", "prayer_rotation", "skull_ticks", "skull_damage"].contains(&key) {
+            encounter == Encounter::Wardens
+        } else {
+            true
+        };
+        if relevant && key == "warden" {
+            html.push_str("<div role=\"group\" aria-label=\"P2 Warden\"><span>Fight in P2</span><div class=\"combat-subtype-options\">");
+            for (n, label) in [(0, "Elidinis"), (1, "Tumeken")] {
+                html.push_str(&format!("<button class=\"phase {}\" data-action=\"simulation-warden:{n}\" aria-pressed=\"{}\">{label}</button>",if value==n {"active"}else{""},value==n));
+            }
+            html.push_str("</div></div>");
+        } else if relevant {
+            html.push_str(&format!("<label>{}<input id=\"sim-{key}\" type=\"number\" min=\"{min}\" max=\"{max}\" value=\"{value}\"></label>",esc(label)));
+        }
+    }
+    html.push_str("</div><p class=\"small-note\">A tick is 0.6 seconds. Residual incoming HP/min is after protection and excludes failed mechanics added separately. Recovery and loaded charges are assumptions you must verify. Wardens uses supplies at room entry, excludes the earlier raid rooms and mechanic-changing invocations, and supports solo raid levels 0–150.</p>");
+    html.push_str(&button(
+        "simulate-fight",
+        "Run fight & trip simulation",
+        "button gold",
+    ));
+    html.push_str(&button("reset-simulation", "Reset scenario", "text-button"));
+    if let Some((key, result)) = &s.simulation_result {
+        if *key != simulation_key(s, p) {
+            html.push_str("<p role=\"status\">Setup or assumptions changed. Run again for current results.</p>");
+        } else {
+            match result {
+            Err(reason)=>html.push_str(&format!("<p class=\"combat-unavailable\" role=\"status\">Simulation unavailable: {}</p>",esc(reason))),
+            Ok(report)=>{
+                let total=report.runs.len();let complete=report.completed();
+                html.push_str(&format!("<div aria-live=\"polite\"><h3>Scenario results</h3><p>{complete} / {total} first fights completed in the model; {} / {total} completed with the packed supply budget. Failures and timeouts are retained; percentiles below include completed first fights only.</p>",report.covered()));
+                let mut failures=BTreeMap::new();for run in report.runs.iter().filter(|r|!r.completed){*failures.entry(run.reason.as_str()).or_insert(0usize)+=1;}
+                if !failures.is_empty(){html.push_str("<p>Unfinished first fights: ");for (reason,n) in failures {html.push_str(&format!("{}: {n}. ",esc(reason)));}html.push_str("</p>");}
+                html.push_str("<table class=\"wiki-table\"><thead><tr><th>First-fight demand</th><th>Median</th><th>90th percentile</th></tr></thead><tbody>");
+                let rows:[(&str,fn(&crate::simulation::Usage)->f64);15]=[
+                    ("Duration (seconds)",|u|u.ticks as f64*0.6),("Attacks",|u|u.attacks as f64),
+                    ("Rune casts",|u|u.casts as f64),("Projectiles fired",|u|u.shots as f64),
+                    ("Weapon charges",|u|u.charges.values().sum::<u32>() as f64),("Blowpipe scales",|u|u.scales as f64),
+                    ("Food bites",|u|u.food_bites as f64),("Extra shark-equivalent food",|u|u.extra_food as f64),
+                    ("Prayer points drained",|u|u.prayer_points),("Prayer doses",|u|u.prayer_doses as f64),
+                    ("Extra prayer-potion doses",|u|u.extra_doses as f64),("Ruby self-damage (HP)",|u|u.ruby_damage),
+                    ("Crumble Undead casts",|u|u.crumble as f64),("Mark of Darkness casts",|u|u.mark as f64),
+                    ("Boss healing (HP)",|u|u.healing as f64),
+                ];
+                for (label,metric) in rows {let a=report.quantile(metric,0.5);let b=report.quantile(metric,0.9);
+                    html.push_str(&format!("<tr><th>{label}</th><td>{}</td><td>{}</td></tr>",a.map(|v|format!("{v:.1}")).unwrap_or_else(||"—".into()),b.map(|v|format!("{v:.1}")).unwrap_or_else(||"—".into())));}
+                html.push_str("</tbody></table><h4>Carried rune and projectile demand</h4><table class=\"wiki-table\"><thead><tr><th>Item</th><th>90th percentile</th><th>Carried</th></tr></thead><tbody>");
+                let ids:std::collections::BTreeSet<_>=report.runs.iter().flat_map(|r|r.usage.resources.keys().copied()).collect();
+                let model=crate::simulation::Model::from_plan(&s.saved.snapshot,&s.saved.options,p).ok();
+                for id in ids {let q=report.quantile(|u|u.resources.get(&id).copied().unwrap_or(0) as f64,0.9);
+                    html.push_str(&format!("<tr><th>{}</th><td>{}</td><td>{}</td></tr>",esc(&planner::item_name(id)),q.map(|n|format!("{n:.0}")).unwrap_or_else(||"—".into()),model.as_ref().and_then(|m|m.available.get(&id)).copied().unwrap_or(0)));}
+                html.push_str("</tbody></table><h4>Phase time (median seconds)</h4><table class=\"wiki-table\"><tbody>");
+                let phases:std::collections::BTreeSet<_>=report.runs.iter().flat_map(|r|r.usage.phase_ticks.keys().cloned()).collect();
+                for phase in phases {let q=report.quantile(|u|u.phase_ticks.get(&phase).copied().unwrap_or(0) as f64*0.6,0.5);html.push_str(&format!("<tr><th>{}</th><td>{}</td></tr>",esc(&phase),q.map(|n|format!("{n:.1}")).unwrap_or_else(||"—".into())));}
+                html.push_str("</tbody></table><h4>Mechanics observed (median, all first attempts)</h4><table class=\"wiki-table\"><tbody>");
+                let mechanics:[(&str,fn(&crate::simulation::Usage)->u32);8]=[("Acid specials",|u|u.acid),("Freeze specials",|u|u.freeze),("Judges",|u|u.judges),("Flares spawned",|u|u.flares),("Flares exploded",|u|u.exploded),("Core exposures",|u|u.core_downs),("Skull sets",|u|u.skulls),("Enrage transitions",|u|u.enrage)];
+                for (label,metric) in mechanics {let mut values=report.runs.iter().map(|r|metric(&r.usage)).collect::<Vec<_>>();values.sort();if let Some(n)=values.get(values.len()/2){html.push_str(&format!("<tr><th>{label}</th><td>{n}</td></tr>"));}}
+                html.push_str("</tbody></table><h4>Fights covered per trip</h4><p>");
+                let mut counts=BTreeMap::new();for run in &report.runs {*counts.entry(run.trip_kills).or_insert(0usize)+=1;}
+                for (kills,n) in counts {html.push_str(&format!("{kills} fight(s): {n} / {total} trials. "));}
+                html.push_str("The configured trip cap is a censoring limit, not proof that another fight is impossible. Additional food uses 20-HP shark equivalents; extra prayer doses use ordinary prayer-potion restoration. These extras are demand forecasts and are never added to your bag.</p><details><summary>Model assumptions & exclusions</summary><ul>");
+                for note in &report.notes {html.push_str(&format!("<li>{}</li>",esc(note)));}
+                html.push_str("</ul></details></div>");html.push_str(&button("download-simulation","Download scenario results","text-button"));
+            }
+        }
+        }
+    }
+    html.push_str("</details></section>");
     html
 }
 fn tier_table(s: &State) -> String {

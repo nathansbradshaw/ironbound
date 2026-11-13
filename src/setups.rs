@@ -107,6 +107,7 @@ impl Library {
 
 pub fn validate_options(o: &Options) -> Result<(), String> {
     if !o.combat.valid()
+        || !o.simulation.valid()
         || !o.ranking.weights.valid()
         || o.food > 20
         || o.prayer_potions > 12

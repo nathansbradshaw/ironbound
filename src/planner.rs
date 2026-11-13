@@ -623,6 +623,18 @@ pub(crate) fn member_with_stock(m: &Member, owned: &BTreeMap<i32, u32>) -> Membe
     member.equipment = None;
     member
 }
+/// Bank stock plus explicitly reviewed quest-provided gear for these targets.
+/// Keep this separate from Snapshot::available, which reports observed items.
+pub fn planning_stock(snapshot: &Snapshot, options: &Options) -> BTreeMap<i32, u32> {
+    let mut stock = snapshot.available(options.shared);
+    if options.boss == Boss::Custom && let Some(member) = snapshot.selected() {
+        for target in &options.targets {
+            crate::quest_bosses::include_provided_weapon(target.id, &mut stock, member, options);
+        }
+    }
+    stock.retain(|id, _| !options.item_excluded(*id));
+    stock
+}
 pub fn equipment_for_style(
     snapshot: &Snapshot,
     options: &Options,
@@ -631,8 +643,7 @@ pub fn equipment_for_style(
     let Some(m) = snapshot.selected() else {
         return vec![None; 14];
     };
-    let mut owned = snapshot.available(options.shared);
-    owned.retain(|id, _| !options.item_excluded(*id));
+    let owned = planning_stock(snapshot, options);
     let stock_member = member_with_stock(m, &owned);
     let m = &stock_member;
     let mut set = style_set(style, options.boss, m, &owned, equipment(), options);
@@ -685,8 +696,7 @@ pub fn recommend_encounter(
     if !missing_combat_levels(snapshot).is_empty() {
         return targets.to_vec();
     }
-    let mut owned = snapshot.available(options.shared);
-    owned.retain(|id, _| !options.item_excluded(*id));
+    let owned = planning_stock(snapshot, &base);
     let stock_member = member_with_stock(member, &owned);
     let member = &stock_member;
     let mut best = None::<(f64, String)>;
@@ -1492,13 +1502,13 @@ fn plan_uncached(snapshot: &Snapshot, options: &Options) -> Plan {
         ));
         return out;
     }
-    let mut owned = snapshot.available(options.shared);
-    owned.retain(|id, _| !options.item_excluded(*id));
+    let owned = planning_stock(snapshot, options);
     let catalog = equipment();
     let stock_member = member_with_stock(m, &owned);
     let m = &stock_member;
     let profile = crate::guidance::profile(options);
-    out.owned = owned.len();
+    let observed = snapshot.available(options.shared);
+    out.owned = observed.keys().filter(|id| !options.item_excluded(**id)).count();
     out.supported = owned
         .keys()
         .filter(|id| {
@@ -1620,8 +1630,14 @@ fn plan_uncached(snapshot: &Snapshot, options: &Options) -> Plan {
         vec![("Ranged", ranged.clone())]
     };
     for target in &targets {
-        if let Some((_, set)) = sets.iter().find(|(style, _)| *style == target.style)
-            && let Some(issue) = crate::quest_bosses::weapon_requirement(target.id, set, &target.style)
+        let Some((_, set)) = sets.iter().find(|(style, _)| *style == target.style) else { continue; };
+        if let Some(note) = crate::quest_bosses::provided_weapon_note(target.id, set, &observed)
+            && !out.warnings.iter().any(|warning| warning == note)
+        {
+            out.label = "Bank and quest-provided gear with supported DPS comparisons".into();
+            out.warnings.push(note.into());
+        }
+        if let Some(issue) = crate::quest_bosses::weapon_requirement(target.id, set, &target.style)
             && !out.missing.contains(&issue)
         {
             out.missing.push(issue);

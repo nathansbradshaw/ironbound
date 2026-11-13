@@ -80,6 +80,13 @@ fn quest_weapon_fallback_never_recommends_ordinary_weapons_or_later_rewards() {
                 _ => { missing.members[0].level_overrides.insert("Attack".into(), 1); }
             }
             let p = planner::plan(&missing, &trial);
+            if id == 16204 && case == "absent" {
+                assert_eq!(p.equipment[3], Some(33718));
+                assert!(p.phases.iter().all(|p| p.equipment[3] == Some(33718)));
+                assert!(p.warnings.iter().any(|s| s.contains("Quest-provided Hallowed flail")));
+                assert!(!p.missing.iter().any(|s| s.contains("Hallowed flail")));
+                continue;
+            }
             assert_eq!(p.equipment[3], None, "{id}: {case}");
             assert!(p.phases.iter().all(|p| p.equipment[3].is_none()), "{id}: {case}");
             assert!(p.missing.iter().any(|s| s.contains(&planner::item_name(required))), "{id}: {case}: {:?}", p.missing);
@@ -95,6 +102,57 @@ fn quest_weapon_fallback_never_recommends_ordinary_weapons_or_later_rewards() {
     let issue = quest_bosses::weapon_requirement(16204, &set(33722), "Melee").unwrap();
     assert!(issue.contains("Hallowed flail"));
     assert!(issue.contains("Sunspear is awarded after defeating Drakan"));
+}
+#[test]
+fn quest_provided_flail_matches_owned_damage_and_readiness_without_changing_bank() {
+    let owned = strong();
+    let mut future = owned.clone();
+    future.members[0].bank = Some(owned.members[0].bank.as_ref().unwrap()
+        .chunks_exact(2).filter(|pair| pair[0] != 33718).flatten().copied().collect());
+    assert!(!future.available(false).contains_key(&33718));
+    let options = Options {
+        boss: Boss::Custom,
+        targets: vec![planner::Target { id: 16204, style: "Slash".into() }],
+        ..Default::default()
+    };
+    let actual = planner::plan(&owned, &options);
+    let projected = planner::plan(&future, &options);
+    assert_eq!(projected.equipment, actual.equipment);
+    assert_eq!(projected.equipment[3], Some(33718));
+    assert_eq!(projected.missing, actual.missing);
+    let m = planner::monster(16204).unwrap();
+    let damage = combat::calculate_configured(future.selected().unwrap(), &projected.equipment,
+        "Slash", m, "", 0, &options.combat).unwrap();
+    let baseline = combat::calculate_configured(owned.selected().unwrap(), &actual.equipment,
+        "Slash", m, "", 0, &options.combat).unwrap();
+    assert!(damage.dps > 0.0);
+    assert_eq!(damage.dps, baseline.dps);
+    assert_eq!(damage.hit_distribution, baseline.hit_distribution);
+    let index = encounters::catalog().iter().position(|e| e.name == "Lowerniel Drakan").unwrap();
+    let actual = bestiary::assess_catalog(&owned, &options);
+    let projected = bestiary::assess_catalog(&future, &options);
+    assert_eq!(projected[index].readiness, actual[index].readiness);
+    assert!(projected[index].reason.contains("Hallowed flail (quest-provided)"));
+    assert!(!projected[index].reason.contains("Needs owned"));
+    assert!(!future.available(false).contains_key(&33718));
+    assert_eq!(planner::planning_stock(&future, &options).get(&33718), Some(&1));
+    assert!(!planner::planning_stock(&future, &options).contains_key(&33722));
+    assert!(!planner::planning_stock(&future, &Options::default()).contains_key(&33718));
+    for id in [8242, 9567, 1672] {
+        let mut other = options.clone();
+        other.targets[0].id = id;
+        assert!(!planner::planning_stock(&future, &other).contains_key(&33718));
+    }
+    for level in [49, 50] {
+        let mut account = future.clone();
+        account.members[0].level_overrides.insert("Attack".into(), level);
+        assert_eq!(planner::planning_stock(&account, &options).contains_key(&33718), level >= 50);
+    }
+    let mut excluded = options.clone();
+    excluded.excluded.insert(33718);
+    assert!(!planner::planning_stock(&future, &excluded).contains_key(&33718));
+    let blocked = bestiary::assess_catalog(&future, &excluded);
+    assert!(blocked[index].reason.contains("Needs owned"));
 }
 #[test]
 fn all_quest_profiles_are_tagged_filterable_and_rating_is_available() {

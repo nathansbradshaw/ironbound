@@ -32,6 +32,37 @@ pub fn target(id: i32) -> Option<&'static Profile> {
 pub fn visible(entry: &encounters::Entry, hide_quests: bool) -> bool {
     !hide_quests || profile(&entry.name).is_none()
 }
+/// The final Drakan fight occurs after the quest supplies this weapon.
+/// This is planning stock only; it never changes an account's observed bank.
+pub fn provided_weapon(id: i32) -> Option<i32> {
+    (encounters::source_npc_id(id) == 16204).then_some(33718)
+}
+pub fn include_provided_weapon(
+    id: i32,
+    stock: &mut BTreeMap<i32, u32>,
+    member: &crate::account::Member,
+    options: &planner::Options,
+) -> bool {
+    let Some(weapon) = provided_weapon(id) else { return false; };
+    if stock.get(&weapon).copied().unwrap_or(0) > 0
+        || options.item_excluded(weapon)
+        || !planner::can_use(weapon, member)
+    {
+        return false;
+    }
+    stock.insert(weapon, 1);
+    true
+}
+pub fn provided_weapon_note(
+    id: i32,
+    set: &[Option<i32>],
+    observed: &BTreeMap<i32, u32>,
+) -> Option<&'static str> {
+    let weapon = provided_weapon(id)?;
+    (set.get(3).copied().flatten() == Some(weapon)
+        && observed.get(&weapon).copied().unwrap_or(0) == 0)
+        .then_some("Quest-provided Hallowed flail: obtained during The Blood Moon Rises before this fight. Included in damage and gear readiness; it is not recorded in your bank.")
+}
 /// Explain a required quest weapon independently of ownership or DPS support.
 pub fn weapon_requirement(id: i32, set: &[Option<i32>], style: &str) -> Option<String> {
     let p = target(id)?;

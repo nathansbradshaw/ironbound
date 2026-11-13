@@ -630,6 +630,16 @@ fn assess_gear_catalog(snapshot: &Snapshot, preferences: &Options) -> Vec<Assess
             return a;
         }
         let Some(p) = guideline else { return unknown("No reviewed readiness guideline yet. Open the gear plan where available."); };
+        // Scope assumed quest stock to this entry, never the catalog-wide pool.
+        let provided_stock = entry.targets.iter()
+            .find(|t| crate::quest_bosses::provided_weapon(t.id).is_some())
+            .map(|t| {
+                let mut stock = owned.clone();
+                let supplied = crate::quest_bosses::include_provided_weapon(t.id, &mut stock, &member, &options);
+                (stock, supplied)
+            });
+        let supplied = provided_stock.as_ref().is_some_and(|(_, supplied)| *supplied);
+        let owned = provided_stock.as_ref().map(|(stock, _)| stock).unwrap_or(&owned);
         let mut entry_sets = sets.clone();
         if let Some(quest) = crate::quest_bosses::profile(&entry.name) {
             let missing_weapon = !quest.weapons.is_empty() && !quest.weapons.iter().any(|id|
@@ -743,7 +753,7 @@ fn assess_gear_catalog(snapshot: &Snapshot, preferences: &Options) -> Vec<Assess
                 else { Readiness::WellEquipped };
             readiness = readiness.max(band);
         }
-        let setup_reason = choices.iter().map(|(dps, style, weapon, _, _)| format!("{} · {style} · {dps:.1} basic DPS", planner::item_name(*weapon))).collect::<Vec<_>>().join("; ");
+        let setup_reason = choices.iter().map(|(dps, style, weapon, _, _)| format!("{}{} · {style} · {dps:.1} basic DPS", planner::item_name(*weapon), if supplied { " (quest-provided)" } else { "" })).collect::<Vec<_>>().join("; ");
         let scope = match entry.name.as_str() {
             "Tombs of Amascut" => "Solo · raid level 0",
             "Yama" => "Melee-boss hybrid",
@@ -757,7 +767,7 @@ fn assess_gear_catalog(snapshot: &Snapshot, preferences: &Options) -> Vec<Assess
             _ => "",
         };
         let reason = if scope.is_empty() { setup_reason } else { format!("{scope}: {setup_reason}") };
-        let gaps = if readiness == Readiness::WellEquipped { "Levels and owned gear meet this screening baseline.".into() } else { format!("Guideline: {} offensive level / HP, {} Defence, {} Prayer; 3+ basic DPS and four armour slots for the top band. Yours: {} HP, {} Defence, {} Prayer.", p.level, p.level.saturating_sub(10), p.prayer, hp, def, prayer) };
+        let gaps = if readiness == Readiness::WellEquipped { "Levels and equipment meet this screening baseline.".into() } else { format!("Guideline: {} offensive level / HP, {} Defence, {} Prayer; 3+ basic DPS and four armour slots for the top band. Yours: {} HP, {} Defence, {} Prayer.", p.level, p.level.saturating_sub(10), p.prayer, hp, def, prayer) };
         Assessment { readiness, requirements: Requirements::default(), reason, detail: format!("{gaps} {}", p.note), wilderness: false, preview: None }
     }).collect()
 }

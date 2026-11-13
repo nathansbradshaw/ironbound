@@ -3435,6 +3435,15 @@ fn encounter_label(options: &Options) -> &str {
         .unwrap_or(options.boss.name())
 }
 fn bestiary_assessments(s: &State) -> Vec<crate::bestiary::Assessment> {
+    if s.shared_setup.is_some() {
+        return crate::encounters::catalog().iter().map(|_| crate::bestiary::Assessment {
+            readiness: crate::bestiary::Readiness::Unknown,
+            reason: "Shared setups do not include the sender's bank or levels.".into(),
+            detail: String::new(),
+            wilderness: false,
+            preview: None,
+        }).collect();
+    }
     thread_local! {
         static CACHE: RefCell<Option<(String, Vec<crate::bestiary::Assessment>)>> = const { RefCell::new(None) };
     }

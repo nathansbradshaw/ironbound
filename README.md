@@ -6,10 +6,12 @@ An OSRS-style bossing planner for Ironmen. Find gear **you actually own**, keep 
 
 ## Start here
 
-1. Open **Your account** and import your RuneLite bank export.
+1. Open **Your bank** and import your RuneLite bank export.
 2. Enter your levels, or look up your public skills.
 3. Pick an encounter and set your **maximum switches**.
-4. Click a gear slot to compare alternatives. Export with **Copy Inventory Setup**.
+4. Click a gear or inventory slot to change items. Export with **Copy Inventory Setup**.
+
+**Gear** is your packing workspace. **Combat** has the numbers; **Preparation** has trip checks. Optional gear policies stay in **Gear options**. Below the setup, **Save bag space** keeps DPS loss, damage taken and prayer drain allowances independent.
 
 Your account stays on that browser. Import it again when using a different device or the hosted site instead of localhost.
 

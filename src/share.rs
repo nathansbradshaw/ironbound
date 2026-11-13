@@ -18,6 +18,11 @@ pub struct Switch {
 pub struct Setup {
     #[serde(default)]
     pub exclude_void: bool,
+    #[serde(
+        default = "crate::efficient::default_tolerance",
+        skip_serializing_if = "crate::efficient::is_default_tolerance"
+    )]
+    pub switch_tolerance: u32,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub recommended: Option<bool>,
     #[serde(default)]
@@ -47,6 +52,7 @@ impl Setup {
     pub fn from_plan(p: &Plan, o: &Options) -> Self {
         Self {
             exclude_void: o.exclude_void,
+            switch_tolerance: o.switch_tolerance,
             recommended: o.recommended,
             ranking: o.ranking.clone(),
             combat: {
@@ -103,7 +109,8 @@ impl Setup {
         }) {
             return Err(fail());
         }
-        if !self.ranking.weights.valid()
+        if self.switch_tolerance > crate::efficient::MAX_TOLERANCE_PERCENT
+            || !self.ranking.weights.valid()
             || !self.combat.valid()
             || self.version != 1
             || self.raid_level > 150
@@ -292,6 +299,7 @@ impl Setup {
     pub fn options(&self) -> Options {
         Options {
             exclude_void: self.exclude_void,
+            switch_tolerance: self.switch_tolerance,
             recommended: self.recommended,
             ranking: self.ranking.clone(),
             combat: self.combat.clone(),

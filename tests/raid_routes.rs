@@ -91,6 +91,7 @@ fn archive_forks_replace_rooms_and_preserve_all_final_phases() {
     assert!(raid.toggle(&targets, "ocellus").is_err());
     let setup = ironbound::share::Setup {
         exclude_void: false,
+        switch_tolerance: ironbound::efficient::DEFAULT_TOLERANCE_PERCENT,
         recommended: None,
         ranking: Default::default(),
         combat: Default::default(),

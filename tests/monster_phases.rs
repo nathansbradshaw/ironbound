@@ -380,5 +380,8 @@ fn dynamic_vardorvis_budget_keeps_delayed_burn_unverified() {
         &Options::default(),
     )
     .unwrap_err();
-    assert!(reason.contains("burn buildup"), "{reason}");
+    assert!(
+        reason.contains("burn") && reason.contains("unverified"),
+        "{reason}"
+    );
 }

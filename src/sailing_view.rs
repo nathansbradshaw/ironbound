@@ -371,7 +371,6 @@ pub fn render(
         h.push_str("<p class=\"small-note\">Shared boat assumptions. Rebuild using your items to edit.</p>");
     }
     if let Some(member) = member.filter(|_| !readonly) {
-        let conflicts = b.conflicts();
         let checks = b.checks(member);
         if !checks.is_empty() {
             h.push_str(
@@ -391,12 +390,8 @@ pub fn render(
         {
             match b.crew_max(member,i){Ok(max)=>h.push_str(&format!("<div class=\"ship-gunner-result\">{}<span>{}<strong>{max} raw max hit</strong></span></div>",face(c.person.unwrap()),esc(CREW[c.person.unwrap()].name))),Err(reason)=>h.push_str(&format!("<p class=\"small-note\">Crew max unavailable: {}</p>",esc(&reason)))}
         }
-        if conflicts.is_empty() && b.ammo_compatible() {
-            let (shots, consumed) = b.ammo_budget();
-            h.push_str(&format!("<dl class=\"ship-budget\"><div><dt>Shots planned</dt><dd>{shots:.0}</dd></div><div><dt>Expected balls used</dt><dd>{consumed:.0}</dd></div><div><dt>Cargo slots free</dt><dd>{}</dd></div></dl>",b.cargo_capacity().saturating_sub(b.cargo_reserved)));
-        }
         h.push_str("</div>");
     }
-    h.push_str("<p class=\"ship-footnote\">Parts, crew and cargo are manual selections. Compare your weapon in Combat.</p><details class=\"ship-coverage\"><summary>Calculation details & sources</summary><p>Crew max hits are before target armour. Cannons fire every 7 ticks; the firing budget uses your chosen uptime. The attractor recovers 60% on average. Allow spare ammunition. Crew must have cannonballs in cargo.</p><p>Sea creatures hit your boat. Your armour and protection prayers do not protect it. Hull HP and keel damage reduction are supported; Cannon DPS and seeded trip estimates are available below using your stock. Movement and gameplay calibration are not covered. Granite, chainshot and incendiary cannonballs are not modelled.</p><p>Installed parts and crew recruitment need your confirmation. Trip calculations cap supplies at imported stock plus confirmed supplies aboard. Boat cargo is separate from the personal RuneLite inventory export.</p><a href=\"https://oldschool.runescape.wiki/w/Boat_combat\" target=\"_blank\" rel=\"noreferrer\">Boat combat ↗</a> · <a href=\"https://oldschool.runescape.wiki/w/Crew_Management\" target=\"_blank\" rel=\"noreferrer\">Crew ↗</a></details></section>");
+    h.push_str("<p class=\"ship-footnote\">Parts, crew and cargo are manual selections. Compare your weapon in Combat.</p><details class=\"ship-coverage\"><summary>Calculation details & sources</summary><p>Crew max hits are before target armour. Cannons fire every 7 ticks; the firing budget uses your chosen uptime. The attractor recovers 60% on average. Allow spare ammunition. Crew must have cannonballs in cargo.</p><p>Sea creatures hit your boat. Your armour and protection prayers do not protect it. Hull HP and keel damage reduction are supported. Cannon DPS and seeded trip estimates are available below using your stock. Movement and gameplay calibration are not covered. Granite, chainshot and incendiary cannonballs are not modelled.</p><p>Installed parts and crew recruitment need your confirmation. Trip calculations cap supplies at imported stock plus confirmed supplies aboard. Boat cargo is separate from the personal RuneLite inventory export.</p><a href=\"https://oldschool.runescape.wiki/w/Boat_combat\" target=\"_blank\" rel=\"noreferrer\">Boat combat ↗</a> · <a href=\"https://oldschool.runescape.wiki/w/Crew_Management\" target=\"_blank\" rel=\"noreferrer\">Crew ↗</a></details></section>");
     h
 }

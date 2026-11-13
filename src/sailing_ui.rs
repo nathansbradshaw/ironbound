@@ -33,7 +33,7 @@ pub fn controls(snapshot: &Snapshot, o: &Options, open: bool) -> String {
     let f = &m.sailing_owned;
     let i = b.boat.index();
     let mut h = format!(
-        r#"<section class="ship-fleet"><h3>Your fleet</h3><p>Bank items supply your gear, cannonballs and kits. Confirm boats, fitted parts and recruited crew here.</p><div class="actions"><button data-action="sailing-confirm">Confirm this boat &amp; crew</button><button data-action="sailing-owned-open" aria-expanded="{open}">Available parts &amp; crew</button><button data-action="sailing-calculate">Calculate current trip</button><button class="primary" data-action="sailing-recommend">Recommend my boat</button></div><p class="small-note">{} · Your confirmations stay private on this account.</p>"#,
+        r#"<section class="ship-fleet"><h3>Your fleet</h3><p>Bank items supply your gear, cannonballs and kits. Confirm boats, fitted parts and recruited crew here.</p><div class="actions"><button class="phase" data-action="sailing-confirm">Confirm this boat &amp; crew</button><button class="phase" data-action="sailing-owned-open" aria-expanded="{open}">Available parts &amp; crew</button><button class="phase" data-action="sailing-calculate">Calculate current trip</button><button class="phase primary" data-action="sailing-recommend">Recommend my boat</button></div><p class="small-note">{} · Your confirmations stay private on this account.</p>"#,
         if f.permits(b) {
             "Current parts confirmed"
         } else {
@@ -206,7 +206,7 @@ pub fn report(r: &Report, title: &str) -> String {
 }
 pub fn recommendation(r: &Recommendation) -> String {
     let mut h = format!(
-        "<section class=\"ship-recommendation\"><h3>Recommended from your items</h3><p>{} · {} hull · {} keel · {}</p><p class=\"small-note\">Compared {} finalists after screening {} combinations. Bounded search: confirmed boats/parts/crew, regular cannonballs, one repair-kit tier and the planner's Ranged/Magic outfits plus cannon armour. Ranks completion, kills, then DPS.</p><div class=\"ship-choice-grid\">",
+        "<section class=\"ship-recommendation\"><h3>Recommended from your items</h3><p>{} · {} hull · {} keel · {}</p><p class=\"small-note\">Compared {} finalists after screening {} combinations. Bounded search: confirmed boats/parts/crew, regular cannonballs, one repair-kit tier and the planner's Ranged/Magic outfits plus cannon armour. Ranks completion, kills, then DPS.</p>",
         r.boat.boat.name(),
         sailing::WOODS[r.boat.hull],
         sailing::METALS[r.boat.keel],
@@ -235,6 +235,7 @@ pub fn recommendation(r: &Recommendation) -> String {
         sailing::WOODS[r.boat.repair_tier],
         r.boat.cargo_reserved
     ));
+    h.push_str("<div class=\"ship-choice-grid\">");
     for c in r.boat.crew.iter().filter(|c| c.person.is_some()) {
         let p = c.person.unwrap();
         h.push_str(&format!("<span class=\"ship-choice\"><span class=\"ship-face ship-face-{p}\" aria-hidden=\"true\"></span><strong>{}</strong><small>{}</small></span>",esc(sailing::CREW[p].name),sailing::ROLES[c.role]));
@@ -246,7 +247,7 @@ pub fn recommendation(r: &Recommendation) -> String {
             esc(&planner::item_name(*id))
         ));
     }
-    h.push_str("</div><button class=\"primary\" data-action=\"sailing-use\">Use this setup</button></section>");
+    h.push_str("</div><button class=\"phase primary\" data-action=\"sailing-use\">Use this setup</button></section>");
     h.push_str(&report(&r.report, "Recommended trip"));
     h
 }

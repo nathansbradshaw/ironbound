@@ -410,6 +410,8 @@ impl Model {
                 }
             }
             if ammo.is_some()
+                && o.combat.loaded_ammo_confirmed
+                && !o.item_excluded(ammo.unwrap())
                 && ammo == o.combat.loaded_dart
                 && !rule.family.internal_ammo.is_empty()
             {

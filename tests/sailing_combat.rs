@@ -277,3 +277,145 @@ fn private_fleet_and_scenario_controls_use_icon_buttons_without_dropdowns() {
     assert!(html.contains("sailing-loaded-31914"));
     assert!(html.contains("sailing:cannon2:5"));
 }
+#[test]
+fn player_boost_prayer_and_elite_void_follow_nested_floors_without_stance_bonus() {
+    let s = snapshot();
+    let mut set = vec![None; 14];
+    for (slot, id) in [(0, 11664), (4, 13072), (7, 13073), (9, 8842)] {
+        set[slot] = Some(id);
+    }
+    let mut settings = defence::Settings::default();
+    settings.boosts.ranged = "Ranging potion".into();
+    settings.offensive = "Rigour".into();
+    let r = sailing_combat::cannon(
+        &s.members[0],
+        &set,
+        planner::monster(15194).unwrap(),
+        0,
+        0,
+        None,
+        false,
+        &settings,
+    )
+    .unwrap();
+    // Visible 112: Rigour gives floor(112*1.20)+8=142 accuracy,
+    // floor(112*1.23)+8=145 strength; Void floors to 156 / 163.
+    assert_eq!(r.attack_roll, 156 * 136);
+    assert_eq!(r.raw_max, 33);
+    settings.ranged_stance = "Rapid".into();
+    let q = sailing_combat::cannon(
+        &s.members[0],
+        &set,
+        planner::monster(15194).unwrap(),
+        0,
+        0,
+        None,
+        false,
+        &settings,
+    )
+    .unwrap();
+    assert_eq!(q.attack_roll, r.attack_roll);
+    assert_eq!(q.raw_max, r.raw_max);
+}
+#[test]
+fn repairs_consume_only_loaded_kits_and_never_resurrect_a_sunk_hull() {
+    let s = snapshot();
+    let mut o = options();
+    o.sailing.repair_kits = 3;
+    o.sailing.repair_tier = 0;
+    o.sailing.repair_workbench = true;
+    o.sailing.crew[2] = Assignment {
+        person: Some(0),
+        role: 2,
+    };
+    let mut plan = planner::plan(&s, &o);
+    plan.inventory.clear();
+    let mut model = Model::build(
+        &s,
+        &o,
+        &plan,
+        &vec![None; 14],
+        "Ranged",
+        planner::monster(15194).unwrap(),
+    )
+    .unwrap();
+    model.target_hp = 100000;
+    model.incoming.distribution = vec![(10, 1.0)];
+    model.incoming.ticks = 4.0;
+    let r = model.run(64);
+    assert_eq!(r.sunk, 64);
+    assert_eq!(r.mean_kits, 3.0);
+    assert_eq!(r.p95_kits, 3);
+    model.incoming.distribution = vec![(model.boat.hp(), 1.0)];
+    let r = model.run(64);
+    assert_eq!(r.sunk, 64);
+    assert_eq!(r.mean_kits, 0.0);
+}
+#[test]
+fn charged_weapons_require_confirmed_loaded_stock_and_deplete() {
+    let s = snapshot();
+    let mut o = options();
+    o.targets[0].style = "Magic".into();
+    o.sailing.player_role = 0;
+    o.sailing.cannon = None;
+    o.sailing.cannon_count = 1;
+    o.sailing.crew = Default::default();
+    let mut plan = planner::plan(&s, &o);
+    plan.inventory.clear();
+    let mut set = vec![None; 14];
+    set[3] = Some(11905);
+    assert!(
+        Model::build(
+            &s,
+            &o,
+            &plan,
+            &set,
+            "Magic",
+            planner::monster(15194).unwrap()
+        )
+        .unwrap_err()
+        .contains("charges")
+    );
+    o.sailing.powered_charges = 1;
+    let mut model = Model::build(
+        &s,
+        &o,
+        &plan,
+        &set,
+        "Magic",
+        planner::monster(15194).unwrap(),
+    )
+    .unwrap();
+    model.target_hp = 100000;
+    let r = model.run(64);
+    assert_eq!(r.depleted, 64);
+    assert_eq!(r.mean_kills, 0.0);
+}
+
+#[test]
+fn choosing_a_loaded_dart_does_not_invent_unconfirmed_or_excluded_ammunition() {
+    let mut s = snapshot();
+    s.members[0].bank = Some(vec![12926, 1]);
+    let mut o = options();
+    o.sailing.player_role = 0;
+    o.sailing.cannon = None;
+    o.sailing.cannon_count = 1;
+    o.sailing.crew = Default::default();
+    o.sailing.powered_charges = 100;
+    o.combat.loaded_dart = Some(11230);
+    o.combat.ammo_shots = 100;
+    let mut set = vec![None; 14];
+    set[3] = Some(12926);
+    let mut plan = planner::plan(&s, &o);
+    plan.inventory.clear();
+    let target = planner::monster(15194).unwrap();
+    let model = Model::build(&s, &o, &plan, &set, "Ranged", target).unwrap();
+    assert_eq!(model.stock.get(&11230).copied().unwrap_or(0), 0);
+    assert_eq!(model.run(32).depleted, 32);
+    o.combat.loaded_ammo_confirmed = true;
+    let model = Model::build(&s, &o, &plan, &set, "Ranged", target).unwrap();
+    assert_eq!(model.stock[&11230], 100);
+    o.excluded.insert(11230);
+    let model = Model::build(&s, &o, &plan, &set, "Ranged", target).unwrap();
+    assert_eq!(model.stock.get(&11230).copied().unwrap_or(0), 0);
+}

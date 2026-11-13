@@ -416,9 +416,6 @@ impl Settings {
                 }
             }
         }
-        if self.crew.iter().any(|c| c.person.is_some() && c.role >= 3) && self.cannonballs == 0 {
-            notes.push("No cannonballs recorded in cargo for your gunners.".into());
-        }
         if self.crew.iter().any(|c| c.person.is_some() && c.role == 2) && self.repair_kits == 0 {
             notes.push("No repair kits recorded for the repair crew.".into());
         }

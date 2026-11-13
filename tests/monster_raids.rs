@@ -646,3 +646,45 @@ fn every_declared_raid_state_has_a_working_default_attack() {
     assert_eq!(encounters::demonbane_vulnerability(7584), 115);
     assert_eq!(encounters::demonbane_vulnerability(16684), 80);
 }
+#[test]
+fn nex_readiness_compares_owned_ruby_bolts_and_honours_exclusions() {
+    let mut bank = account::demo();
+    let m = &mut bank.members[0];
+    m.inventory = None;
+    m.equipment = None;
+    m.shared_bank = None;
+    m.bank = Some(vec![
+        9185, 1, 9144, 1000, 9242, 1000, 1163, 1, 2503, 1, 2497, 1, 7462, 1, 6328, 1,
+    ]);
+    for s in account::SKILLS {
+        m.level_overrides.insert(s.into(), 99);
+    }
+    let index = encounters::catalog()
+        .iter()
+        .position(|e| e.name == "Nex")
+        .unwrap();
+    let with = bestiary::assess_catalog(&bank, &Options::default())[index].clone();
+    let mut o = Options::default();
+    o.excluded.insert(9242);
+    let without = bestiary::assess_catalog(&bank, &o)[index].clone();
+    let damage = |a: &bestiary::Assessment| {
+        a.reason
+            .split("basic DPS")
+            .next()
+            .unwrap()
+            .split_whitespace()
+            .last()
+            .unwrap()
+            .parse::<f64>()
+            .unwrap()
+    };
+    assert!(
+        damage(&with) > damage(&without) + 1.5,
+        "{} / {}",
+        with.reason,
+        without.reason
+    );
+    assert!(with.readiness <= without.readiness);
+    assert_eq!(with.requirements.status, without.requirements.status);
+    assert_eq!(with.requirements.reason, without.requirements.reason);
+}

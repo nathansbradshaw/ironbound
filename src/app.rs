@@ -5222,11 +5222,17 @@ fn combat_panel(s: &State, p: &Plan) -> String {
                 if r.burn.is_some() {
                     headline = headline.replace("Outgoing DPS", "Sustained DPS");
                 }
+                if crate::encounters::window(target.id).is_some_and(|w|w.fixed_damage.is_some()) {
+                    headline=headline.replace("Outgoing DPS","Single-special rate");
+                    headline.push_str("<p class=\"small-note\">One guaranteed 75–150 attack · 112.5 mean damage. This rate uses the nominal weapon cooldown; it excludes the 35% energy cost, recovery and transfers, so it is not sustained fight DPS.</p>");
+                }
                 html.push_str(&attack_window_budget(s, target, &set, &r));
                 if r.burn_dps > 0.0 {
                     html.push_str(&format!("<p>Eclipse's long-run burn reference is {:.3} HP/s. The finite-HP estimate above instead starts empty and advances actual burn pulses, stack expiry and target death. Each separate attack window or target starts fresh; use the full-fight scenario for transitions and downtime.</p>", r.burn_dps));
                 }
-                if r.expected_attack_ticks != f64::from(r.attack_ticks) {
+                if crate::encounters::window(target.id).is_some_and(|w|w.ocellus_explosions==Some(true)) {
+                    html.push_str("<p>Explosion opportunity: two-tick expected cooldown. The damage reduction still uses the ordinary weapon speed; opportunity uptime is not predicted.</p>");
+                }else if r.expected_attack_ticks != f64::from(r.attack_ticks) {
                     html.push_str(&format!("<p>Bloodrager average delay: {:.3} ticks ({:.3}s), including the 33% chance per accurate splat to attack one tick sooner.</p>",r.expected_attack_ticks,r.expected_attack_ticks*0.6));
                 }
                 if crate::rules::set_effect(&set, "blue_moon") {
@@ -5299,7 +5305,7 @@ fn combat_panel(s: &State, p: &Plan) -> String {
         "<tr><th>Magic damage</th><td>{:.1}%</td></tr>",
         bonus.other.get("magic_str").copied().unwrap_or(0) as f64 / 10.0
     ));
-    html.push_str("</tbody></table></details><details><summary>DPS assumptions</summary><p class=\"small-note\">Selected current-level boosts and stat prayer; no boost decay, special-attack damage, venom or recoil. ToA assumes solo, path level 0, raid levels 0–150. Ruby bolts use selected target HP (phase start by default) and the selected Kandarin diary setting. Outgoing DPS covers uninterrupted attacks while vulnerable. Incoming scenarios are separate and their coverage notes apply. Movement, special-phase uptime, curses and eating are not a full encounter simulation. Unsupported mechanics show no DPS.</p></details></div></section>");
+    html.push_str("</tbody></table></details><details><summary>DPS assumptions</summary><p class=\"small-note\">Selected current-level boosts and stat prayer; no boost decay, venom or recoil. Ordinary outgoing values exclude special attacks; the explicitly named Dawnbringer single-special probe is separate. The ToA preset uses solo/path 0 at levels 0–150; the Expert reference is fixed solo-300/path 0. Other raid references retain their declared scales. Ruby bolts use selected target HP or the declared comparison point, plus the selected Kandarin diary setting. Outgoing DPS covers uninterrupted attacks while vulnerable. Incoming scenarios are separate and their coverage notes apply. Movement, phase uptime, curses, team contribution and eating are not a full encounter simulation. Unsupported mechanics show no DPS.</p></details></div></section>");
     html.insert_str(results_index, &headline);
     html
 }

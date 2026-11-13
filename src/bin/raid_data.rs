@@ -97,6 +97,29 @@ impl Builder {
 fn target(id: i32, style: &str) -> Value {
     json!({"id":id,"style":style})
 }
+fn npc_name(npc: &Value) -> String {
+    let name = npc["name"].as_str().unwrap();
+    let version = npc["version"]
+        .as_str()
+        .unwrap_or("")
+        .replace("Normal mode, ", "")
+        .replace("Hard mode, ", "")
+        .replace(" (Normal)", "");
+    if [
+        "",
+        "Normal",
+        "Normal mode",
+        "Hard",
+        "Hard mode",
+        "Hard Mode",
+    ]
+    .contains(&version.as_str())
+    {
+        name.into()
+    } else {
+        format!("{name} · {version}")
+    }
+}
 fn group(name: &str, targets: Vec<Value>, note: &str) -> Value {
     json!({"name":name,"aliases":[],"targets":targets,"note":note})
 }
@@ -218,7 +241,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             };
             map.insert(source, id);
             let npc = b.npc(source, None);
-            let name = npc["name"].as_str().unwrap();
+            let name = npc_name(&npc);
             let (kind, reach, styles) = match source {
                 7540 | 7543 => ("tekton", "any", vec!["Melee", "Magic"]),
                 7568 => ("crystal", "any", vec!["Melee", "Magic"]),
@@ -318,7 +341,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 offset + index as i32
             };
             let npc = b.npc(source, None);
-            let name = npc["name"].as_str().unwrap();
+            let name = npc_name(&npc);
             let p1 = [8369, 10847].contains(&source);
             let nylo = [8354, 10807].contains(&source);
             b.profile(
@@ -333,13 +356,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 &format!(
                     "{name} · {}{party}-player{}",
                     if is_hard { "Hard · " } else { "" },
-                    if nylo {
-                        " · melee colour"
-                    } else if p1 {
-                        " · phase 1"
-                    } else {
-                        ""
-                    }
+                    if nylo { " · melee colour" } else { "" }
                 ),
                 style,
                 None,
@@ -448,7 +465,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         (16681, "Melee"),
     ] {
         let npc = b.npc(source, None);
-        let name = npc["name"].as_str().unwrap();
+        let name = if source == 16659 {
+            npc["name"].as_str().unwrap().into()
+        } else {
+            npc_name(&npc)
+        };
         b.profile(
             source,
             "standard",
@@ -580,7 +601,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let source = t["id"].as_i64().unwrap() as i32;
         let style = t["style"].as_str().unwrap();
         let id = 206000 + i as i32;
-        let name = b.npc(source, None)["name"].as_str().unwrap().to_owned();
+        let name = npc_name(&b.npc(source, None));
         let mut w = b.window(
             id,
             source,

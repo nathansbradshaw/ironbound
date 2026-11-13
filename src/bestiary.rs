@@ -647,6 +647,22 @@ fn assess_gear_catalog(snapshot: &Snapshot, preferences: &Options) -> Vec<Assess
         }
         let Some(p) = guideline else { return unknown("No reviewed readiness guideline yet. Open the gear plan where available."); };
         let mut entry_sets = sets.clone();
+        if entry.name=="Nex" || matches!(entry.category(),"Raids") && p.styles.len()>=3 {
+            // Raid screens must consider owned specialist weapons and bolts.
+            // A generic bank winner can miss fire spells or HP-dependent ammo.
+            for (style,set) in &sets {
+                if !p.styles.contains(&rules::base_style(style)) {continue;}
+                for id in owned.keys().filter(|id|planner::can_use(**id,&member) && rules::weapon_for_style(**id,style).is_some()) {
+                    let mut alternative=set.clone();alternative[3]=Some(*id);
+                    if planner::gear(*id).is_some_and(|g|g.two_handed){alternative[5]=None;}
+                    if rules::base_style(style)=="Ranged" {
+                        let ammo=rules::ammo_ids(*id);
+                        if ammo.is_empty(){alternative[13]=None;entry_sets.push((*style,alternative));}
+                        else {for round in ammo.iter().filter(|a|owned.get(a).is_some_and(|q|*q>=options.combat.ammo_shots)&&planner::can_use(**a,&member)) {let mut kit=alternative.clone();kit[13]=Some(*round);entry_sets.push((*style,kit));}}
+                    }else{entry_sets.push((*style,alternative));}
+                }
+            }
+        }
         if p.styles.contains(&"Pickaxe") {
             if member.level("Mining").is_none() { return unknown("Add your Mining level to assess Guardian pickaxe damage and Chambers gear readiness."); }
             for (style,set) in sets.iter().filter(|(style,_)|rules::base_style(style)=="Melee") {
@@ -826,11 +842,12 @@ pub fn card(entry: &Entry, index: usize, a: &Assessment) -> String {
         .first()
         .and_then(|t| planner::monster(t.id))
         .map(|m| {
-            let hp = m
+            let window=crate::encounters::window(m.id);
+            let hp = window.and_then(|w|w.hp_probe).map(|hp|format!("{hp} HP probe")).unwrap_or_else(||m
                 .skills
                 .get("hp")
-                .map(|v| v.to_string())
-                .unwrap_or_else(|| "?".into());
+                .map(|v| format!("{v} HP"))
+                .unwrap_or_else(|| "? HP".into()));
             let def = m
                 .skills
                 .get("def")
@@ -842,11 +859,16 @@ pub fn card(entry: &Entry, index: usize, a: &Assessment) -> String {
                 .map(|v| v.to_string())
                 .unwrap_or_else(|| "?".into());
             format!(
-                "<span>♥ {hp} HP</span><span>⛨ {def} Defence</span><span>✦ {magic} Magic</span>"
+                "<span>♥ {hp}</span><span>⛨ {def} Defence</span><span>✦ {magic} Magic</span>"
             )
         })
         .unwrap_or_else(|| "<span>Recorded stats unavailable</span>".into());
-    let context = if entry.targets.len() > 1 {
+    let first_window=entry.targets.first().and_then(|t|crate::encounters::window(t.id));
+    let context = if first_window.is_some_and(|w|w.raid_scale.is_some()) {
+        "First attack window · declared raid scale"
+    }else if first_window.is_some_and(|w|w.hp_probe.is_some()) {
+        "Current HP probe · recorded defences"
+    }else if entry.targets.len() > 1 {
         "First recorded phase · base stats"
     } else {
         "Recorded target · base stats"

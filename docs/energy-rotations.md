@@ -2,8 +2,8 @@
 
 Reviewed 13 November 2026. Equip charged Zorya's tome or Crimson kisten, then open
 **Combat → Special attack burst → Compare a timed rotation**. This opt-in model
-uses normal attacks between affordable specials with the selected weapon and
-equipment. It does not change ordinary DPS, automatic gear ranking or full-fight
+uses normal attacks between affordable specials. **Weapon swap & external energy**
+can select an owned special weapon and explicit restores. It does not change ordinary DPS, automatic gear ranking or full-fight
 survival/supply estimates. Other special weapons remain unmodelled.
 
 ## Recovery clock
@@ -28,6 +28,50 @@ window. Results use the same declared seed and trial count, but changing attack
 choices means the random draws need not represent identical damage events.
 
 ## Rotation contract
+
+### Weapon swaps and external recovery
+
+The equipped setup supplies normal filler attacks. Choose charged Zorya or kisten
+as the special swap, with its actual stance and the same armour/ring. A two-handed
+swap temporarily removes the offhand; returning restores the original setup.
+Each previous attack's full cooldown is preserved. An optional 0–10 extra ticks
+per change declares execution overhead **after** that cooldown. Zero assumes a
+same-tick change. The action is selected at the ready tick, then committed through
+that overhead; a restore during a return swap does not cancel its normal attack.
+Finish Zorya's held follow-ups before switching away, avoiding an unverified
+claim about empowerment retention across weapon changes.
+
+- **Surge:** schedule one owned, non-excluded, unnoted dose at a chosen tick and
+  declare when its existing cooldown is ready. It restores up to 25%, with a
+  500-tick reuse cooldown. Scheduling before readiness is rejected. A full bar
+  skips the dose without consuming it or starting cooldown; it is not rescheduled.
+  The five-minute window includes at most this one declared dose. No other potion
+  timing, PvP delay or encounter cooldown resets are inferred.
+- **Energy Transfer:** declare one confirmed cooperative arrival, restoring up to
+  100%. Confirm Accept Aid, the caster's unlocks/runes, 100% energy and more than
+  10 HP. The caster's resources, arrival travel and availability are assumptions,
+  not simulated or inferred from shared bank ownership.
+- **Death Charge:** confirm one pre-cast charge and its remaining 1–100 ticks.
+  An eligible last hit **before** expiry restores up to 15%, including a capped
+  zero at full energy. Known sea-creature, Moon, Olm-claw and non-HP-counter
+  exclusions are withheld. Verify range, no recent PvP, unlocks/runes and last-hit
+  credit. One target uses at most one charge even with the upgraded spell. It
+  restores only after that target dies; no add kills or recasts fund earlier hits.
+
+Scheduled arrivals run during attack cooldowns and switch overhead, using natural
+recovery, then Surge, then Energy Transfer when simultaneous. An external restore
+preserves partial natural progress unless it reaches full energy. Death Charge
+follows the killing hit. Nothing after target death is credited. End-boundary
+arrivals can change final energy but cannot add an attack. The report separates
+natural and external recovery, counts doses/transfers/changes and shows remaining
+Surge cooldown. The trace includes each actual weapon/style, swap and restore.
+
+These are comparisons. Ownership/exclusions are checked for the extra weapon and
+Surge dose; they are **not silently added to the exported bag**. Carry them and
+allow room for a displaced shield before using the rotation. Exported assumptions
+and shared/private backups retain the inputs. Normal staff fillers retain the
+selected spell. Variable Blood Moon cooldowns, delayed Eclipse burns, Blue Moon
+follow-up timing and Soulreaper stack transitions are gated for this swap model.
 
 The default is 512 reproducible trials, bounded to 4,096 trials and 500 ticks.
 Damage samples the reviewed exact normal/special distributions. Zorya keeps a
@@ -73,6 +117,18 @@ buffs, reproducibility, sampling against direct roll enumeration, real ring stat
 loss, validation and isolation from normal calculations. Shared-link/export
 coverage is in `tests/special_attacks.rs`.
 
+Swap/restore extensions add independent timelines for previous cooldowns, switch
+overhead, temporary shield removal, Zorya priority, standard-spell fillers,
+Surge during cooldowns, full-bar skips, ordering/caps, end boundaries, death and
+expiry, resource availability, and withheld stateful fillers. Source rules:
+[Surge](https://oldschool.runescape.wiki/w/Surge_potions),
+[Yama release](https://oldschool.runescape.wiki/w/Update:Yama,_the_Master_of_Pacts:_Out_Today),
+[Energy Transfer](https://oldschool.runescape.wiki/w/Energy_Transfer),
+[Death Charge](https://oldschool.runescape.wiki/w/Death_Charge),
+[ordinary potion delay](https://oldschool.runescape.wiki/w/Free-to-play_PvP_techniques#Potions_usage).
+Tick-zero impacts, same-tick event ordering and execution overhead are explicit
+comparison conventions; projectile/server processing timing is not calibrated.
+
 Release checks: all 719 integrated Rust tests and 24 independent reference
 loadouts pass, including the latest quest and Sailing changes. Optimized
 WebAssembly, formatting and whitespace checks pass. Synthetic browser checks
@@ -84,7 +140,7 @@ stats rather than assuming more specials always means more damage. No browser
 application errors were reported. These are model/browser checks, not gameplay
 calibration.
 
-Remaining: other weapon specials, ordered multi-weapon swaps, travel/movement,
-phase transitions and downtime, Death Charge/Surge/pool and other external
-restores, charge consumption, incoming survival and actual gameplay timing
+Remaining: other weapon specials, arbitrary multi-spec sequences, travel/movement,
+phase transitions and downtime, add-kill Death Charge/recasts, pools and other
+restores, automatic rotation-bag packing, charge consumption, incoming survival and actual gameplay timing
 calibration. The bounded comparison does not establish whole-fight special DPS.

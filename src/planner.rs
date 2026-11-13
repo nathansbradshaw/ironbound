@@ -1621,7 +1621,8 @@ fn plan_uncached(snapshot: &Snapshot, options: &Options) -> Plan {
     };
     for target in &targets {
         if let Some((_, set)) = sets.iter().find(|(style, _)| *style == target.style)
-            && let Some(issue) = crate::quest_bosses::weapon_requirement(target.id, set, &target.style)
+            && let Some(issue) =
+                crate::quest_bosses::weapon_requirement(target.id, set, &target.style)
             && !out.missing.contains(&issue)
         {
             out.missing.push(issue);

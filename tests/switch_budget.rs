@@ -189,3 +189,122 @@ fn full_owned_catalog_fills_common_magic_alternatives() {
     assert_eq!(p.equipment[10], Some(4097));
     assert_eq!(p.equipment[12], Some(28327));
 }
+
+fn prayer_fixture() -> (
+    account::Member,
+    std::collections::BTreeMap<i32, u32>,
+    Vec<optimization::StyleSet>,
+    Options,
+) {
+    let mut m = account::Member::default();
+    for skill in account::SKILLS {
+        m.level_overrides.insert(skill.into(), 99);
+    }
+    let owned = std::collections::BTreeMap::from([(4151, 1), (11905, 1), (10551, 1), (10462, 1)]);
+    let mut melee = vec![None; 14];
+    melee[3] = Some(4151);
+    melee[4] = Some(10551);
+    let mut magic = vec![None; 14];
+    magic[3] = Some(11905);
+    magic[4] = Some(10462);
+    let ideals = vec![
+        optimization::StyleSet {
+            style: "Magic".into(),
+            equipment: magic,
+        },
+        optimization::StyleSet {
+            style: "Melee".into(),
+            equipment: melee,
+        },
+    ];
+    let mut o = Options {
+        boss: Boss::Custom,
+        targets: vec![
+            planner::Target {
+                id: 100012,
+                style: "Magic".into(),
+            },
+            planner::Target {
+                id: 100013,
+                style: "Melee".into(),
+            },
+        ],
+        max_switches: Some(2),
+        switch_slots: 2,
+        focus_style: "Melee".into(),
+        recommended: Some(true),
+        ..Default::default()
+    };
+    o.combat.protection = "Melee".into();
+    (m, owned, ideals, o)
+}
+#[test]
+fn equal_damage_uses_prayer_armour_when_the_extra_switch_fits() {
+    let (m, owned, ideals, o) = prayer_fixture();
+    let (sets, report) = optimization::solve(&m, &owned, ideals.clone(), &o).unwrap();
+    let magic = &sets.iter().find(|s| s.style == "Magic").unwrap().equipment;
+    let melee = &sets.iter().find(|s| s.style == "Melee").unwrap().equipment;
+    assert_eq!(magic[4], Some(10462)); // Guthix robes add prayer without magic damage.
+    assert_eq!(melee[4], Some(10551)); // Focused melee keeps its strength-bearing torso.
+    assert_eq!(report.max_changes, 2);
+    assert_eq!(report.gear_slots, 2);
+    assert!(report.comparisons.iter().all(|c| c.before == c.after));
+    let mut hybrid = magic.clone();
+    hybrid[4] = Some(10551);
+    assert!(
+        ironbound::prayer::drain_per_minute(ironbound::prayer::bonus(magic), &o.combat)
+            < ironbound::prayer::drain_per_minute(ironbound::prayer::bonus(&hybrid), &o.combat)
+    );
+    let full = ironbound::yama::judge_cycle(&m, melee, magic, &o, &owned).unwrap();
+    let shared = ironbound::yama::judge_cycle(&m, melee, &hybrid, &o, &owned).unwrap();
+    assert_eq!(full.seconds, shared.seconds);
+    assert!(report.note.contains("supported attack windows"));
+}
+#[test]
+fn prayer_tie_break_never_exceeds_the_switch_or_carried_item_budget() {
+    let (m, owned, ideals, mut o) = prayer_fixture();
+    o.max_switches = Some(1);
+    let (sets, report) = optimization::solve(&m, &owned, ideals.clone(), &o).unwrap();
+    assert_eq!(report.max_changes, 1);
+    assert_eq!(
+        sets.iter().find(|s| s.style == "Magic").unwrap().equipment[4],
+        Some(10551)
+    );
+    o.max_switches = Some(2);
+    o.switch_slots = 1;
+    let (sets, report) = optimization::solve(&m, &owned, ideals, &o).unwrap();
+    assert_eq!(report.gear_slots, 1);
+    assert_eq!(
+        sets.iter().find(|s| s.style == "Magic").unwrap().equipment[4],
+        Some(10551)
+    );
+}
+#[test]
+fn inactive_prayers_keep_equal_damage_setups_to_fewer_switches() {
+    let (m, owned, ideals, mut o) = prayer_fixture();
+    o.combat.protection = "None".into();
+    let (sets, report) = optimization::solve(&m, &owned, ideals, &o).unwrap();
+    assert_eq!(report.gear_slots, 1);
+    assert_eq!(report.max_changes, 1);
+    assert_eq!(
+        sets.iter().find(|s| s.style == "Magic").unwrap().equipment[4],
+        Some(10551)
+    );
+}
+#[test]
+fn prayer_savings_never_replace_a_better_primary_damage_score() {
+    let (m, mut owned, mut ideals, o) = prayer_fixture();
+    // An occult adds damage; a prayer-bearing stole must not replace it.
+    owned.insert(12002, 1);
+    owned.insert(10472, 1);
+    ideals[0].equipment[2] = Some(12002);
+    ideals[1].equipment[2] = Some(10472);
+    let mut o = o;
+    o.max_switches = Some(3);
+    o.switch_slots = 3;
+    let (sets, _) = optimization::solve(&m, &owned, ideals, &o).unwrap();
+    assert_eq!(
+        sets.iter().find(|s| s.style == "Magic").unwrap().equipment[2],
+        Some(12002)
+    );
+}

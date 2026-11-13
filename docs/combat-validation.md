@@ -59,6 +59,8 @@ Ten additional golden loadouts come from the upstream `BasicRolls.test.ts` and `
 - `assets/encounter-mechanics.json`: encounter windows, demonbane vulnerability and NPC magic-defence exceptions. Unsupported phases retain their coverage gates.
 - `src/recommendation.rs` / `src/optimization.rs`: choose complete owned sets using those calculations and practical constraints; never duplicate weapon formulas here.
 
+Switch limits are ceilings, not a request to fill every available change. The UI reports actual changes separately from the limit and from total gear packed. When primary combat scores tie, the search prefers lower estimated prayer usage across supported attack windows, then fewer carried items. Travel, encounter drains, mechanics and unknown windows are excluded from that secondary estimate; it is not a full-trip forecast. With no active prayer, equal scores still prefer fewer items.
+
 New mathematical behavior still needs a tested Rust effect. Balance changes to existing parameters can stay in data. Validate new rule data before calculating; do not silently ignore unknown mechanics.
 
 ## Remaining limits

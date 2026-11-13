@@ -17,6 +17,11 @@ browser, reference-calculator and gameplay evidence are recorded separately.
 
 ## 3. Make encounter coverage actionable
 
+The detailed [monster mechanics backlog](monster-backlog.md) tracks each known
+boss, raid, wave and attribute-specific gap, with separate outgoing and full-fight
+acceptance criteria. Work through its shared outgoing rules before enabling
+dedicated encounter simulations.
+
 - [x] Show which selected attack windows have supported outgoing calculations and which are packing only.
 - [x] Explain remaining mechanics beside the encounter and in preparation/export notes. Count Wardens explicitly rather than omitting it from the supported fraction.
 - [x] Vorkath: expose current-HP ruby bolts and an acid damage window with per-outcome rounding; verify finite-HP attack budgets with decreasing ruby procs.

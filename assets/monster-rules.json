@@ -1,0 +1,14 @@
+{
+  "profiles": [
+    {"ids": [2042,2043,2044], "kind": "zulrah", "melee": "polearm", "allowed_styles": ["Melee","Ranged","Magic"]},
+    {"ids": [494], "kind": "kraken", "melee": "none", "allowed_styles": ["Ranged","Magic"]},
+    {"ids": [492], "kind": "kraken", "allowed_styles": ["Melee","Ranged","Magic"]},
+    {"ids": [319], "kind": "corporeal", "allowed_styles": ["Melee","Ranged","Magic"]},
+    {"ids": [2265,2266,2267], "kind": "standard", "allowed_styles": ["Melee","Ranged","Magic"]},
+    {"ids": [963,965], "kind": "standard", "allowed_styles": ["Melee","Ranged","Magic"]},
+    {"ids": [3162,7852], "kind": "standard", "melee": "flying", "allowed_styles": ["Melee","Ranged","Magic"]},
+    {"ids": [7851,7887], "kind": "standard", "allowed_styles": ["Melee"]},
+    {"ids": [12191,5889,5891,5908], "kind": "standard", "allowed_styles": ["Melee","Ranged","Magic"]},
+    {"ids": [5914], "kind": "respiratory", "melee": "polearm", "allowed_styles": ["Melee","Ranged","Magic"]}
+  ]
+}

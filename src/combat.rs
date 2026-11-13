@@ -97,6 +97,16 @@ pub struct HpDependentHit {
     pub percent: i32,
     pub cap: i32,
     pub divisor: i32,
+    pub transform: crate::monster_rules::Transform,
+    /// Number of final entries contributed by this proc at the displayed HP.
+    pub distribution_entries: usize,
+}
+impl HpDependentHit {
+    pub fn outcomes(self, hp: u32) -> Vec<(i32, f64)> {
+        let raw = ((i64::from(hp) * i64::from(self.percent) / 100).min(i64::from(self.cap)) as i32)
+            / self.divisor;
+        self.transform.outcomes(raw, self.chance)
+    }
 }
 #[derive(Clone, Debug)]
 pub struct ElementalStats {
@@ -213,6 +223,7 @@ pub fn calculate_configured(
     }
     let requested_style = style;
     let style = rules::base_style(style);
+    crate::monster_rules::check_weapon(monster.id, style, weapon)?;
     if style == "Ranged" && !settings.ranged_type.permits_weapon(weapon) {
         return Err(format!(
             "Choose a {} ranged weapon for this plan.",
@@ -637,6 +648,15 @@ pub fn calculate_configured(
     if fang {
         max_hit -= min_hit;
     }
+    let respiratory = crate::monster_rules::profile(monster.id)
+        .is_some_and(|p| p.kind == crate::monster_rules::Kind::Respiratory);
+    let respiratory_finisher = respiratory && (rule.has(Effect::Demonbane) || demonbane_spell);
+    if respiratory_finisher {
+        max_hit = monster.skills.get("hp").copied().unwrap_or(50);
+        min_hit = max_hit;
+    } else if respiratory {
+        min_hit += max_hit / 2;
+    }
     if warden_p2 {
         (min_hit, max_hit) = crate::effects::wardens_p2_bounds(attack, defence, max_hit);
         hit = 1.0;
@@ -656,9 +676,13 @@ pub fn calculate_configured(
             min_hit,
             max_hit,
             flat_armour,
-            &rule.family.procs,
+            if respiratory_finisher {
+                &[]
+            } else {
+                &rule.family.procs
+            },
             monster,
-            mark_bonus,
+            mark_bonus.filter(|_| !respiratory_finisher),
         )
     };
     let mut distribution: Vec<_> = hits.iter().map(|(damage, p)| (*damage, p * hit)).collect();
@@ -692,6 +716,8 @@ pub fn calculate_configured(
                     percent: if zcb { 22 } else { 20 },
                     cap: if zcb { 110 } else { 100 },
                     divisor: 1,
+                    transform: Default::default(),
+                    distribution_entries: 1,
                 });
                 max_hit = max_hit.max(ruby);
             }
@@ -710,6 +736,22 @@ pub fn calculate_configured(
             }
             _ => {}
         }
+    }
+    crate::monster_rules::apply(
+        monster.id,
+        weapon,
+        attack_type,
+        &mut distribution,
+        &mut hp_dependent,
+    );
+    // NPC limiters can lower or reroll the previously calculated maximum.
+    if crate::monster_rules::profile(monster.id).is_some() {
+        max_hit = distribution
+            .iter()
+            .filter(|(_, p)| *p > 0.0)
+            .map(|(d, _)| *d)
+            .max()
+            .unwrap_or(0);
     }
     if damage_model == crate::encounters::DamageModel::HalfDamage {
         for (damage, _) in &mut distribution {

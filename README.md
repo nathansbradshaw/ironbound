@@ -56,6 +56,14 @@ Coverage notes distinguish packing templates from supported calculations. CoX su
 
 Moons includes defence-aware normal attacks, chained hits, flat armour and Blood Moon healing. Its curses, special phases, camp boosts and movement are not fully simulated. Unknown damage mechanics show **unavailable**, rather than zero.
 
+Zulrah, emerged Kraken/cave kraken, Corporeal Beast, Dagannoth Kings, Kalphite
+Queen, Kree'arra and vulnerable Grotesque Guardians have reviewed outgoing attack
+windows. Their notes explain hit caps, reductions, reach and immunity rules.
+Awake Duke uses reduced Demonbane effectiveness; exposed Sire vents use their
+minimum-hit and successful Demonbane finisher rules, with separate body stages.
+Incoming damage and full-fight mechanics remain partial; see the
+[monster backlog](docs/monster-backlog.md).
+
 Recommendations use a bounded search. They are **not a proof of global BIS** or a prediction of successful kills.
 
 ## Your bank stays private

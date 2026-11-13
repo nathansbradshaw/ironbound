@@ -441,6 +441,9 @@ fn attack(
     let spell = rules::spell_name_for_target(member, set, &stock, &settings, &target, o.raid_level);
     let hits =
         combat::calculate_configured(member, set, style, &target, spell, o.raid_level, &settings)?;
+    if hits.burn_dps > 0.0 {
+        return Err("Burn stack timing is not yet verified in this fight simulator. Use another packed set for this scenario.".into());
+    }
     if (hits.expected_attack_ticks - hits.attack_ticks as f64).abs() > 1e-8 {
         return Err("Conditional attack-speed procs need a verified per-attack timing model. Use another packed set for this simulation.".into());
     }
@@ -1234,6 +1237,7 @@ pub fn simulate(model: &Model) -> Result<Report, String> {
         || model.mark_ticks > 10_000
         || model.attacks.iter().any(|a| {
             !(1..=20).contains(&a.hits.attack_ticks)
+                || a.hits.burn_dps != 0.0
                 || a.projectile_loss.is_some_and(|n| n > 100)
                 || !(0.0..=100.0).contains(&a.prayer)
                 || a.runes.len() > 32

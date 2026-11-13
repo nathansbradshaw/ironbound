@@ -2,11 +2,23 @@
 use crate::{defence::Settings, effects, encounters, planner::Monster, rules};
 
 pub fn set_task(settings: &mut Settings, target: i32, on_task: bool) {
+    let target = encounters::source_npc_id(target);
+    settings
+        .slayer_targets
+        .retain(|id| encounters::source_npc_id(*id) != target);
     if on_task && encounters::slayer_eligible(target) {
         settings.slayer_targets.insert(target);
     } else {
         settings.slayer_targets.remove(&target);
     }
+}
+
+pub fn on_task(settings: &Settings, target: i32) -> bool {
+    let target = encounters::source_npc_id(target);
+    settings
+        .slayer_targets
+        .iter()
+        .any(|id| encounters::source_npc_id(*id) == target)
 }
 
 pub fn bonus_note(
@@ -18,7 +30,7 @@ pub fn bonus_note(
     if !encounters::slayer_eligible(target.id) {
         return "This target cannot receive a Slayer task bonus.";
     }
-    if !settings.slayer_targets.contains(&target.id) {
+    if !on_task(settings, target.id) {
         return "Off task · no Slayer bonus. On task reranks owned gear with eligible helmet and mask bonuses.";
     }
     let style = rules::base_style(style);

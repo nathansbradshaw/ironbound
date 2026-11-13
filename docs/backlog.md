@@ -27,6 +27,14 @@ dedicated encounter simulations.
   awake Duke and Sire vents/body. Hit caps, reductions, reach/immunity,
   per-hitsplat armour interactions and changing-HP ruby rules have independent
   regressions; full-fight follow-ups remain open in the detailed backlog.
+- [x] Second monster batch: Hydra chemical states and four stage HP bounds,
+  Muspah unshielded comparisons and Defence floor, HP-dependent normal Vardorvis
+  with a changing-stat attack budget, plus selected KQ and Dagannoth King incoming
+  attacks. Synthetic comparisons preserve source NPC Slayer assignments. The
+  Muspah prayer shield and full-fight follow-ups remain open.
+- [x] Third monster batch: Skotizo altar counts and Arclight/Emberlight finishers;
+  Hespori flower protection, Farming Guild flower finishers and 12-flower attack
+  budget. Related NPC buttons do not add targets to the default boss workload.
 
 - [x] Show which selected attack windows have supported outgoing calculations and which are packing only.
 - [x] Explain remaining mechanics beside the encounter and in preparation/export notes. Count Wardens explicitly rather than omitting it from the supported fraction.
@@ -79,6 +87,8 @@ Scythe/Soulreaper, defensive passives, enchanted bolts and special rotations.
 ## Release evidence
 
 Full-fight follow-up: 463 integrated Rust tests, 13 focused fight/trip regressions, the 24 independent outgoing references and the release Wasm build pass. Disposable browser QA exercised all three encounter reports, both named Warden routes, positive completions and timeouts, actual carried-stock shortfalls, stale-result invalidation, reload persistence and report download. The final browser export replayed identical individual trials through the Rust offline command. Screenshot QA verified readable demand columns. Dedicated simulation profiles inside the shared Cargo target root prevent collisions with concurrent builds. These are implementation, formula and browser checks; actual gameplay calibration remains open. [Model scope and assumptions](full-fight-simulation.md).
+
+Release integration: after the concurrent Moon-set and Wilderness changes, 489 integrated Rust tests and all 24 outgoing references pass. The 13 fight regressions also pass with resilient synthetic fixtures. Reports exported before the new burn metadata still replay identically; burn-enabled sets explicitly block simulation until their stack timing is modeled. The combined release Wasm build passes.
 
 13 November 2026, workflow release (PR #23): all 325 integrated Rust tests and 24 independent combat references passed, along with the release Wasm build. Disposable browser QA verified named saving/loading/reload, a 73-rune manual slot surviving a gear change, cast-budget repacking, single-slot reset, four manual confirmations and invalidation, plus blocked-storage warning/retry and recovery without losing saved fixtures. The release is merged and deployed; later tooltip publications include it.
 

@@ -86,6 +86,20 @@ pub struct Window {
     pub start_hp: Option<u32>,
     #[serde(default)]
     pub comparison_probe: bool,
+    /// Expose this alternative state beside its source NPC in Combat.
+    #[serde(default)]
+    pub comparison_alternative: bool,
+    /// Related NPC comparisons, without adding them to the default HP workload.
+    #[serde(default)]
+    pub comparison_sources: Vec<i32>,
+    #[serde(default)]
+    pub active_altars: Option<u8>,
+    #[serde(default)]
+    pub invulnerable: bool,
+    #[serde(default)]
+    pub min_hp: Option<u32>,
+    #[serde(default)]
+    pub hp_scaling: Option<HpScaling>,
     #[serde(default = "supported")]
     pub outgoing_supported: bool,
     #[serde(default)]
@@ -106,6 +120,47 @@ pub enum DamageModel {
     WardensP2,
     WardenCore,
     HalfDamage,
+    QuarterDamage,
+}
+impl DamageModel {
+    pub fn divisor(self) -> i32 {
+        match self {
+            Self::HalfDamage => 2,
+            Self::QuarterDamage => 4,
+            _ => 1,
+        }
+    }
+}
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct HpScaling {
+    pub hitpoints: u32,
+    /// Levels at full HP and at zero HP. Floor after interpolation.
+    pub skills: BTreeMap<String, [i32; 2]>,
+}
+impl HpScaling {
+    pub fn levels(&self, hp: u32) -> Result<BTreeMap<String, i32>, String> {
+        if self.hitpoints == 0
+            || hp > self.hitpoints
+            || self.skills.is_empty()
+            || self.skills.iter().any(|(skill, values)| {
+                !["atk", "str", "def", "magic", "ranged"].contains(&skill.as_str())
+                    || values.iter().any(|v| !(0..=10_000).contains(v))
+            })
+        {
+            return Err("Invalid HP-dependent NPC scaling.".into());
+        }
+        Ok(self
+            .skills
+            .iter()
+            .map(|(skill, [full, zero])| {
+                let value = (i64::from(*zero) * i64::from(self.hitpoints)
+                    + i64::from(hp) * i64::from(full - zero))
+                    / i64::from(self.hitpoints);
+                (skill.clone(), value as i32)
+            })
+            .collect())
+    }
 }
 #[derive(Debug, Deserialize)]
 pub struct HitRule {

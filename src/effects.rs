@@ -185,7 +185,7 @@ pub fn target_bonus(
                     .as_ref()
                     .is_none_or(|a| target.attributes.contains(a))
                 && (!bonus.slayer_task
-                    || settings.slayer_targets.contains(&target.id)
+                    || crate::slayer::on_task(settings, target.id)
                         && crate::encounters::slayer_eligible(target.id))
                 && crate::rules::equipped_effect(set, &bonus.equipment_effect)
         })

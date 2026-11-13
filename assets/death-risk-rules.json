@@ -1,0 +1,20 @@
+{
+ "never_kept":[11941,22586,12789,12791,21816,21817],
+ "always_kept":[13190],
+ "charges":[
+  {"ids":[11905,11907],"base":11908,"label":"Trident charges","max":2500,"policy":"with_item","components":[[560,1,1],[562,1,1],[554,5,1],[995,10,1]],"full_ids":[11905]},
+  {"ids":[22288],"base":22290,"label":"Enhanced trident charges","max":20000,"policy":"with_item","components":[[560,1,1],[562,1,1],[554,5,1],[995,10,1]]},
+  {"ids":[12899],"base":12900,"label":"Toxic trident charges","max":2500,"policy":"with_item","components":[[560,1,1],[562,1,1],[554,5,1],[12934,1,1]]},
+  {"ids":[22292],"base":22294,"label":"Enhanced toxic trident charges","max":20000,"policy":"with_item","components":[[560,1,1],[562,1,1],[554,5,1],[12934,1,1]]},
+  {"ids":[12926],"base":12924,"label":"Zulrah scales","max":16383,"policy":"with_item","components":[[12934,1,1]],"loaded_ammo":true},
+  {"ids":[22545],"base":22542,"label":"Total revenant ether, including 1,000 activation ether","max":17000,"policy":"always","components":[[21820,1,1]]},
+  {"ids":[22550],"base":22547,"label":"Total revenant ether, including 1,000 activation ether","max":17000,"policy":"always","components":[[21820,1,1]]},
+  {"ids":[22555],"base":22552,"label":"Total revenant ether, including 1,000 activation ether","max":17000,"policy":"always","components":[[21820,1,1]]},
+  {"ids":[27655],"base":27652,"label":"Total revenant ether, including 1,000 activation ether","max":17000,"policy":"always","components":[[21820,1,1]]},
+  {"ids":[27660],"base":27657,"label":"Total revenant ether, including 1,000 activation ether","max":17000,"policy":"always","components":[[21820,1,1]]},
+  {"ids":[27665],"base":27662,"label":"Total revenant ether, including 1,000 activation ether","max":17000,"policy":"always","components":[[21820,1,1]]},
+  {"ids":[27679],"base":27676,"label":"Total revenant ether, including 1,000 activation ether","max":17000,"policy":"always","components":[[21820,1,1]]},
+  {"ids":[27788],"base":27785,"label":"Total revenant ether, including 1,000 activation ether","max":17000,"policy":"always","components":[[21820,1,1]]},
+  {"ids":[21816],"base":21817,"label":"Total bracelet ether","max":16000,"policy":"always","components":[[21820,1,1]]}
+ ]
+}

@@ -54,6 +54,7 @@ struct State {
     building_group: bool,
     raid_rooms_open: bool,
     bestiary_open: bool,
+    risk_open: bool,
     wilderness_location: String,
     scaredy_cat: bool,
     filler_cap: u32,
@@ -88,6 +89,7 @@ impl State {
             SaveStatus::Pending
         };
         let mut saved = restored.unwrap_or(Saved {
+            death_risk: Default::default(),
             version: 1,
             snapshot: account::demo(),
             options: Options::default(),
@@ -163,6 +165,7 @@ impl State {
             building_group: false,
             raid_rooms_open: false,
             bestiary_open: false,
+            risk_open: false,
             wilderness_location: "all".into(),
             scaredy_cat: saved.options.wilderness.is_some(),
             filler_cap: saved
@@ -360,6 +363,9 @@ thread_local! {
 }
 
 fn live_number(id: &str) -> bool {
+    if id.starts_with("risk-") {
+        return true;
+    }
     if id.starts_with("sim-") {
         return true;
     }
@@ -387,6 +393,17 @@ fn live_number(id: &str) -> bool {
 }
 fn apply_number(s: &mut State, id: &str, value: &str) -> bool {
     if s.shared_setup.is_some() && !id.starts_with("skill-") {
+        return false;
+    }
+    if let Some(key) = id.strip_prefix("risk-") {
+        if let Some((field, item)) = key
+            .rsplit_once('-')
+            .and_then(|(field, id)| Some((field, id.parse::<i32>().ok()?)))
+        {
+            let plan = s.plan();
+            s.saved.death_risk.bind(&plan);
+            return s.saved.death_risk.set(field, item, value);
+        }
         return false;
     }
     if let Some(key) = id.strip_prefix("sim-") {
@@ -965,7 +982,9 @@ pub fn start() -> Result<(), JsValue> {
     search.forget();
     let disclosure = Closure::<dyn FnMut(web_sys::Event)>::new(|e: web_sys::Event| {
         if let Some(el) = e.target().and_then(|t| t.dyn_into::<Element>().ok()) {
-            if el.id() == "boss-bestiary" {
+            if el.id() == "death-risk-details" {
+                STATE.with(|state| state.borrow_mut().risk_open = el.has_attribute("open"));
+            } else if el.id() == "boss-bestiary" {
                 STATE.with(|state| state.borrow_mut().bestiary_open = el.has_attribute("open"));
             } else if el.id() == "raid-room-picker" {
                 STATE.with(|state| state.borrow_mut().raid_rooms_open = el.has_attribute("open"));
@@ -1373,6 +1392,7 @@ pub fn start() -> Result<(), JsValue> {
                 "member" => {
                     if let Ok(select) = el.dyn_into::<HtmlSelectElement>() {
                         s.saved.snapshot.selected = select.value();
+                        s.saved.death_risk = Default::default();
                         s.saved.options.access_override = None;
                         s.saved.options.started_barrows = None;
                         s.phase = None;
@@ -1470,6 +1490,46 @@ fn focus_inventory(slot: usize) {
     }
 }
 fn act(action: &str) {
+    if action.starts_with("risk-") {
+        STATE.with(|state| {
+            let mut s = state.borrow_mut();
+            if s.shared_setup.is_some() {
+                return;
+            }
+            let plan = s.plan();
+            s.saved.death_risk.bind(&plan);
+            if let Some(scenario) = action
+                .strip_prefix("risk-scenario:")
+                .and_then(crate::death_risk::Scenario::parse)
+            {
+                s.saved.death_risk.scenario = scenario;
+                s.saved.death_risk.kept.clear();
+            } else if action == "risk-kept-mode" {
+                s.saved.death_risk.manual_kept = !s.saved.death_risk.manual_kept;
+                s.saved.death_risk.kept.clear();
+            } else if action == "risk-reset" {
+                s.saved.death_risk = Default::default();
+            } else if let Some(id) = action
+                .strip_prefix("risk-keep:")
+                .and_then(|s| s.parse::<i32>().ok())
+            {
+                let report = crate::death_risk::report(&plan, &s.saved.death_risk);
+                if let Some(row) = report.rows.iter().find(|r| r.id == id) {
+                    let maximum = row.quantity.min(report.slots);
+                    let current = s.saved.death_risk.kept.get(&id).copied().unwrap_or(0);
+                    s.saved
+                        .death_risk
+                        .kept
+                        .insert(id, if current >= maximum { 0 } else { current + 1 });
+                }
+            }
+            s.risk_open = true;
+            s.persist();
+        });
+        render();
+        return;
+    }
+
     if action == "wilderness-mode"
         || action.starts_with("wilderness-location:")
         || action.starts_with("wilderness-cap:")
@@ -2324,6 +2384,7 @@ fn act(action: &str) {
                 s.demo_return = Some(s.saved.clone());
             }
             s.saved.snapshot = account::demo();
+            s.saved.death_risk = Default::default();
             s.saved.options = Options::default();
             s.saved.pins = BTreeMap::new();
             s.shared_setup = None;
@@ -2465,6 +2526,7 @@ fn import_raw(raw: &str) {
                     }
                     s.demo_return = None;
                     s.saved.snapshot = snapshot;
+                    s.saved.death_risk = Default::default();
                     s.unreadable_save = None;
                     s.shared_setup = None;
                     s.saved.options.access_override = None;
@@ -2544,6 +2606,7 @@ fn import_raw(raw: &str) {
             let mut s = s.borrow_mut();
             s.demo_return = None;
             s.saved.snapshot = snapshot;
+            s.saved.death_risk = Default::default();
             s.unreadable_save = None;
             s.saved.options = Options::default();
             s.shared_setup = None;
@@ -2690,6 +2753,7 @@ fn render_with_edit(edit: Option<&str>) {
         html.push_str(&raid_rooms(&s));
         html.push_str("</div></div>");
         html.push_str(&wilderness_banner(&s));
+        html.push_str(&death_risk_panel(&s, &plan));
         if s.shared_setup.is_some(){html.push_str(&format!("<p class=\"notice\">Viewing a shared setup. Your saved bank is unchanged. {}</p>",button("use-bank","Rebuild using my items","text-button")));}
         if s.shared_setup.is_none(){html.push_str(&switch_controls(&s,&plan));}
         html.push_str("<nav class=\"planner-tabs\" aria-label=\"Planner sections\">");
@@ -6048,7 +6112,7 @@ fn wilderness_controls(s: &State) -> String {
         for cap in crate::wilderness::CAPS {
             html.push_str(&format!("<button class=\"encounter-filter {}\" data-action=\"wilderness-cap:{cap}\" aria-pressed=\"{}\">≤{}k GP</button>",if s.filler_cap==cap{"active"}else{""},s.filler_cap==cap,cap/1000));
         }
-        html.push_str("</div><p>Wilderness cards recalculate with up to 3 valuable gear pieces plus owned cheap fillers. Open a card to see the exact kit and full-gear comparison. Selecting it keeps that kit in the planner.</p><small>Unskulled + PK Skull Prevention assumed. Confirm Items Kept on Death; supplies, charges and loot add risk.</small>");
+        html.push_str("</div><p>Wilderness cards recalculate with up to 3 valuable gear pieces plus owned cheap fillers. Open a card to see the exact kit and full-gear comparison. Selecting it keeps that kit in the planner, where the full packed death-risk report includes supplies and charges.</p><small>Unskulled + PK Skull Prevention assumed. Confirm Items Kept on Death; supplies, charges and loot add risk.</small>");
     }
     html.push_str("</section>");
     html
@@ -6063,4 +6127,20 @@ fn wilderness_banner(s: &State) -> String {
         esc(crate::wilderness::CAUTION),
         button("wilderness-off", "Return to full gear", "text-button")
     )
+}
+
+fn death_risk_panel(s: &State, plan: &Plan) -> String {
+    let exposed = selected_encounter(&s.saved.options).is_some_and(|entry| {
+        crate::wilderness::exposure(&entry.name) != crate::wilderness::Exposure::None
+    });
+    if s.saved.options.wilderness.is_none() && !exposed {
+        return String::new();
+    }
+    let defaults = crate::death_risk::Settings::default();
+    let settings = if s.shared_setup.is_some() {
+        &defaults
+    } else {
+        &s.saved.death_risk
+    };
+    crate::death_risk::render(plan, settings, s.risk_open, s.shared_setup.is_none())
 }

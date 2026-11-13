@@ -277,6 +277,7 @@ fn device_backup_and_named_setup_preserve_manual_choice_and_validate_it() {
     use ironbound::setups::{Library, NamedSetup, Saved};
     let (snapshot, options) = manual_plan("Water Strike");
     let saved = Saved {
+        death_risk: Default::default(),
         version: 1,
         snapshot,
         options: options.clone(),

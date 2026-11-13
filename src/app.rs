@@ -3211,8 +3211,14 @@ fn phase_navigation(s: &State, p: &Plan) -> String {
 fn loadout_panel(s: &State, p: &Plan) -> String {
     let current = s.phase.and_then(|i| p.phases.get(i));
     let set = current.map(|p| &p.equipment).unwrap_or(&p.equipment);
+    let quest_requirement = s.saved.options.targets
+        .get(s.phase.unwrap_or(0))
+        .filter(|_| s.saved.options.boss == Boss::Custom)
+        .and_then(|target| crate::quest_bosses::weapon_requirement(target.id, set, &target.style))
+        .map(|message| format!("<p class=\"connection-warning\" role=\"status\">{}</p>", esc(&message)))
+        .unwrap_or_default();
     let mut html = format!(
-        "<section class=\"panel loadout-panel\"><div class=\"panel-heading\"><h2>{} {}</h2>{}</div><div class=\"loadout-content\"><div class=\"equipment-paper\"><div class=\"paper-header\">{}</div><div class=\"equipment-grid\">",
+        "<section class=\"panel loadout-panel\"><div class=\"panel-heading\"><h2>{} {}</h2>{}</div>{quest_requirement}<div class=\"loadout-content\"><div class=\"equipment-paper\"><div class=\"paper-header\">{}</div><div class=\"equipment-grid\">",
         image(12954),
         "Equipment",
         badge(

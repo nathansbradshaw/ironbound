@@ -7,35 +7,45 @@ independent references, browser verification, then gameplay verification.
 
 ## 1. Shared outgoing damage and restrictions
 
-- [ ] Zulrah: reroll hits above 50 into 45–50, including bolt procs; allow only
-  reachable attacks; share the 500-HP workload across forms. Rotations, venom,
-  snakelings, travel and incoming damage remain separate work.
-- [ ] Kraken / Cave kraken: ranged damage divided by seven with its minimum-hit
+- [x] Zulrah outgoing: reroll hits above 50 into 45–50, including bolt procs;
+  enforce reach and share one 500-HP comparison workload across selected forms.
+- [ ] Zulrah full fight: actual rotations/HP allocation, venom, snakelings,
+  travel, incoming damage and supplies.
+- [x] Kraken / Cave kraken outgoing: ranged damage divided by seven with its minimum-hit
   rule; boss melee immunity; distinguish emerged targets from whirlpools.
-- [ ] Corporeal Beast: halve unsupported weapon damage per outcome; preserve
+- [ ] Kraken full fight: awakening, tentacles, incoming attacks, healing and supplies.
+- [x] Corporeal Beast outgoing: halve unsupported weapon damage per outcome; preserve
   full magic, eligible stab weapons and ruby procs; apply diamond before Corp.
-  Dark core, drains and incoming attacks need separate verification.
-- [ ] Dagannoth Kings: reviewed ordinary outgoing windows for Rex, Prime and
+- [ ] Corporeal Beast full fight: dark core, actual drains, incoming attacks and timing.
+- [x] Dagannoth Kings outgoing: reviewed ordinary windows for Rex, Prime and
   Supreme; preserve their actual defences without inventing style immunity.
-  Overlapping aggro, Spinolyps, respawns and incoming damage remain open.
-- [ ] Kree'arra: reachable-style restrictions and ordinary outgoing damage;
-  bodyguards, movement and incoming attacks remain open.
-- [ ] Grotesque Guardians: Dawn reach restrictions, Dusk ranged/magic immunity,
-  separate vulnerable windows and a shared HP workload for Dusk's forms.
-  Lightning, orbs/healing, transitions and incoming damage remain open.
-- [ ] Kalphite Queen: both forms, protection/accuracy rules, respawn and incoming
-  attacks; reference-check Keris interactions before enabling outgoing damage.
+- [ ] Dagannoth Kings full fight: overlapping aggro, Spinolyps, respawns and incoming damage.
+- [x] Kree'arra outgoing: reachable-style restrictions and ordinary outgoing damage.
+- [ ] Kree'arra full fight: bodyguards, movement, chinchompas and incoming attacks.
+- [x] Grotesque Guardians outgoing: Dawn reach restrictions, Dusk ranged/magic
+  immunity, separate vulnerable windows and one comparison HP pool for Dusk.
+- [ ] Grotesque Guardians full fight: actual phase thresholds, invulnerability,
+  lightning, orbs/healing, transitions and incoming damage.
+- [x] Kalphite Queen outgoing: both forms and supported Keris effects use
+  recorded defences; overheads do not grant complete style immunity.
+- [ ] Kalphite Queen full fight: guaranteed incoming ranged/magic accuracy,
+  workers, prayer drain, movement, respawn and supplies.
 
 ## 2. Other dedicated boss models
 
-- [ ] Abyssal Sire: respiratory systems, stun/shadow spells, transition reduction,
-  immunities, spawns, movement and final-phase damage.
+- [x] Abyssal Sire outgoing: exposed respiratory minimum hits, successful
+  Demonbane finishers, reach restrictions, four-vent workload and vulnerable
+  body stages with explicit 425→210→140→0 comparison allocations.
+- [ ] Abyssal Sire full fight: stun/shadow spells, protected vents, regeneration,
+  transition reduction, overshoot/reset rules, spawns, movement and incoming damage.
 - [ ] Alchemical Hydra: chemical weakening, 75/50/25% phase budgets, vents,
   protection rotations, poison/fire and incoming damage.
 - [ ] Phantom Muspah: melee/ranged forms, shield prayer damage, reductions,
   step-back timing, teleport/spike phases and incoming damage.
-- [ ] Duke Sucellus: preparation versus awake combat, reduced demonbane
-  vulnerability, enrage cadence, movement and incoming damage.
+- [x] Duke Sucellus outgoing: normal post-quest awake window with 70% Demonbane
+  effectiveness; retain quest/awakened gates.
+- [ ] Duke Sucellus full fight: preparation, poison, gaze, gas, enrage cadence,
+  movement and incoming damage.
 - [ ] Vardorvis: current-HP-dependent stats, defence reductions, axes, head,
   entangle and incoming damage; recompute distributions as HP changes.
 - [ ] Leviathan: reach restrictions, stun/rear bonuses, enrage and incoming damage.
@@ -107,4 +117,21 @@ independent references, browser verification, then gameplay verification.
 
 ## Evidence
 
-Initial inventory recorded. Implementation verification is pending.
+13 November 2026: 20 reviewed outgoing NPC windows, implemented in Rust with
+explicit source IDs, reach/immunity rules and per-hit damage transforms. The
+integrated suite passes 419 tests, including 14 dedicated monster regressions
+and all 24 existing independent combat references. The standalone reference
+comparator and release Wasm build pass. Multi-hit checks retain Karil's and
+Torag's separate hits through NPC caps/reductions; changing-HP ruby effects retain
+the same reductions/rerolls in finite-HP expectations.
+
+Browser verification on a disposable local origin: Zulrah ruby max 50 at full
+HP and 40 at 200 HP, explicit missing full-rotation workload; Kraken blocked
+melee and reduced ranged damage; Sire 4/5 basic windows with phase 1 still
+unsupported and four 50-HP exposed systems; Duke's awake-only scope and reduced
+Demonbane note. Incoming estimates stay explicitly unavailable for these newly
+reviewed outgoing windows. Merge/publication evidence follows in the PR.
+
+Gameplay, physical RuneLite import, player movement and full-fight supply
+validation remain open. A checked outgoing item does not close its full-fight
+follow-up.

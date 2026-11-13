@@ -22,6 +22,12 @@ boss, raid, wave and attribute-specific gap, with separate outgoing and full-fig
 acceptance criteria. Work through its shared outgoing rules before enabling
 dedicated encounter simulations.
 
+- [x] First monster batch: 20 reviewed outgoing NPC windows covering Zulrah,
+  Kraken/cave kraken, Corp, Dagannoth Kings, KQ, Kree'arra, vulnerable Guardians,
+  awake Duke and Sire vents/body. Hit caps, reductions, reach/immunity,
+  per-hitsplat armour interactions and changing-HP ruby rules have independent
+  regressions; full-fight follow-ups remain open in the detailed backlog.
+
 - [x] Show which selected attack windows have supported outgoing calculations and which are packing only.
 - [x] Explain remaining mechanics beside the encounter and in preparation/export notes. Count Wardens explicitly rather than omitting it from the supported fraction.
 - [x] Vorkath: expose current-HP ruby bolts and an acid damage window with per-outcome rounding; verify finite-HP attack budgets with decreasing ruby procs.

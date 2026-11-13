@@ -162,6 +162,11 @@ pub fn candidates(
             {
                 continue;
             }
+            if weapon.family.style == "Ranged"
+                && !o.combat.ranged_type.permits_weapon(set[3].unwrap())
+            {
+                continue;
+            }
             let ammo: Vec<_> = if weapon.family.style == "Ranged" && slots.contains(&3) {
                 slots.insert(13);
                 if weapon.family.ammo.is_empty() {

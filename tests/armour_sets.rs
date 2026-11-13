@@ -1,5 +1,6 @@
 //! Independent per-roll reference arithmetic from Wiki PlayerVsNPCCalc;
 //! synthetic owned banks test joint discovery separately from damage formulas.
+//! Reference: https://github.com/weirdgloop/osrs-dps-calc/blob/74958b18f6559cf1bf58f7ac74e7a442a7ac8e2f/src/lib/PlayerVsNPCCalc.ts
 use ironbound::{
     account::{self, Member},
     combat,
@@ -94,6 +95,19 @@ fn dharok_scales_each_damage_roll_using_explicit_current_health() {
         full.accuracy * mean(28, |n| (n * 19702 / 10000).max(1)) / 4.2,
     );
     assert!(low.dps > full.dps * 1.8);
+    let overheal = calculate(
+        &s,
+        "Slash",
+        &Settings {
+            current_hitpoints: Some(109),
+            ..Default::default()
+        },
+        "",
+    );
+    close(
+        overheal.dps,
+        full.accuracy * mean(28, |n| (n * 9010 / 10000).max(1)) / 4.2,
+    );
     for slot in [0, 4, 7] {
         let mut partial = s.clone();
         partial[slot] = None;
@@ -331,4 +345,167 @@ fn broken_barrows_and_crystal_cannot_unlock_sets_or_weapons() {
     assert!(!rules::set_effect(&chosen, "dharok"));
     o.gear_overrides.insert("Slash:3".into(), 4151);
     assert_eq!(planner::equipment_for_style(&s, &o, "Slash")[3], Some(4151));
+}
+
+#[test]
+fn distributions_include_independent_misses_and_work_with_finite_hp_budgets() {
+    for (s, style) in [
+        (set(&[(3, 4747)]), "Crush"),
+        (set(&[(0, 4753), (3, 4755), (4, 4757), (7, 4759)]), "Crush"),
+        (
+            set(&[
+                (0, 4732),
+                (2, 12851),
+                (3, 4734),
+                (4, 4736),
+                (7, 4738),
+                (13, 4740),
+            ]),
+            "Ranged",
+        ),
+    ] {
+        let r = calculate(&s, style, &Settings::default(), "");
+        close(r.hit_distribution.iter().map(|(_, p)| p).sum(), 1.0);
+        close(
+            r.hit_distribution
+                .iter()
+                .map(|(d, p)| f64::from(*d) * p)
+                .sum::<f64>()
+                / (r.attack_ticks as f64 * 0.6),
+            r.dps,
+        );
+        let zero = r
+            .hit_distribution
+            .iter()
+            .filter(|(d, _)| *d == 0)
+            .map(|(_, p)| p)
+            .sum::<f64>();
+        close(
+            ironbound::attack_budget::expected_attacks(&r.hit_distribution, 1, 0, None).unwrap(),
+            1.0 / (1.0 - zero),
+        );
+        let base_accuracy = combat::accuracy(r.attack_roll, r.defence_roll);
+        if style == "Crush" && s[0].is_none() {
+            close(zero, (1.0 - base_accuracy).powi(2));
+        } else if style == "Crush" {
+            close(zero, (1.0 - base_accuracy) * 0.75);
+        }
+    }
+}
+
+#[test]
+fn guaranteed_max_windows_take_the_final_equipment_proc_maximum() {
+    for (s, style, spell, id) in [
+        (
+            set(&[(0, 4753), (3, 4755), (4, 4757), (7, 4759)]),
+            "Crush",
+            "",
+            11755,
+        ),
+        (
+            set(&[(0, 4708), (2, 12851), (3, 4710), (4, 4712), (7, 4714)]),
+            "Magic",
+            "Wind Wave",
+            100030,
+        ),
+        (set(&[(3, 4747)]), "Crush", "", 11755),
+    ] {
+        let r =
+            combat::calculate(&member(), &s, style, planner::monster(id).unwrap(), spell).unwrap();
+        close(r.accuracy, 1.0);
+        close(r.dps * 0.6 * r.attack_ticks as f64, f64::from(r.max_hit));
+        close(
+            r.guaranteed_hits
+                .as_ref()
+                .unwrap()
+                .iter()
+                .map(|(d, p)| f64::from(*d) * p)
+                .sum(),
+            f64::from(r.max_hit),
+        );
+    }
+}
+
+#[test]
+fn acid_halves_each_of_karils_and_torags_splats_before_summing() {
+    for (s, style) in [
+        (
+            set(&[
+                (0, 4732),
+                (2, 12851),
+                (3, 4734),
+                (4, 4736),
+                (7, 4738),
+                (13, 4740),
+            ]),
+            "Ranged",
+        ),
+        (set(&[(3, 4747)]), "Crush"),
+    ] {
+        let r =
+            combat::calculate(&member(), &s, style, planner::monster(100020).unwrap(), "").unwrap();
+        let accuracy = combat::accuracy(r.attack_roll, r.defence_roll);
+        let expected = if style == "Ranged" {
+            (0i32..=20)
+                .map(|n| {
+                    0.75 * (n.max(1) / 2) as f64 + 0.25 * (n.max(1) / 2 + (n / 2).max(1) / 2) as f64
+                })
+                .sum::<f64>()
+                / 21.0
+        } else {
+            mean(11, |n| n.max(1) / 2) + mean(12, |n| n.max(1) / 2)
+        };
+        close(r.dps, accuracy * expected / (r.attack_ticks as f64 * 0.6));
+    }
+}
+
+#[test]
+fn joint_candidates_preserve_category_blessing_level_and_shared_stock_constraints() {
+    let s = bank(&[
+        20997, 11212, 25865, 23971, 23975, 23979, 27226, 27229, 27232, 7462, 21012, 21905, 20220,
+    ]);
+    let mut o = options("Ranged");
+    o.targets[0].id = 1672;
+    o.gear_overrides.insert("Ranged:13".into(), 20220);
+    let selected = planner::equipment_for_style(&s, &o, "Ranged");
+    assert_eq!(selected[3], Some(25865));
+    assert_eq!(selected[13], Some(20220));
+    o.gear_overrides.clear();
+    o.combat.ranged_type = rules::RangedType::Heavy;
+    let heavy = planner::equipment_for_style(&s, &o, "Ranged");
+    assert_eq!(heavy[3], Some(21012));
+    let mut low = s.clone();
+    low.members[0].level_overrides.insert("Agility".into(), 49);
+    o.combat.ranged_type = rules::RangedType::Auto;
+    let low = planner::equipment_for_style(&low, &o, "Ranged");
+    assert_ne!(low[3], Some(25865));
+    assert!(!low.contains(&Some(23975)));
+    let mut shared = bank(&[4151, 10828, 10551, 4087, 7462]);
+    shared.members[0].shared_bank = Some(vec![4716, 1, 4718, 1, 4720, 1, 4722, 1]);
+    let mut o = options("Slash");
+    o.combat.current_hitpoints = Some(1);
+    assert!(!rules::set_effect(
+        &planner::equipment_for_style(&shared, &o, "Slash"),
+        "dharok"
+    ));
+    o.shared = true;
+    assert!(rules::set_effect(
+        &planner::equipment_for_style(&shared, &o, "Slash"),
+        "dharok"
+    ));
+}
+
+#[test]
+fn health_assumption_survives_sharing_and_is_written_to_the_runelite_export() {
+    let s = bank(&[4151, 10828, 10551, 4087, 7462, 4716, 4718, 4720, 4722, 8007]);
+    let mut o = options("Slash");
+    o.combat.current_hitpoints = Some(1);
+    let plan = planner::plan(&s, &o);
+    assert!(plan.exportable(), "{:?}", plan.missing);
+    assert!(rules::set_effect(&plan.equipment, "dharok"));
+    let shared = ironbound::share::Setup::from_plan(&plan, &o);
+    let restored = ironbound::share::Setup::parse(&shared.fragment().unwrap()).unwrap();
+    assert_eq!(restored.options().combat.current_hitpoints, Some(1));
+    let exported = ironbound::export::inventory_setup(&plan, &o, "Armour regression").unwrap();
+    assert!(exported.contains("Dharok's current Hitpoints assumption: 1"));
 }

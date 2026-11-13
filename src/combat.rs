@@ -688,6 +688,14 @@ pub fn calculate_configured(
         damage_factor,
         critical: style == "Magic" && rules::set_effect(set, "ahrim_damned"),
         extra_half: style == "Ranged" && rules::set_effect(set, "karil_damned"),
+        final_divisor: if damage_model == crate::encounters::DamageModel::HalfDamage
+            && style == "Ranged"
+            && rules::set_effect(set, "karil_damned")
+        {
+            2
+        } else {
+            1
+        },
     };
     let distribution_max = max_hit;
     let (_mean, ceiling, mut hits) = if always_max {
@@ -741,6 +749,14 @@ pub fn calculate_configured(
     }
     if rule.has(Effect::TwinHits) {
         let mut parts = Vec::new();
+        let twin_effects = crate::effects::SetHitEffects {
+            final_divisor: if damage_model == crate::encounters::DamageModel::HalfDamage {
+                2
+            } else {
+                1
+            },
+            ..Default::default()
+        };
         max_hit = 0;
         for max in [
             distribution_max / 2,
@@ -753,7 +769,7 @@ pub fn calculate_configured(
                 &[],
                 monster,
                 None,
-                &Default::default(),
+                &twin_effects,
             );
             max_hit += ceiling;
             let mut part: Vec<_> = outcomes.into_iter().map(|(d, p)| (d, p * hit)).collect();
@@ -766,6 +782,9 @@ pub fn calculate_configured(
             .iter()
             .flat_map(|(a, p)| parts[1].iter().map(move |(b, q)| (a + b, p * q)))
             .collect();
+        if always_max {
+            hits = distribution.clone();
+        }
         hit = 1.0 - (1.0 - hit).powi(2);
     }
     if always_max
@@ -776,6 +795,13 @@ pub fn calculate_configured(
         distribution = vec![(max_hit, 1.0)];
         hits = vec![(max_hit, 1.0)];
     }
+    // Collapse equal totals before finite-HP planning. In particular, two
+    // independent hammers have many roll pairs but few distinct damage totals.
+    let mut totals = BTreeMap::new();
+    for (damage, p) in distribution {
+        *totals.entry(damage).or_insert(0.0) += p;
+    }
+    distribution = totals.into_iter().collect();
     if style == "Ranged" && !rule.family.ammo.is_empty() {
         let zcb = rule.has(Effect::Zaryte);
         let chance = rules::bolt_proc_chance(set[13].unwrap_or(0), settings.kandarin_diary);
@@ -821,7 +847,10 @@ pub fn calculate_configured(
             _ => {}
         }
     }
-    if damage_model == crate::encounters::DamageModel::HalfDamage {
+    if damage_model == crate::encounters::DamageModel::HalfDamage
+        && hit_effects.final_divisor == 1
+        && !rule.has(Effect::TwinHits)
+    {
         for (damage, _) in &mut distribution {
             *damage /= 2;
         }
@@ -915,7 +944,7 @@ fn conditional_hit(
                 } else {
                     damage
                 };
-                (damage - armour).max(0)
+                (damage - armour).max(0) / set_effects.final_divisor
             })
             .sum();
         mean += damage as f64 * probability;

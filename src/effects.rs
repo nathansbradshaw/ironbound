@@ -9,6 +9,7 @@ pub struct SetHitEffects {
     pub damage_factor: [i64; 2],
     pub critical: bool,
     pub extra_half: bool,
+    pub final_divisor: i32,
 }
 impl Default for SetHitEffects {
     fn default() -> Self {
@@ -16,6 +17,7 @@ impl Default for SetHitEffects {
             damage_factor: [1, 1],
             critical: false,
             extra_half: false,
+            final_divisor: 1,
         }
     }
 }

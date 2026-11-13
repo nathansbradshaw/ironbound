@@ -171,7 +171,6 @@ fn unverified_quest_mechanics_do_not_produce_verified_damage_claims() {
         "Lowerniel Drakan",
         "Ranis Drakan",
         "Vanstrom Klause",
-        "Fragment of Seren",
         "Galvek",
         "Sliske's wights",
         "Glough",
@@ -199,4 +198,32 @@ fn unverified_quest_mechanics_do_not_produce_verified_damage_claims() {
             );
         }
     }
+}
+
+#[test]
+fn reviewed_seren_body_gains_gear_readiness_without_claiming_the_full_quest_fight() {
+    let index = encounters::catalog()
+        .iter()
+        .position(|e| e.name == "Fragment of Seren")
+        .unwrap();
+    let entry = &encounters::catalog()[index];
+    assert!(encounters::limitation(planner::monster(8917).unwrap()).is_none());
+    let assessment =
+        ironbound::bestiary::assess_catalog(&ironbound::account::demo(), &Default::default())
+            [index]
+            .clone();
+    assert_ne!(
+        assessment.readiness,
+        ironbound::bestiary::Readiness::Unknown
+    );
+    assert!(entry.note.contains("near-max-HP special"));
+    assert!(
+        assessment
+            .detail
+            .contains("full-fight supplies are not scored")
+    );
+    assert_eq!(
+        assessment.requirements.status,
+        ironbound::bestiary::RequirementStatus::NoLevelGate
+    );
 }

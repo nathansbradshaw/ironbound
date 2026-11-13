@@ -1,5 +1,33 @@
 # Monster mechanics backlog
 
+Latest outgoing batch, 13 November 2026: 38 additional reviewed states plus an
+explicit unshielded Tormented Demon gate. Twelve more encounter/mob gear screens
+are available, including three new mob bestiary entries with real portraits.
+Access requirements remain independent. This is not complete coverage of the
+backlog: Nex, raid scaling/room mechanics, Sire's initial phase, Muspah's shield,
+dedicated equipment and several attribute/special states remain open below.
+
+Verification: 670 integrated Rust tests, including 18 new monster regressions,
+and all 24 independent combat references pass. Affected tests pass again after
+browser-discovered phase-label corrections. Native and Wasm package artifacts
+use the shared Cargo target with separate `monster-dev` / `monster-release`
+profiles to avoid another active checkout substituting its package outputs.
+
+Browser preview: Maggot melee is blocked at distance; the example nearby crush
+attack has 30.2% accuracy / 19 max, versus 87.6% / 28 for its timed punish probe.
+Mad Angel's example normal/cleave/perfect-lightning outputs are 1.432/4.896/7.917
+basic DPS; the counter probes show 100% first-hit accuracy. Doom delve placeholders
+show 525/675 HP for levels 1/8 and reject non-demonbane shield attacks. Tormented
+protection states block the matching style; the example shielded trident has
+16 max, while the unverified unshielded state remains gated. Shellbane shows
+met Slayer separately from missing tortugan gear. No console warnings/errors.
+Full-fight timing, incoming mechanics and gameplay confirmation remain separate.
+
+Integrated the separately added quest catalog without dropping entries, guides,
+gates or artwork. Seren's newly listed quest entry uses the reviewed vulnerable
+body and a separate Magic gear screen; other unreviewed quest fights remain
+explicitly unassessed. All 103 catalog entries retain their portraits.
+
 Reviewed against remote main on 13 November 2026. Catalog entries and outgoing
 attack windows do not establish a complete encounter simulation. Check each
 layer separately: outgoing damage, incoming damage, encounter timing/supplies,
@@ -100,11 +128,27 @@ independent references, browser verification, then gameplay verification.
   normal/elite Void. Gear screening requires melee, ranged and Magic.
 - [ ] Royal Titans full fight: barriers, add counts, solo/duo contribution,
   charge duration, transitions, movement and incoming attack sequences.
-- [ ] Doom of Mokhaiotl: delve scaling, shield/demonbane rules, special phases,
-  movement and incoming damage.
-- [ ] Shellbane Gryphon, Mad Angel and Maggot King: each needs its own sourced
-  phase, scaling, immunity, add and incoming-damage fixtures.
-- [ ] Sol Heredit and TzKal-Zuk: boss-specific specials, positioning/shield,
+- [x] Doom outgoing: exact delve HP variants, 60 Defence floor, separate
+  demonbane-only 500-point shield, burrow accuracy and per-splat melee-punish
+  Strength bonus. Gear readiness checks ranged/melee and the best usable owned
+  demonbane shield style, independently of access.
+- [ ] Doom full fight: actual charge/cooldown overwrite, shield damage transfer,
+  larvae/volatile earth (missing verified NPC data), acid, movement and incoming damage.
+- [x] Shellbane outgoing/readiness: post-quest ordinary target/air weakness,
+  tortugan cape equipment and separate 51 Slayer check.
+- [ ] Shellbane full fight: weight, knockback/free attacks, corrosion, whirlwinds,
+  incoming damage; quest variant remains unreviewed.
+- [x] Mad Angel outgoing/readiness: post-quest ordinary target, first-splat
+  cleave clamp and perfect-lightning maximum, including independent/chained hits.
+- [ ] Mad Angel full fight: reflected blasts, counter frequency/free attacks,
+  enrage, Verac/Blood Moon counter interactions and incoming damage; quest gate retained.
+- [x] Maggot outgoing/readiness: far/nearby/roaring states, reach, static defence
+  changes, first-splat crush punish and 30-HP Ur-maggot larva probe.
+- [ ] Maggot full fight: stacking fire-spell burn/defence, other punish styles,
+  free-attack timing, larvae/healing, defence reset, bile and incoming attacks.
+- [x] Sol Heredit and TzKal-Zuk ordinary outgoing and scoped boss gear readiness;
+  Inferno/Colosseum enemy-type gear screens exclude wave survival. Zuk/healers reject melee.
+- [ ] Sol and Zuk full fight: specials, invocations, positioning/shield uptime,
   adds/healers and incoming attacks, separately from their full waves.
 
 ## 3. Raids, waves and dedicated equipment
@@ -145,14 +189,19 @@ independent references, browser verification, then gameplay verification.
   Guthan healing is partial. Quest/event variants need separate validation.
 - [ ] Zilyana / Graardor / Sarachnis: complete basic attack mixtures, adds,
   movement and specials; retain the existing selected incoming scenarios.
-- [ ] Fragment of Seren and Slagilith: their damage limiters, weapon exceptions
-  and phase-specific effects.
-- [x] Tormented Demon selected outgoing: source 13599 shielded/defenceless
-  comparisons, per-splat 20% reduction and style-specific demonbane/abyssal
-  exceptions. Defenceless accuracy does not remove the shield.
-- [ ] Tormented Demons full fight: unshielded bonus/cooldown, protection switches,
-  other variants, multi-demon timing, firebombs, incoming damage and supplies.
-- [ ] Vampyres, leafy and flying monsters: exact weapon/spell requirements and
+- [x] Fragment of Seren and Slagilith outgoing: per-splat limiter/divisor,
+  current-HP ruby, Defence-based Magic defence and pickaxe exception.
+- [x] Tormented Demon shielded outgoing: explicit protection states,
+  demonbane/abyssal exceptions, positive-hit minimum and defenceless accuracy;
+  any-two-style gear baseline with real portrait and all three shielded-defenceless overheads.
+- [ ] Tormented Demon unshielded speed-squared bonus/delay, protection rotation,
+  spawn interactions, full-fight supplies and incoming damage.
+- [x] Leafy monsters: exact leaf-bladed/broad ammunition/Magic Dart restriction
+  across the eight imported normal/superior NPCs. Turoth/Kurask gear readiness
+  considers the required owned equipment independently of 55/70 Slayer access.
+  Normal/enchanted Slayer's staff Magic Dart damage, runes and explicit task
+  bonus are implemented; other casting-staff variants remain unreviewed.
+- [ ] Vampyres and remaining flying monsters: exact weapon/spell requirements and
   exceptions; a blanket attribute block is only a temporary coverage gate.
 
 ## Acceptance for each outgoing window
@@ -271,14 +320,14 @@ retains 0.625 DPS under that prayer with its branch assumptions visible. No
 console warnings/errors. Prayer drain, tunnels, complete chest-trip supplies
 and matched gameplay validation remain open; publication evidence is in the PR.
 
-Tormented Demon follow-up, 13 November 2026: source NPC 13599 now has separate
-shielded and defenceless outgoing comparisons sharing one 600-HP pool. The
-shield applies after equipment and bolts to each hitsplat, including recomputed
-ruby procs; style-specific demonbane and abyssal attacks bypass it. Defenceless
-changes accuracy to 100% while retaining the shield. Nine focused
-regressions cover rounding, multi-hit/chained attacks, Blood Moon cooldown,
-Dharok ordering, spell/weapon exceptions and current-HP/export boundaries. Both
-states are probes without a complete fight workload. The unshielded bonus attack
-is visible but gated; protection switches, other NPC variants, multi-demon
-cooldowns, burn timing, incoming attacks and full-fight supplies stay open. The
+Tormented Demon follow-up, 13 November 2026: complete the shielded-defenceless
+protection alternatives for Melee and Ranged overheads. All six shielded states
+are fixed comparisons in one 600-HP pool, without a complete encounter workload.
+Ornamented abyssal whips/tentacles retain the same shield exemption. The gear
+screen accepts any two supported owned styles rather than requiring Magic.
+Nine focused regressions independently check per-splat rounding, current-HP ruby,
+multihit/chained weapons, Blood Moon cooldown, Dharok ordering, style-specific
+exceptions, shared state/export and missing supplies/access assumptions. The
 positive-hit minimum follows the pinned calculator and awaits gameplay evidence.
+Unshielded bonus/cooldown, protection rotation, multi-demon timing, burn, incoming
+attacks and full-fight supplies stay open.

@@ -97,11 +97,20 @@ pub struct Window {
     #[serde(default)]
     pub invulnerable: bool,
     #[serde(default)]
-    pub tormented_defenceless: bool,
-    #[serde(default)]
     pub huey_pillar: bool,
     #[serde(default)]
     pub ranged_accuracy_factor: Option<[u32; 2]>,
+    /// Reviewed static states, applied before player debuffs.
+    #[serde(default)]
+    pub skills_override: BTreeMap<String, i32>,
+    #[serde(default)]
+    pub defensive_override: BTreeMap<String, i32>,
+    #[serde(default)]
+    pub guaranteed_accuracy: bool,
+    #[serde(default)]
+    pub demonbane_only: bool,
+    #[serde(default)]
+    pub counter: Counter,
     #[serde(default)]
     pub npc_damage: Option<NpcDamage>,
     #[serde(default)]
@@ -136,6 +145,15 @@ pub enum DamageModel {
     WardenCore,
     HalfDamage,
     QuarterDamage,
+}
+#[derive(Clone, Copy, Debug, Default, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum Counter {
+    #[default]
+    None,
+    AngelCleave,
+    AngelLightning,
+    MaggotPunish,
 }
 #[derive(Clone, Copy, Debug, Default, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
@@ -235,6 +253,10 @@ pub fn mechanics() -> &'static Mechanics {
             serde_json::from_str(include_str!("../assets/encounter-mechanics.json"))
                 .expect("encounter mechanics");
         for w in &data.windows {
+            assert!(w.skills_override.iter().all(|(k,v)| ["atk","str","def","magic","ranged"].contains(&k.as_str()) && (0..=10_000).contains(v)), "NPC skill override");
+            assert!(w.defensive_override.iter().all(|(k,v)| ["stab","slash","crush","light","standard","heavy","magic"].contains(&k.as_str()) && (-1000..=10_000).contains(v)), "NPC defence override");
+            assert!(w.counter == Counter::None || matches!((w.npc_id,w.counter), (16305,Counter::AngelCleave | Counter::AngelLightning) | (15742,Counter::MaggotPunish)), "NPC counter target");
+            assert!(!w.demonbane_only || w.npc_id == 14707, "demonic shield target");
             assert!(
                 w.ranged_accuracy_factor
                     .is_none_or(|f| (1..=100).contains(&f[0]) && (1..=100).contains(&f[1])),
@@ -327,6 +349,7 @@ pub struct Entry {
 impl Entry {
     pub fn guide_url(&self) -> String {
         let page = match self.name.as_str() {
+            "Tormented Demons" => "Tormented_Demon",
             "Sliske's wights" => "Desert_Treasure_II",
             name => name.strip_suffix(" (Quest)").unwrap_or(name),
         };

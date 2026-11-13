@@ -5,6 +5,8 @@
     {"accuracy_percent":0,"damage_percent":10,"element":"earth","ids":[30064],"rune":557}
   ],
   "families": {
+    "magic_dart":{"accuracy_bonus":9,"attack_types":["magic"],"formula":"spell","style":"Magic","ticks":5},
+    "pickaxe":{"attack_types":["stab","crush"],"stances":{"crush":"aggressive"},"formula":"standard","style":"Melee"},
     "obligator":{"attack_types":["crush"],"effects":["obligator"],"formula":"standard","style":"Melee"},
     "ascension":{"ammo":[34684,34690,34696,34702,34708],"attack_types":["heavy"],"effects":["ascension"],"formula":"standard","rapid":true,"quiver_ammo":true,"style":"Ranged"},
     "ayak":{"accuracy_bonus":11,"attack_types":["magic"],"denominator":3,"formula":"powered","numerator":1,"offset":-6,"style":"Magic","ticks":3},
@@ -58,6 +60,24 @@
     "wood_blowpipe":{"attack_types":["light"],"formula":"standard","internal_ammo":[806,807,808,3093,809,810],"rapid":true,"style":"Ranged"}
   },
   "weapons": [
+    {"family":"magic_dart","ids":[4170],"requirements":{"Magic":50,"Slayer":55}},
+    {"family":"magic_dart","ids":[21255],"requirements":{"Magic":75,"Slayer":55}},
+    {"family":"pickaxe","ids":[20014],"requirements":{"Attack":65}},
+    {"family":"pickaxe","ids":[1271],"requirements":{"Attack":30,"Mining":31}},
+    {"family":"pickaxe","ids":[12297],"requirements":{"Attack":10}},
+    {"family":"pickaxe","ids":[1265],"requirements":{"Attack":1,"Mining":1}},
+    {"family":"pickaxe","ids":[23680],"requirements":{"Agility":50,"Attack":70,"Mining":71}},
+    {"family":"pickaxe","ids":[23682],"requirements":{"Agility":50,"Attack":70,"Mining":71}},
+    {"family":"pickaxe","ids":[11920],"requirements":{"Attack":60}},
+    {"family":"pickaxe","ids":[23677],"requirements":{"Attack":60,"Mining":61}},
+    {"family":"pickaxe","ids":[12797],"requirements":{"Attack":60}},
+    {"family":"pickaxe","ids":[23276],"requirements":{"Attack":40,"Mining":41}},
+    {"family":"pickaxe","ids":[13243],"requirements":{"Attack":60}},
+    {"family":"pickaxe","ids":[13244],"requirements":{"Attack":60}},
+    {"family":"pickaxe","ids":[1267],"requirements":{"Attack":1,"Mining":1}},
+    {"family":"pickaxe","ids":[1273],"requirements":{"Attack":20,"Mining":21}},
+    {"family":"pickaxe","ids":[1275],"requirements":{"Attack":40,"Mining":41}},
+    {"family":"pickaxe","ids":[1269],"requirements":{"Attack":5,"Mining":6}},
     {"family":"obligator","ids":[34715,34717],"requirements":{"Attack":85}},
     {"family":"ascension","ids":[34681],"requirements":{"Ranged":80}},
     {"family":"ayak","ids":[31113],"requirements":{"Magic":83}},

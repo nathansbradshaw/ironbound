@@ -8,7 +8,7 @@ use ironbound::{
     planner::{self, Boss, Options, Target},
 };
 const SHIELDED: i32 = 13599;
-const DEFENCELESS: i32 = 100200;
+const DEFENCELESS: i32 = 100192;
 fn member() -> Member {
     let mut m = Member::default();
     for skill in account::SKILLS {
@@ -25,6 +25,10 @@ fn gear(weapon: i32, ammo: Option<i32>) -> Vec<Option<i32>> {
 fn calc(id: i32, set: &[Option<i32>], style: &str, spell: &str) -> combat::ResultStats {
     combat::calculate(&member(), set, style, planner::monster(id).unwrap(), spell)
         .unwrap_or_else(|e| panic!("target {id}, weapon {:?}, {style}, {spell}: {e}", set[3]))
+}
+fn exempt(weapon: i32, kind: &str, spell: &str) -> bool {
+    monster_rules::transform_for(SHIELDED, weapon, kind, &combat::Bonuses::default(), spell)
+        == Transform::Identity
 }
 fn close(a: f64, b: f64) {
     assert!((a - b).abs() < 1e-9, "{a} != {b}");
@@ -108,7 +112,7 @@ fn weapon_and_spell_exemptions_are_style_specific() {
             "Ranged" => "standard",
             _ => "magic",
         };
-        assert!(monster_rules::tormented_shield_exempt(weapon, kind, spell));
+        assert!(exempt(weapon, kind, spell));
         if ironbound::rules::weapon_for_style(weapon, style).is_none() {
             assert!(
                 combat::calculate(
@@ -122,23 +126,25 @@ fn weapon_and_spell_exemptions_are_style_specific() {
             );
             continue;
         }
-        let actual = calc(SHIELDED, &s, style, spell);
+        let source = if style == "Magic" { 100190 } else { SHIELDED };
+        let free_source = if style == "Magic" {
+            100200
+        } else {
+            DEFENCELESS
+        };
+        let actual = calc(source, &s, style, spell);
         let reference = ordinary(&s, style, spell);
         close(mean(&actual), mean(&reference));
         assert_eq!(actual.max_hit, reference.max_hit, "{weapon}");
-        let free = calc(DEFENCELESS, &s, style, spell);
+        let free = calc(free_source, &s, style, spell);
         close(free.accuracy, 1.0);
         assert_eq!(free.max_hit, reference.max_hit);
     }
-    assert!(!monster_rules::tormented_shield_exempt(
-        4151,
-        "magic",
-        "Water Bolt"
-    ));
-    assert!(!monster_rules::tormented_shield_exempt(29591, "crush", ""));
-    assert!(!monster_rules::tormented_shield_exempt(11103, "slash", "")); // abyssal bracelet isn't a weapon exception
+    assert!(!exempt(4151, "magic", "Water Bolt"));
+    assert!(!exempt(29591, "crush", ""));
+    assert!(!exempt(11103, "slash", "")); // abyssal bracelet isn't a weapon exception
     let s = gear(1381, None);
-    let water = calc(DEFENCELESS, &s, "Magic", "Water Bolt");
+    let water = calc(100200, &s, "Magic", "Water Bolt");
     assert_eq!(water.max_hit, 12); // elemental 30% weakness still applies before shield
     close(water.accuracy, 1.0);
 }
@@ -184,7 +190,7 @@ fn comparisons_share_one_pool_and_exclude_unreviewed_fights() {
         encounters::window(SHIELDED).unwrap().progress_group,
         encounters::window(DEFENCELESS).unwrap().progress_group
     );
-    for id in [SHIELDED, DEFENCELESS] {
+    for id in [SHIELDED, 100190, 100191, DEFENCELESS, 100200, 100201] {
         assert_eq!(
             combat::target_hp_bounds(planner::monster(id).unwrap(), 0).unwrap(),
             (1, 600)
@@ -201,7 +207,7 @@ fn comparisons_share_one_pool_and_exclude_unreviewed_fights() {
             .is_err()
         );
     }
-    for id in [100201, 13600, 13601, 13602] {
+    for id in [100193, 13600, 13601, 13602] {
         assert!(encounters::limitation(planner::monster(id).unwrap()).is_some());
     }
     let mut o = Options {
@@ -299,7 +305,10 @@ fn scythe_reduces_three_separate_hits_in_the_guaranteed_accuracy_state() {
 fn bestiary_screen_requires_two_owned_styles_but_does_not_check_quest_access() {
     let mut snapshot = account::demo();
     snapshot.members[0].level_overrides = member().level_overrides;
-    snapshot.members[0].bank.get_or_insert_with(Vec::new).extend([4151,1]);
+    snapshot.members[0]
+        .bank
+        .get_or_insert_with(Vec::new)
+        .extend([4151, 1]);
     let keep = gear(4151, None);
     let excluded = snapshot
         .available(false)
@@ -322,9 +331,31 @@ fn bestiary_screen_requires_two_owned_styles_but_does_not_check_quest_access() {
         "{}",
         result.reason
     );
+    // A melee/ranged hybrid is valid; Magic is not a mandatory second style.
     snapshot.members[0]
-        .level_overrides
-        .insert("Magic".into(), 99);
+        .bank
+        .as_mut()
+        .unwrap()
+        .extend([861, 1, 892, 100]);
+    let excluded = snapshot
+        .available(false)
+        .keys()
+        .copied()
+        .filter(|id| ![4151, 861, 892].contains(id))
+        .collect();
+    let two = Options {
+        excluded,
+        ..Default::default()
+    };
+    let pair = &ironbound::bestiary::assess_catalog(&snapshot, &two)[index];
+    assert!(
+        pair.reason.contains("Melee")
+            && pair.reason.contains("Ranged")
+            && !pair.reason.contains("Magic"),
+        "{}",
+        pair.reason
+    );
+
     let result = &ironbound::bestiary::assess_catalog(&snapshot, &Options::default())[index];
     assert!(
         result
@@ -333,6 +364,6 @@ fn bestiary_screen_requires_two_owned_styles_but_does_not_check_quest_access() {
     );
     assert_eq!(
         result.requirements.status,
-        ironbound::bestiary::RequirementStatus::Unverified
+        ironbound::bestiary::RequirementStatus::NoLevelGate
     );
 }

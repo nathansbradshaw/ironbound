@@ -14,6 +14,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
             let name = match entry.name.as_str() {
                 "Tormented Demons" => "Tormented Demon (1)",
+                "Turoths" => "Turoth (lv 89)",
+                "Kurasks" => "Kurask",
                 "Barrows Chests" => "Dharok the Wretched",
                 "Moons of Peril" | "Lunar Chests" => "Blood Moon",
                 "Dagannoth Kings" => "Dagannoth Rex",

@@ -193,6 +193,8 @@ pub fn monsters() -> &'static [Monster] {
                 .iter_mut()
                 .find(|m| m.id == window.id)
                 .expect("window target");
+            monster.skills.extend(window.skills_override.clone());
+            monster.defensive.extend(window.defensive_override.clone());
             if let Some(hp) = window.hitpoints {
                 monster.skills.insert("hp".into(), hp as i32);
             }

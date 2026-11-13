@@ -32,22 +32,34 @@ pub fn target(id: i32) -> Option<&'static Profile> {
 pub fn visible(entry: &encounters::Entry, hide_quests: bool) -> bool {
     !hide_quests || profile(&entry.name).is_none()
 }
+/// Explain a required quest weapon independently of ownership or DPS support.
+pub fn weapon_requirement(id: i32, set: &[Option<i32>], style: &str) -> Option<String> {
+    let p = target(id)?;
+    if p.weapons.is_empty()
+        || rules::base_style(style) == "Melee"
+            && set.get(3).copied().flatten()
+                .is_some_and(|w| p.weapons.contains(&w))
+    {
+        return None;
+    }
+    let weapons = p.weapons.iter()
+        .map(|id| planner::item_name(*id))
+        .collect::<Vec<_>>()
+        .join(" or ");
+    let mut message = format!("{} requires {} for this quest fight.", p.name, weapons);
+    if p.ids.contains(&16204) {
+        message.push_str(" Create the Hallowed flail during The Blood Moon Rises before this fight. The Sunspear is awarded after defeating Drakan.");
+    }
+    Some(message)
+}
 pub fn check_loadout(id: i32, set: &[Option<i32>], style: &str, spell: &str) -> Result<(), String> {
-    let Some(p) = target(id) else {
+    let Some(_) = target(id) else {
         return Ok(());
     };
     let weapon = set.get(3).copied().flatten().unwrap_or(0);
     let style = rules::base_style(style);
-    if !p.weapons.is_empty() && (style != "Melee" || !p.weapons.contains(&weapon)) {
-        return Err(format!(
-            "{} needs {} for the reviewed quest baseline.",
-            p.name,
-            p.weapons
-                .iter()
-                .map(|id| planner::item_name(*id))
-                .collect::<Vec<_>>()
-                .join(" or ")
-        ));
+    if let Some(message) = weapon_requirement(id, set, style) {
+        return Err(message);
     }
     let element = rules::spells()
         .iter()

@@ -88,6 +88,8 @@ Defaults use unboosted levels. Selected boosts use peak current levels; wear req
 
 **Combat → Attack window & supply budget** lets you set current target HP and inspect finite-HP attack expectations, including misses, overkill and changing ruby-bolt procs. Vorkath has an optional acid attack window; normal Yama has a separate 71-HP final flare. These estimates exclude movement, specials, regeneration and supply recovery. Packing budgets and the overview's HP/DPS comparison are separate assumptions, not kills-per-trip predictions.
 
+**Combat → Full-fight & consumption simulation** runs complete Vorkath, normal Yama and Wardens scenarios with editable execution assumptions. Compare median/tail demand and the fights covered by your carried supplies; download a replayable report. [Model assumptions and verification](docs/full-fight-simulation.md) explain the scenario inputs, excluded effects and outstanding gameplay calibration.
+
 Blowpipes preload your chosen ammunition budget from owned compatible darts, or you can explicitly confirm at least that many darts are already loaded. Changing the budget requires confirming the contents again. These occupy no bag or worn ammo slot. Projectile recovery, charges and actual consumption need your check. Boost decay, potion timing, venom and special-attack damage are outside these estimates.
 
 Scythe uses target-size hits. Soulreaper uses **Boosts, darts & debuffs → Soulreaper held stacks**. Initial Moon support includes Dual macuahuitl, expected Blood Moon timing, Atlatl Strength-based damage and Blue Moon elemental casts. Full Eclipse burns and Blue Moon follow-ups remain unavailable. [Equipment coverage and remaining work](docs/equipment-backlog.md).

@@ -320,3 +320,65 @@ fn kings_have_separate_protected_basic_attack_scenarios() {
         .is_err()
     );
 }
+
+#[test]
+fn moon_followups_apply_chemical_and_hp_scaling_once_to_each_style() {
+    let mut gear = set(28988, None);
+    for (slot, id) in [(0, 29019), (4, 29013), (7, 29016)] {
+        gear[slot] = Some(id);
+    }
+    for id in [100100, 12223] {
+        let target = planner::monster(id).unwrap();
+        let mut settings = Settings {
+            blue_moon_melee: "Stab".into(),
+            ..Default::default()
+        };
+        if id == 12223 {
+            settings.target_hp.insert(id, 350);
+        }
+        let melee =
+            combat::calculate_configured(&member(), &gear, "Stab", target, "", 0, &settings)
+                .unwrap();
+        let on = combat::calculate_configured(
+            &member(),
+            &gear,
+            "Magic",
+            target,
+            "Undead Grasp",
+            0,
+            &settings,
+        )
+        .unwrap();
+        settings.blue_moon_melee = "Off".into();
+        let off = combat::calculate_configured(
+            &member(),
+            &gear,
+            "Magic",
+            target,
+            "Undead Grasp",
+            0,
+            &settings,
+        )
+        .unwrap();
+        close(on.dps, off.dps + off.accuracy * 0.5 * melee.dps);
+        assert_eq!(on.max_hit, off.max_hit + melee.max_hit);
+    }
+}
+
+#[test]
+fn dynamic_vardorvis_budget_keeps_delayed_burn_unverified() {
+    let mut gear = set(29000, Some(28991));
+    for (slot, id) in [(0, 29010), (4, 29004), (7, 29007)] {
+        gear[slot] = Some(id);
+    }
+    let reason = attack_budget::for_dynamic_window(
+        &member(),
+        &gear,
+        "Ranged",
+        planner::monster(12223).unwrap(),
+        "",
+        &Options::default(),
+    )
+    .unwrap_err();
+    assert!(reason.contains("burn buildup"), "{reason}");
+}

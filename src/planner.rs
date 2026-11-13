@@ -223,6 +223,7 @@ impl Target {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(default)]
 pub struct Options {
+    pub simulation: crate::simulation::Settings,
     pub confirmations: BTreeMap<String, String>,
     pub recommended: Option<bool>,
     pub ranking: crate::ranking::Preferences,
@@ -256,6 +257,7 @@ pub struct Options {
 impl Default for Options {
     fn default() -> Self {
         Self {
+            simulation: Default::default(),
             confirmations: BTreeMap::new(),
             recommended: None,
             ranking: Default::default(),
@@ -1223,12 +1225,12 @@ fn refine_dps_seed(
                 };
                 for a in ammo {
                     trial[13] = a;
-                    if !crate::rules::casting_supported_configured(
+                    if !crate::rules::casting_supported_for_style(
                         m,
                         &trial,
                         owned,
-                        options.combat.spell_casts,
                         &options.combat,
+                        style,
                     ) {
                         continue;
                     }
@@ -1323,6 +1325,7 @@ pub fn plan(snapshot: &Snapshot, options: &Options) -> Plan {
     options.switch_tolerance = crate::efficient::DEFAULT_TOLERANCE_PERCENT;
     options.damage_tolerance = 0;
     options.prayer_tolerance = 0;
+    options.simulation = Default::default();
     let key = serde_json::to_string(&(snapshot, &options)).unwrap_or_default();
     thread_local! {static CACHE:std::cell::RefCell<std::collections::VecDeque<(String,Plan)>>=const{std::cell::RefCell::new(std::collections::VecDeque::new())};}
     if let Some(p) = CACHE.with(|c| {
@@ -1760,11 +1763,10 @@ fn plan_uncached(snapshot: &Snapshot, options: &Options) -> Plan {
     let mut spell_runes = BTreeMap::<i32, u32>::new();
     let mut trip_spells = std::collections::BTreeSet::new();
     let mut mark_applies = false;
-    for set in std::iter::once(&out.equipment).chain(out.phases.iter().map(|p| &p.equipment)) {
-        if !set[3]
-            .and_then(crate::rules::weapon)
-            .is_some_and(|r| r.family.style == "Magic")
-        {
+    for (set, style) in std::iter::once((&out.equipment, primary_style(options)))
+        .chain(out.phases.iter().map(|p| (&p.equipment, p.style.as_str())))
+    {
+        if crate::rules::base_style(style) != "Magic" {
             continue;
         }
         let mut selected_spells = std::collections::BTreeSet::new();

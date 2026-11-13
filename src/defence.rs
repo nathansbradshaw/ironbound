@@ -7,6 +7,7 @@ use serde::{Deserialize, Serialize};
 pub struct Settings {
     pub ranged_type: crate::rules::RangedType,
     pub current_hitpoints: Option<u32>,
+    pub blue_moon_melee: String,
     pub spell_selection: crate::rules::SpellSelection,
     pub spell_casts: u32,
     pub ammo_shots: u32,
@@ -33,6 +34,7 @@ impl Default for Settings {
         Self {
             ranged_type: Default::default(),
             current_hitpoints: None,
+            blue_moon_melee: "Off".into(),
             spell_selection: Default::default(),
             spell_casts: crate::rules::DEFAULT_CASTS,
             ammo_shots: crate::rules::DEFAULT_LOADED_SHOTS,
@@ -57,8 +59,10 @@ impl Default for Settings {
 }
 impl Settings {
     pub fn valid(&self) -> bool {
-        self.current_hitpoints
-            .is_none_or(|hp| (1..=255).contains(&hp))
+        ["Off", "Stab", "Slash", "Crush"].contains(&self.blue_moon_melee.as_str())
+            && self
+                .current_hitpoints
+                .is_none_or(|hp| (1..=255).contains(&hp))
             && (1..=10_000).contains(&self.spell_casts)
             && self.soulreaper_stacks <= 5
             && self.spell_selection.valid()
@@ -118,6 +122,8 @@ pub struct Attack {
 pub struct Profile {
     pub ids: Vec<i32>,
     pub kind: String,
+    #[serde(default)]
+    pub typeless: bool,
     #[serde(default)]
     pub automatic: bool,
     #[serde(default)]
@@ -236,9 +242,6 @@ pub fn estimate(
             return Err(guard.note.clone());
         }
     }
-    if crate::rules::set_effect(set, "torag_damned") {
-        return Err("Torag's amulet defence bonus is not modelled for incoming damage.".into());
-    }
     let profile = profile(target.id);
     if profile.is_some_and(|p| p.kind == "unverified") {
         return Err(profile.unwrap().note.clone());
@@ -293,7 +296,17 @@ pub fn estimate(
     }
     let defence = crate::modifiers::level(member, "Defence", &settings.boosts)
         .ok_or("Enter your Defence level.")? as i64;
-    let defence = defence * (100 + prayer.defence) / 100;
+    let mut defence = defence * (100 + prayer.defence) / 100;
+    if crate::rules::set_effect(set, "torag_damned") {
+        let base_hp = member
+            .level("Hitpoints")
+            .filter(|hp| *hp > 0)
+            .ok_or("Enter your base Hitpoints level for Torag's amulet bonus.")?;
+        let current = settings.current_hitpoints.unwrap_or(base_hp);
+        let missing_percent =
+            ((f64::from(base_hp) - f64::from(current)) * 100.0 / f64::from(base_hp)).round() as i64;
+        defence = defence * (100 + missing_percent).max(0) / 100;
+    }
     let effective = if basic == "magic" {
         let magic = crate::modifiers::level(member, "Magic", &settings.boosts)
             .ok_or("Enter your Magic level.")? as i64;
@@ -353,10 +366,23 @@ pub fn estimate(
     }
     let mut damage = 0.0;
     let mut healing = 0.0;
+    let reduce = |hit: i32| {
+        let hit = (f64::from(hit) * through).floor() as i32;
+        if profile.is_some_and(|p| p.typeless) {
+            f64::from(hit)
+        } else {
+            crate::equipment_effects::incoming_hit(
+                hit,
+                get(&bonus.defensive, basic) as i32,
+                set,
+                settings,
+            )
+        }
+    };
     if chained {
         for (index, hit) in profile.unwrap().hits.iter().enumerate() {
             let land = chance.powi(index as i32 + 1);
-            damage += land * hit.max as f64 / 2.0 * through;
+            damage += land * (0..=hit.max).map(&reduce).sum::<f64>() / f64::from(hit.max + 1);
             if hit.heal_multiplier > 0 {
                 let mean = (0..=hit.max)
                     .map(|d| (d * hit.heal_multiplier).clamp(hit.heal_floor, hit.heal_cap) as f64)
@@ -375,22 +401,14 @@ pub fn estimate(
             return Err("Incoming damage distribution is invalid.".into());
         }
         // Prayer reduction is applied to each possible hit before averaging.
-        let mean = (min..=max)
-            .map(|hit| {
-                crate::equipment_effects::incoming_hit(
-                    (hit as f64 * through).floor() as i32,
-                    get(&bonus.defensive, basic) as i32,
-                    set,
-                    settings,
-                )
-            })
-            .sum::<f64>()
-            / (max - min + 1) as f64;
+        let mean = (min..=max).map(&reduce).sum::<f64>() / (max - min + 1) as f64;
         damage = chance * mean;
         healing = damage * scenario.map(|a| a.healing_fraction).unwrap_or(0.0);
     }
     let mut note = profile.map(|p| p.note.clone()).unwrap_or("Unprotected basic-attack estimate only. Attack choice frequencies, chip damage, protection interactions, scaling and special mechanics are unverified.".into());
-    if crate::equipment_effects::has_defensive_passive(set) {
+    if crate::rules::set_effect(set, "justiciar") {
+        note.push_str(" Justiciar reduces typed damage after prayer, using the matching equipment Defence bonus. Typeless damage is excluded.");
+    } else if crate::equipment_effects::has_defensive_passive(set) {
         note.push_str(" Reviewed equipment reductions apply per unprotected basic hit only; chained hits, prayer chip, specials and boss-healing interactions remain unavailable.");
     }
     Ok(Estimate {
@@ -407,6 +425,16 @@ pub fn estimate(
             "{note} Uses the selected current-level boosts, prayer and +0 defensive-stance bonus. This is one attack scenario, not full-fight incoming DPS."
         ),
     })
+}
+/// Non-PvP, non-typeless hits: matching equipment defence / 3000,
+/// with at least one damage removed from a positive hit, never adding damage.
+pub fn justiciar_hit(hit: i32, defence_bonus: i64) -> i32 {
+    if hit <= 0 {
+        return 0;
+    }
+    // The game floors the remaining damage, hence rounds fractional reduction up.
+    let reduction = ((i64::from(hit) * defence_bonus.max(0) + 2999) / 3000).max(1);
+    (i64::from(hit) - reduction).max(0) as i32
 }
 pub fn score(
     member: &Member,

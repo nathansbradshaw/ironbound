@@ -95,6 +95,9 @@ pub fn for_window(
     if crate::encounters::window(target.id).is_some_and(|w| w.hp_scaling.is_some()) {
         return Err("HP-dependent accuracy needs the configured attack budget; a fixed snapshot cannot be used for the whole window.".into());
     }
+    if result.burn_dps > 0.0 {
+        return Err("Eclipse burn DPS assumes sustained attacks and five-stack limits. Finite-HP timing with burn buildup, expiration and target death is unavailable; burn is not treated as instant damage.".into());
+    }
     if crate::yama::is_judge_window(target.id) {
         return Err("Use the paired Judge cycle; alternating attacks cannot be counted as independent styles.".into());
     }
@@ -180,6 +183,9 @@ pub fn for_dynamic_window(
             o.raid_level,
             &settings,
         )?;
+        if r.burn_dps > 0.0 {
+            return Err("Finite-HP timing with Eclipse burn buildup, expiration and target death is unverified.".into());
+        }
         let mut a = 1.0;
         let mut time = r.expected_attack_ticks * 0.6;
         let mut zero = 0.0;

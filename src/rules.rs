@@ -149,6 +149,10 @@ pub struct Weapon {
     pub ids: Vec<i32>,
     pub family: String,
     #[serde(default)]
+    pub alternate_families: Vec<String>,
+    #[serde(default)]
+    pub spell_families: Vec<String>,
+    #[serde(default)]
     pub supplied_runes: Vec<i32>,
     #[serde(default)]
     pub effects: Vec<Effect>,
@@ -317,6 +321,10 @@ impl Registry {
                 return Err("Multiple additive task groups need an explicit combined stage".into());
             }
             if !self.families.contains_key(&weapon.family)
+                || weapon
+                    .alternate_families
+                    .iter()
+                    .any(|f| !self.families.contains_key(f))
                 || weapon.ids.is_empty()
                 || weapon.ids.iter().any(|id| *id <= 0 || !ids.insert(*id))
             {
@@ -443,13 +451,16 @@ impl Rule {
         self.family.effects.contains(&effect) || self.weapon.effects.contains(&effect)
     }
     pub fn permits(&self, style: &str) -> bool {
-        base_style(style) == self.family.style
-            && (style == base_style(style)
-                || self
-                    .family
-                    .attack_types
-                    .iter()
-                    .any(|t| t.eq_ignore_ascii_case(style)))
+        family_permits(self.family, style)
+            || self
+                .weapon
+                .alternate_families
+                .iter()
+                .filter_map(|name| registry().families.get(name))
+                .any(|family| family_permits(family, style))
+    }
+    pub fn accepts_recipe(&self, recipe: &SpellRecipe) -> bool {
+        recipe.family == self.weapon.family || self.weapon.spell_families.contains(&recipe.family)
     }
     pub fn stance(&self, attack_type: &str) -> Stance {
         self.family
@@ -458,6 +469,20 @@ impl Rule {
             .copied()
             .unwrap_or_default()
     }
+}
+fn family_permits(family: &Family, style: &str) -> bool {
+    base_style(style) == family.style
+        && (style == base_style(style)
+            || family
+                .attack_types
+                .iter()
+                .any(|t| t.eq_ignore_ascii_case(style)))
+}
+pub fn spell_compatible(rule: &Rule, recipe: &SpellRecipe, set: &[Option<i32>]) -> bool {
+    rule.accepts_recipe(recipe)
+        && (recipe.family != "ancient"
+            || rule.weapon.family != "wind"
+            || set_effect(set, "ahrim_damned"))
 }
 pub fn equipment_effect(id: i32, effect: &str) -> bool {
     registry()
@@ -529,6 +554,18 @@ pub fn weapon(id: i32) -> Option<Rule> {
         weapon: w,
     })
 }
+pub fn weapon_for_style(id: i32, style: &str) -> Option<Rule> {
+    let mut rule = weapon(id)?;
+    if !family_permits(rule.family, style) {
+        rule.family = rule
+            .weapon
+            .alternate_families
+            .iter()
+            .filter_map(|name| registry().families.get(name))
+            .find(|family| family_permits(family, style))?;
+    }
+    Some(rule)
+}
 pub fn ammunition(id: i32) -> AmmoEffect {
     registry()
         .ammunition
@@ -552,9 +589,10 @@ pub fn weapon_ids(style: &str, allow_spells: bool) -> Vec<i32> {
         .iter()
         .flat_map(|w| w.ids.iter().copied())
         .filter(|id| {
-            weapon(*id).is_some_and(|r| {
+            weapon_for_style(*id, style).is_some_and(|r| {
                 r.permits(style)
                     && (allow_spells
+                        || ["blue_moon", "ancient"].contains(&r.weapon.family.as_str())
                         || !matches!(r.family.formula, Formula::Elemental | Formula::Fixed))
             })
         })
@@ -694,7 +732,7 @@ impl SpellSelection {
             Self::Spell(name) => spells()
                 .iter()
                 .find(|recipe| recipe.name == *name)
-                .is_some_and(|recipe| recipe.family == rule.weapon.family),
+                .is_some_and(|recipe| rule.accepts_recipe(recipe)),
         }
     }
 }
@@ -707,6 +745,8 @@ pub struct SpellRecipe {
     pub tiers: Vec<(u32, i64)>,
     #[serde(default)]
     pub element: Option<String>,
+    #[serde(default)]
+    pub frostweaver_percent: u32,
 }
 pub fn spells() -> &'static [SpellRecipe] {
     static DATA: std::sync::OnceLock<Vec<SpellRecipe>> = std::sync::OnceLock::new();
@@ -779,7 +819,7 @@ fn spell_name_at_level(
     };
     let recipes: Vec<_> = spells()
         .iter()
-        .filter(|s| s.family == rule.weapon.family)
+        .filter(|s| spell_compatible(&rule, s, set))
         .collect();
     if recipes.is_empty() {
         return "";
@@ -874,11 +914,11 @@ pub fn elemental_candidates(
     spells()
         .iter()
         .filter(|s| {
-            s.family == rule.weapon.family
+            spell_compatible(&rule, s, set)
                 && magic >= s.level
                 && has_runes(s, set, owned, settings.spell_casts)
         })
-        .filter(|s| elements.insert(s.element.as_deref()))
+        .filter(|s| s.element.is_none() || elements.insert(s.element.as_deref()))
         .collect()
 }
 fn manual_spell_name(
@@ -930,7 +970,7 @@ pub fn spell_requirement(
     let Some(rule) = set.get(3).copied().flatten().and_then(weapon) else {
         return Some("Requires a compatible spellcasting weapon.".into());
     };
-    if recipe.family != rule.weapon.family {
+    if !spell_compatible(&rule, recipe, set) {
         return Some("Requires a compatible spellcasting weapon.".into());
     }
     let Some(magic) = crate::modifiers::level(member, "Magic", &settings.boosts) else {
@@ -975,7 +1015,7 @@ pub fn elemental_unavailability(
     };
     let minimum = spells()
         .iter()
-        .filter(|s| s.family == rule.weapon.family && s.element.as_deref() == Some(element))
+        .filter(|s| spell_compatible(&rule, s, set) && s.element.as_deref() == Some(element))
         .map(|s| s.level)
         .min();
     match minimum {
@@ -1035,6 +1075,23 @@ pub fn casting_supported_configured(
         manual_spell_name(member, set, owned, settings, casts),
     )
 }
+pub fn casting_supported_for_style(
+    member: &Member,
+    set: &[Option<i32>],
+    owned: &BTreeMap<i32, u32>,
+    settings: &crate::defence::Settings,
+    style: &str,
+) -> bool {
+    if base_style(style) == "Melee" {
+        return set
+            .get(3)
+            .copied()
+            .flatten()
+            .and_then(|id| weapon_for_style(id, style))
+            .is_some();
+    }
+    casting_supported_configured(member, set, owned, settings.spell_casts, settings)
+}
 fn casting_at_level(
     member: &Member,
     set: &[Option<i32>],
@@ -1062,7 +1119,7 @@ fn casting_at_level(
     }
     let name = selected.unwrap_or_else(|| spell_name_at_level(set, owned, magic, casts));
     spells().iter().find(|s| s.name == name).is_some_and(|s| {
-        s.family == rule.weapon.family
+        spell_compatible(&rule, s, set)
             && magic.is_some_and(|level| level >= s.level)
             && has_runes(s, set, owned, casts)
     })

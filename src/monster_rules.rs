@@ -113,7 +113,7 @@ pub fn check_weapon(id: i32, style: &str, weapon: i32) -> Result<(), String> {
 }
 
 /// HP-dependent ruby damage uses the same transform as ordinary rolled hits.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum Transform {
     #[default]
     Identity,

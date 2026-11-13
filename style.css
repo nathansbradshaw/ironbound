@@ -879,6 +879,7 @@ button.ranged-type:focus-visible{outline:3px solid #ffe087;outline-offset:2px}
 .flow-controls>label.void-preference { grid-column: 1/-1; display: flex; flex-direction: row; align-items: center; justify-content: flex-start; flex-wrap: wrap; text-align: left; gap: 6px; margin: 0; }
 .flow-controls .void-preference input[type=checkbox] { display: inline-block; width: 18px; height: 18px; min-height: 18px; margin: 0; padding: 0; box-shadow: none; accent-color: #c9a144; }
 .void-preference small { flex-basis: 100%; padding-left: 24px; color: #ddd1b8; font: 16px/1.2 Scape,monospace; }
+.fight-simulation-panel{grid-column:1/-1}.fight-simulation-panel>details>summary{font-size:1.2rem;color:var(--gold,#ffcf55);cursor:pointer}.simulation-inputs{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px;margin:16px 0}.simulation-inputs label{display:flex;align-items:center;justify-content:space-between;gap:12px}.simulation-inputs input{width:82px;flex-shrink:0}.fight-simulation-panel table{width:100%;margin:12px 0}.fight-simulation-panel p,.fight-simulation-panel li{line-height:1.55}.fight-simulation-panel{overflow-wrap:anywhere}
 
 /* Boss journal: original game portraits set into the existing parchment. */
 #encounter-results{max-height:620px;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;padding:12px 2px;border:0;align-items:start}
@@ -900,3 +901,4 @@ button.ranged-type:focus-visible{outline:3px solid #ffe087;outline-offset:2px}
 .encounter-browser .bestiary-disclaimer{font-size:12px;line-height:1.5;max-width:80ch}.portrait-missing{font:44px Scape,monospace;color:#80623b}
 @media(max-width:1000px){#encounter-results{grid-template-columns:1fr}}
 @media(max-width:480px){.bestiary-card .boss-portrait{flex-basis:60px!important;width:60px}.boss-portrait img{width:60px;height:78px}.bestiary-card .bestiary-open{padding:10px 8px;gap:8px}.bestiary-card .boss-entry-heading strong{font-size:21px}.boss-stats{gap:3px 7px}.bestiary-card .boss-open-arrow{display:none}}
+.fight-simulation-panel .wiki-table tbody>tr>th{width:50%;overflow-wrap:break-word;word-break:normal}.fight-simulation-panel .wiki-table td{white-space:nowrap}

@@ -37,3 +37,10 @@ inherits = "dev"
 
 [profile.verify-release]
 inherits = "release"
+
+# Keep simulation package outputs separate from other active verification builds.
+[profile.simulation-dev]
+inherits = "dev"
+
+[profile.simulation-release]
+inherits = "release"

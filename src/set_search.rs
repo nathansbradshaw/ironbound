@@ -25,8 +25,9 @@ fn usable(
         && planner::can_use(id, m)
         && planner::gear(id).is_some_and(|g| {
             g.slot == planner::SLOT_KEYS[slot]
-                && !["0", "broken", "inactive", "uncharged"]
+                && (!["0", "broken", "inactive", "uncharged"]
                     .contains(&g.version.to_ascii_lowercase().as_str())
+                    || rules::equipment_effect(id, "wearable_broken"))
         })
         && o.gear_overrides
             .get(&format!("{style}:{slot}"))
@@ -157,12 +158,12 @@ pub fn candidates(
                 }
                 set[5] = None;
             }
-            if weapon.family.style == "Magic"
+            if rules::base_style(style) == "Magic"
                 && !o.combat.spell_selection.permits_weapon(set[3].unwrap())
             {
                 continue;
             }
-            if weapon.family.style == "Ranged"
+            if rules::base_style(style) == "Ranged"
                 && !o.combat.ranged_type.permits_weapon(set[3].unwrap())
             {
                 continue;
@@ -208,4 +209,47 @@ pub fn candidates(
     let mut seen = BTreeSet::new();
     result.retain(|s| seen.insert((s.equipment.clone(), s.slots.clone())));
     result
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn justiciar_is_jointly_considered_in_every_combat_style_and_respects_pins() {
+        let mut m = Member::default();
+        for skill in crate::account::SKILLS {
+            m.level_overrides.insert(skill.into(), 99);
+        }
+        let owned = BTreeMap::from([
+            (22326, 1),
+            (22327, 1),
+            (22328, 1),
+            (4151, 1),
+            (9185, 1),
+            (9144, 1000),
+            (11907, 1),
+        ]);
+        for (style, weapon) in [
+            ("Melee", 4151),
+            ("Slash", 4151),
+            ("Magic", 11907),
+            ("Ranged", 9185),
+        ] {
+            let mut base = vec![None; 14];
+            base[3] = Some(weapon);
+            base[13] = Some(9144);
+            let mut o = Options::default();
+            assert!(
+                candidates(&base, style, &m, &owned, &o)
+                    .iter()
+                    .any(|s| rules::set_effect(&s.equipment, "justiciar"))
+            );
+            o.gear_overrides.insert(format!("{style}:0"), 0);
+            assert!(
+                !candidates(&base, style, &m, &owned, &o)
+                    .iter()
+                    .any(|s| rules::set_effect(&s.equipment, "justiciar"))
+            );
+        }
+    }
 }

@@ -53,6 +53,7 @@ struct State {
     encounter_filter: String,
     building_group: bool,
     raid_rooms_open: bool,
+    bestiary_open: bool,
     switch_preferences_open: bool,
     combat_options_open: bool,
     attack_budget_open: bool,
@@ -154,9 +155,10 @@ impl State {
             gear_search: String::new(),
             incoming_attack: None,
             encounter_query: String::new(),
-            encounter_filter: "Popular".into(),
+            encounter_filter: "For you".into(),
             building_group: false,
             raid_rooms_open: false,
+            bestiary_open: false,
             switch_preferences_open: false,
             combat_options_open: false,
             attack_budget_open: false,
@@ -941,7 +943,9 @@ pub fn start() -> Result<(), JsValue> {
     search.forget();
     let disclosure = Closure::<dyn FnMut(web_sys::Event)>::new(|e: web_sys::Event| {
         if let Some(el) = e.target().and_then(|t| t.dyn_into::<Element>().ok()) {
-            if el.id() == "raid-room-picker" {
+            if el.id() == "boss-bestiary" {
+                STATE.with(|state| state.borrow_mut().bestiary_open = el.has_attribute("open"));
+            } else if el.id() == "raid-room-picker" {
                 STATE.with(|state| state.borrow_mut().raid_rooms_open = el.has_attribute("open"));
             } else if el.id() == "switch-preferences" {
                 STATE.with(|state| {
@@ -1432,7 +1436,7 @@ fn focus_inventory(slot: usize) {
 }
 fn act(action: &str) {
     if let Some(filter) = action.strip_prefix("encounter-filter:") {
-        if ["Popular", "Bosses", "Raids", "Groups"].contains(&filter) {
+        if crate::bestiary::FILTERS.contains(&filter) {
             STATE.with(|state| {
                 let mut s = state.borrow_mut();
                 s.encounter_filter = filter.into();
@@ -1453,7 +1457,7 @@ fn act(action: &str) {
             STATE.with(|state| {
                 let mut s = state.borrow_mut();
                 s.encounter_query.clear();
-                s.encounter_filter = "Popular".into();
+                s.encounter_filter = "For you".into();
                 if let Some(input) = document()
                     .get_element_by_id("encounter-search")
                     .and_then(|e| e.dyn_into::<HtmlInputElement>().ok())
@@ -1879,6 +1883,7 @@ fn act(action: &str) {
                     s.view = "loadout".into();
                     s.building_group = false;
                     s.raid_rooms_open = false;
+                    s.bestiary_open = false;
                 }
             } else {
                 s.notice("Choose a listed boss, raid or encounter.", true);
@@ -2590,7 +2595,7 @@ fn render_with_edit(edit: Option<&str>) {
         html.push_str(&encounter_detail(&s,&plan));
         if s.shared_setup.is_none(){html.push_str(&named_setups(&s));}
         html.push_str("<div class=\"encounter-actions\">");
-        html.push_str(&format!("<details class=\"encounter-picker\" {}><summary>Choose boss or raid</summary>",if s.building_group||(options.boss==Boss::Custom&&options.targets.is_empty()){"open"}else{""}));
+        html.push_str(&format!("<details class=\"encounter-picker\" id=\"boss-bestiary\" {}><summary>Boss bestiary</summary>",if s.bestiary_open||s.building_group||(options.boss==Boss::Custom&&options.targets.is_empty()){"open"}else{""}));
         html.push_str(&encounter_catalog(&s));
         html.push_str(&format!("<details class=\"custom-builder\" {}><summary>Build a custom group</summary>",if s.building_group{"open"}else{""}));
         html.push_str(&custom_group(&s));
@@ -3192,15 +3197,37 @@ fn encounter_label(options: &Options) -> &str {
         .map(|e| e.name.as_str())
         .unwrap_or(options.boss.name())
 }
+fn bestiary_assessments(s: &State) -> Vec<crate::bestiary::Assessment> {
+    thread_local! {
+        static CACHE: RefCell<Option<(String, Vec<crate::bestiary::Assessment>)>> = const { RefCell::new(None) };
+    }
+    let key = serde_json::to_string(&(
+        &s.saved.snapshot,
+        s.saved.options.shared,
+        &s.saved.options.excluded,
+        s.saved.options.exclude_void,
+    ))
+    .unwrap_or_default();
+    CACHE.with(|cache| {
+        let mut cache = cache.borrow_mut();
+        if cache.as_ref().is_none_or(|(old, _)| *old != key) {
+            *cache = Some((
+                key,
+                crate::bestiary::assess_catalog(&s.saved.snapshot, &s.saved.options),
+            ));
+        }
+        cache.as_ref().unwrap().1.clone()
+    })
+}
 fn encounter_catalog(s: &State) -> String {
     let mut html = format!(
-        r#"<section class="encounter-browser"><h2>Choose an encounter</h2><label><span class="slot-caption">Search encounters</span><input id="encounter-search" type="search" placeholder="Search bosses or raids" value="{}" autocomplete="off"></label><nav class="encounter-filters" aria-label="Encounter categories">"#,
+        r#"<section class="encounter-browser"><h2>Boss bestiary</h2><p>Find your next fight. Readiness uses your owned gear and unboosted levels; open a card for the caveats.</p><label><span class="slot-caption">Search encounters</span><input id="encounter-search" type="search" placeholder="Search bosses or raids" value="{}" autocomplete="off"></label><nav class="encounter-filters" aria-label="Encounter categories">"#,
         esc(&s.encounter_query)
     );
-    for filter in ["Popular", "Bosses", "Raids", "Groups"] {
-        html.push_str(&format!(r#"<button id="enc-filter-{filter}" class="encounter-filter {}" data-action="encounter-filter:{filter}" aria-pressed="{}">{filter}</button>"#,if s.encounter_filter==filter{"active"}else{""},s.encounter_filter==filter));
+    for filter in crate::bestiary::FILTERS {
+        html.push_str(&format!(r#"<button id="enc-filter-{}" class="encounter-filter {}" data-action="encounter-filter:{filter}" aria-pressed="{}">{filter}</button>"#,filter.replace(' ', "-"),if s.encounter_filter==filter{"active"}else{""},s.encounter_filter==filter));
     }
-    html.push_str("</nav><div id=\"encounter-results\">");
+    html.push_str("</nav><p class=\"bestiary-disclaimer\">Gear & level screening · not a kill guarantee. Access, supplies, movement and team size need checking. Expanded notes show the planner guidelines.</p><div id=\"encounter-results\">");
     html.push_str(&encounter_results(s));
     html.push_str("</div></section>");
     html
@@ -3208,10 +3235,11 @@ fn encounter_catalog(s: &State) -> String {
 fn encounter_results(s: &State) -> String {
     let query = s.encounter_query.trim().to_lowercase();
     let popular = &crate::encounters::browser_catalog().popular;
+    let assessments = bestiary_assessments(s);
     let mut entries = crate::encounters::catalog()
         .iter()
         .enumerate()
-        .filter(|(_, e)| {
+        .filter(|(index, e)| {
             if crate::encounters::groups()
                 .iter()
                 .any(|g| g.aliases.contains(&e.name))
@@ -3227,7 +3255,9 @@ fn encounter_results(s: &State) -> String {
                 && if query.is_empty() && s.encounter_filter == "Popular" {
                     popular.contains(&e.name)
                 } else {
-                    s.encounter_filter == "Popular" || e.category() == s.encounter_filter
+                    ["Popular", "For you", "All"].contains(&s.encounter_filter.as_str())
+                        || e.category() == s.encounter_filter
+                        || assessments[*index].readiness.label() == s.encounter_filter
                 }
         })
         .collect::<Vec<_>>();
@@ -3239,21 +3269,26 @@ fn encounter_results(s: &State) -> String {
                 .unwrap_or(99)
         });
     }
+    if s.encounter_filter == "For you" {
+        entries.sort_by(|(a, ea), (b, eb)| {
+            assessments[*a]
+                .readiness
+                .cmp(&assessments[*b].readiness)
+                .then_with(|| ea.name.cmp(&eb.name))
+        });
+    }
     let mut html = String::new();
     for (index, e) in entries {
-        let label = if e.name == "Barrows Chests" {
-            "Barrows"
+        let assessment = if s.shared_setup.is_some() {
+            crate::bestiary::Assessment {
+                readiness: crate::bestiary::Readiness::Unknown,
+                reason: "Shared setups do not include the sender's bank or levels.".into(),
+                detail: String::new(),
+            }
         } else {
-            &e.name
+            assessments[index].clone()
         };
-        let coverage = if e.targets.is_empty() {
-            "Not supported yet"
-        } else if e.coverage().contains("DPS partial") {
-            "Gear plan · partial DPS"
-        } else {
-            "Attack estimates"
-        };
-        html.push_str(&format!(r#"<button class="encounter-choice" data-action="choose-encounter:{index}" {}><span><strong>{}</strong><small>{coverage}</small></span><span aria-hidden="true">→</span></button>"#,if e.targets.is_empty(){"disabled"}else{""},esc(label)));
+        html.push_str(&crate::bestiary::card(e, index, &assessment));
     }
     if html.is_empty() {
         html.push_str(&format!(
@@ -3267,8 +3302,10 @@ fn refresh_encounter_browser(s: &State) {
     if let Some(results) = document().get_element_by_id("encounter-results") {
         results.set_inner_html(&encounter_results(s));
     }
-    for filter in ["Popular", "Bosses", "Raids", "Groups"] {
-        if let Some(el) = document().get_element_by_id(&format!("enc-filter-{filter}")) {
+    for filter in crate::bestiary::FILTERS {
+        if let Some(el) =
+            document().get_element_by_id(&format!("enc-filter-{}", filter.replace(' ', "-")))
+        {
             el.set_class_name(if s.encounter_filter == filter {
                 "encounter-filter active"
             } else {

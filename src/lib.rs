@@ -1,4 +1,6 @@
 pub mod account;
+pub mod bestiary;
+
 pub mod alternatives;
 #[cfg(target_arch = "wasm32")]
 mod app;

@@ -111,6 +111,8 @@ pub struct Attack {
     pub interval: i32,
     #[serde(default)]
     pub healing_fraction: f64,
+    #[serde(default)]
+    pub guaranteed_accuracy: bool,
 }
 #[derive(Debug, Deserialize)]
 pub struct Profile {
@@ -199,6 +201,7 @@ pub fn estimate(
 ) -> Result<Estimate, String> {
     if crate::encounters::window(target.id)
         .is_some_and(|w| w.damage_model != crate::encounters::DamageModel::Standard)
+        && !profile(target.id).is_some_and(|p| p.kind == "standard" && !p.attacks.is_empty())
     {
         return Err("Incoming specials and attack frequencies are unverified for this window; outgoing support does not establish incoming damage.".into());
     }
@@ -322,7 +325,11 @@ pub fn estimate(
                 "atk"
             },
         ) + 64);
-    let chance = combat::accuracy(npc_roll, player_roll);
+    let chance = if scenario.is_some_and(|a| a.guaranteed_accuracy) {
+        1.0
+    } else {
+        combat::accuracy(npc_roll, player_roll)
+    };
     let protection = if ["stab", "slash", "crush"].contains(&basic) {
         "Melee"
     } else if basic == "magic" {

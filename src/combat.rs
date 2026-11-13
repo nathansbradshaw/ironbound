@@ -144,6 +144,31 @@ pub fn target_hitpoints(monster: &Monster, invocation: u32) -> Option<i32> {
     }
     Some(hp)
 }
+/// Phase bounds are shared by outgoing damage, current-HP inputs and budgets.
+pub fn target_hp_bounds(monster: &Monster, invocation: u32) -> Result<(u32, u32), String> {
+    let full = target_hitpoints(monster, invocation).ok_or("Target HP unavailable.")? as u32;
+    let window = crate::encounters::window(monster.id);
+    let max = window.and_then(|w| w.start_hp).unwrap_or(full);
+    let min = window.and_then(|w| w.min_hp).unwrap_or(1);
+    if min == 0 || min > max || max > full {
+        return Err("Invalid phase HP bounds.".into());
+    }
+    Ok((min, max))
+}
+pub fn current_target_hp(
+    monster: &Monster,
+    invocation: u32,
+    settings: &crate::defence::Settings,
+) -> Result<u32, String> {
+    let (min, max) = target_hp_bounds(monster, invocation)?;
+    let hp = settings.target_hp.get(&monster.id).copied().unwrap_or(max);
+    if hp < min || hp > max {
+        return Err(format!(
+            "Current target HP must be {min}–{max} for this attack window."
+        ));
+    }
+    Ok(hp)
+}
 /// Normal accuracy includes negative attack/defence rolls.
 pub fn accuracy(mut a: i64, mut d: i64) -> f64 {
     if a < 0 {
@@ -206,6 +231,9 @@ pub fn calculate_configured(
     if !settings.valid() {
         return Err("Invalid combat settings.".into());
     }
+    let hp = current_target_hp(monster, invocation, settings)?;
+    let scaled = crate::monster_rules::hp_scaled(monster, hp)?;
+    let monster = scaled.as_ref().unwrap_or(monster);
     let reduced = settings
         .reductions
         .get(&monster.id)
@@ -262,6 +290,7 @@ pub fn calculate_configured(
     let damage_model = crate::encounters::window(monster.id)
         .map(|w| w.damage_model)
         .unwrap_or_default();
+    let damage_divisor = damage_model.divisor();
     let warden_p2 = damage_model == crate::encounters::DamageModel::WardensP2;
     let demon = monster
         .attributes
@@ -749,11 +778,11 @@ pub fn calculate_configured(
         damage_factor,
         critical: style == "Magic" && rules::set_effect(set, "ahrim_damned"),
         extra_half: style == "Ranged" && rules::set_effect(set, "karil_damned"),
-        final_divisor: if damage_model == crate::encounters::DamageModel::HalfDamage
+        final_divisor: if damage_divisor > 1
             && style == "Ranged"
             && rules::set_effect(set, "karil_damned")
         {
-            2
+            damage_divisor
         } else {
             1
         },
@@ -794,11 +823,7 @@ pub fn calculate_configured(
     let mut expected_ticks = ticks as f64;
     let multi_hit_effects = crate::effects::SetHitEffects {
         npc_transform: hit_effects.npc_transform,
-        final_divisor: if damage_model == crate::encounters::DamageModel::HalfDamage {
-            2
-        } else {
-            1
-        },
+        final_divisor: damage_divisor,
         ..Default::default()
     };
     if rule.has(Effect::Macuahuitl) {
@@ -906,11 +931,7 @@ pub fn calculate_configured(
         let mut parts = Vec::new();
         let twin_effects = crate::effects::SetHitEffects {
             npc_transform: hit_effects.npc_transform,
-            final_divisor: if damage_model == crate::encounters::DamageModel::HalfDamage {
-                2
-            } else {
-                1
-            },
+            final_divisor: damage_divisor,
             ..Default::default()
         };
         max_hit = 0;
@@ -963,16 +984,7 @@ pub fn calculate_configured(
         let chance = rules::bolt_proc_chance(set[13].unwrap_or(0), settings.kandarin_diary);
         match rules::ammunition(set[13].unwrap_or(0)) {
             AmmoEffect::Ruby => {
-                let full_hp = target_hitpoints(monster, invocation).unwrap_or(1);
-                let hp = settings
-                    .target_hp
-                    .get(&monster.id)
-                    .copied()
-                    .map(|hp| hp as i32)
-                    .unwrap_or(full_hp);
-                if hp > full_hp {
-                    return Err("Current target HP exceeds its scaled maximum.".into());
-                }
+                let hp = hp as i32;
                 let ruby = (hp * if zcb { 22 } else { 20 } / 100).min(if zcb { 110 } else { 100 });
                 for (_, p) in &mut distribution {
                     *p *= 1.0 - chance;
@@ -1101,18 +1113,18 @@ pub fn calculate_configured(
             .max()
             .unwrap_or(0);
     }
-    if damage_model == crate::encounters::DamageModel::HalfDamage
+    if damage_divisor > 1
         && hit_effects.final_divisor == 1
         && !rule.has(Effect::TwinHits)
         && !rule.has(Effect::Scythe)
         && !rule.has(Effect::Macuahuitl)
     {
         for (damage, _) in &mut distribution {
-            *damage /= 2;
+            *damage /= damage_divisor;
         }
-        max_hit /= 2;
+        max_hit /= damage_divisor;
         if let Some(proc) = &mut hp_dependent {
-            proc.divisor = 2;
+            proc.divisor = damage_divisor;
         }
     }
     let expected = distribution

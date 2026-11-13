@@ -66,6 +66,11 @@ minimum-hit and successful Demonbane finisher rules, with separate body stages.
 Incoming damage and full-fight mechanics remain partial; see the
 [monster backlog](docs/monster-backlog.md).
 
+Hydra comparisons distinguish neutralised forms from the 75% reduction before
+the correct chemical. Muspah supports unshielded forms; its prayer shield remains
+unverified. Vardorvis uses current-HP stats and recalculates its attack budget as
+HP falls. KQ and Dagannoth Kings offer separate reviewed incoming attack scenarios.
+
 Recommendations use a bounded search. They are **not a proof of global BIS** or a prediction of successful kills.
 
 ## Your bank stays private

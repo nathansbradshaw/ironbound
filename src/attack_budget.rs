@@ -92,6 +92,9 @@ pub fn for_window(
     o: &Options,
     set: &[Option<i32>],
 ) -> Result<Budget, String> {
+    if crate::encounters::window(target.id).is_some_and(|w| w.hp_scaling.is_some()) {
+        return Err("HP-dependent accuracy needs the configured attack budget; a fixed snapshot cannot be used for the whole window.".into());
+    }
     if crate::yama::is_judge_window(target.id) {
         return Err("Use the paired Judge cycle; alternating attacks cannot be counted as independent styles.".into());
     }
@@ -119,15 +122,7 @@ pub fn for_window(
     let progress =
         crate::encounters::progress_hp(target.id, style).unwrap_or(stage_start as f64) as u32;
     let stop = stage_start.saturating_sub(progress);
-    let start = o
-        .combat
-        .target_hp
-        .get(&target.id)
-        .copied()
-        .unwrap_or(stage_start);
-    if start > stage_start {
-        return Err("Current HP exceeds the starting HP of this attack window.".into());
-    }
+    let start = combat::current_target_hp(target, o.raid_level, &o.combat)?;
     let entities = window.map(|w| w.entity_count).unwrap_or(1);
     let attacks = expected_attacks(&result.hit_distribution, start, stop, result.hp_dependent)?
         * f64::from(entities);
@@ -137,5 +132,87 @@ pub fn for_window(
         start_hp: start,
         stop_hp: stop,
         entities,
+    })
+}
+
+/// Re-evaluate all outgoing rolls/effects at each remaining HP. This recurrence
+/// tracks both attack commitments and time, so HP-dependent Blood Moon timing
+/// is not mistaken for a constant cooldown. It does not simulate the NPC's turns.
+pub fn for_dynamic_window(
+    member: &crate::account::Member,
+    set: &[Option<i32>],
+    style: &str,
+    target: &Monster,
+    spell: &str,
+    o: &Options,
+) -> Result<Budget, String> {
+    let window = crate::encounters::window(target.id).ok_or("Dynamic window unavailable.")?;
+    if window.hp_scaling.is_none() || window.comparison_probe || window.cycle.is_some() {
+        return Err("This window has no reviewed dynamic HP workload.".into());
+    }
+    if crate::rules::equipped_effect(set, "confliction_accuracy") {
+        return Err("Finite-HP miss-state timing for Confliction is unverified; sustained DPS remains available.".into());
+    }
+    let start = combat::current_target_hp(target, o.raid_level, &o.combat)?;
+    if start > 10_000 {
+        return Err("Dynamic attack budgets are limited to 10,000 HP.".into());
+    }
+    let stage = window.start_hp.unwrap_or(
+        combat::target_hitpoints(target, o.raid_level).ok_or("Target HP unavailable.")? as u32,
+    );
+    let stop = stage.saturating_sub(
+        crate::encounters::progress_hp(target.id, style).unwrap_or(stage as f64) as u32,
+    );
+    if start <= stop {
+        return Err("Current HP is outside the dynamic workload.".into());
+    }
+    let mut attacks = vec![0.0; start as usize + 1];
+    let mut seconds = attacks.clone();
+    let mut settings = o.combat.clone();
+    for hp in stop + 1..=start {
+        settings.target_hp.insert(target.id, hp);
+        let r = combat::calculate_configured(
+            member,
+            set,
+            style,
+            target,
+            spell,
+            o.raid_level,
+            &settings,
+        )?;
+        let mut a = 1.0;
+        let mut time = r.expected_attack_ticks * 0.6;
+        let mut zero = 0.0;
+        if r.hit_distribution
+            .iter()
+            .any(|(d, p)| *d < 0 || !p.is_finite() || *p < 0.0)
+            || (r.hit_distribution.iter().map(|(_, p)| p).sum::<f64>() - 1.0).abs() > 1e-8
+        {
+            return Err("Dynamic damage distribution is invalid.".into());
+        }
+        for (damage, p) in r.hit_distribution {
+            if damage == 0 {
+                zero += p;
+            } else {
+                let next = hp.saturating_sub(damage as u32).max(stop) as usize;
+                a += p * attacks[next];
+                time += p * seconds[next];
+            }
+        }
+        if zero >= 1.0 {
+            return Err("This dynamic window cannot make damage progress.".into());
+        }
+        attacks[hp as usize] = a / (1.0 - zero);
+        seconds[hp as usize] = time / (1.0 - zero);
+        if !attacks[hp as usize].is_finite() || !seconds[hp as usize].is_finite() {
+            return Err("Dynamic attack expectation is unbounded.".into());
+        }
+    }
+    Ok(Budget {
+        attacks: attacks[start as usize] * f64::from(window.entity_count),
+        seconds: seconds[start as usize] * f64::from(window.entity_count),
+        start_hp: start,
+        stop_hp: stop,
+        entities: window.entity_count,
     })
 }

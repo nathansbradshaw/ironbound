@@ -100,11 +100,26 @@ independent references, browser verification, then gameplay verification.
   normal/elite Void. Gear screening requires melee, ranged and Magic.
 - [ ] Royal Titans full fight: barriers, add counts, solo/duo contribution,
   charge duration, transitions, movement and incoming attack sequences.
-- [ ] Doom of Mokhaiotl: delve scaling, shield/demonbane rules, special phases,
-  movement and incoming damage.
-- [ ] Shellbane Gryphon, Mad Angel and Maggot King: each needs its own sourced
-  phase, scaling, immunity, add and incoming-damage fixtures.
-- [ ] Sol Heredit and TzKal-Zuk: boss-specific specials, positioning/shield,
+- [x] Doom outgoing: exact delve HP variants, 60 Defence floor, separate
+  demonbane-only 500-point shield, burrow accuracy and per-splat melee-punish
+  Strength bonus. Ranged/demonbane melee gear readiness is independent of access.
+- [ ] Doom full fight: actual charge/cooldown overwrite, shield damage transfer,
+  larvae/volatile earth (missing verified NPC data), acid, movement and incoming damage.
+- [x] Shellbane outgoing/readiness: post-quest ordinary target/air weakness,
+  tortugan cape equipment and separate 51 Slayer check.
+- [ ] Shellbane full fight: weight, knockback/free attacks, corrosion, whirlwinds,
+  incoming damage; quest variant remains unreviewed.
+- [x] Mad Angel outgoing/readiness: post-quest ordinary target, first-splat
+  cleave clamp and perfect-lightning maximum, including independent/chained hits.
+- [ ] Mad Angel full fight: reflected blasts, counter frequency/free attacks,
+  enrage, Verac/Blood Moon counter interactions and incoming damage; quest gate retained.
+- [x] Maggot outgoing/readiness: far/nearby/roaring states, reach, static defence
+  changes, first-splat crush punish and 30-HP Ur-maggot larva probe.
+- [ ] Maggot full fight: stacking fire-spell burn/defence, other punish styles,
+  free-attack timing, larvae/healing, defence reset, bile and incoming attacks.
+- [x] Sol Heredit and TzKal-Zuk ordinary outgoing and scoped boss gear readiness;
+  Inferno/Colosseum enemy-type gear screens exclude wave survival. Zuk/healers reject melee.
+- [ ] Sol and Zuk full fight: specials, invocations, positioning/shield uptime,
   adds/healers and incoming attacks, separately from their full waves.
 
 ## 3. Raids, waves and dedicated equipment
@@ -141,9 +156,19 @@ independent references, browser verification, then gameplay verification.
   remaining set effects, prayer drain and tunnels; Guthan healing is partial.
 - [ ] Zilyana / Graardor / Sarachnis: complete basic attack mixtures, adds,
   movement and specials; retain the existing selected incoming scenarios.
-- [ ] Fragment of Seren, Slagilith and Tormented Demons: their damage limiters,
-  weapon exceptions, protection/shield states and phase-specific effects.
-- [ ] Vampyres, leafy and flying monsters: exact weapon/spell requirements and
+- [x] Fragment of Seren and Slagilith outgoing: per-splat limiter/divisor,
+  current-HP ruby, Defence-based Magic defence and pickaxe exception.
+- [x] Tormented Demon shielded outgoing: explicit protection states,
+  demonbane/abyssal exceptions, positive-hit minimum and defenceless accuracy;
+  separate melee/Magic gear baseline with real portrait.
+- [ ] Tormented Demon unshielded speed-squared bonus/delay, protection rotation,
+  spawn interactions, full-fight supplies and incoming damage.
+- [x] Leafy monsters: exact leaf-bladed/broad ammunition/Magic Dart restriction
+  across the eight imported normal/superior NPCs. Turoth/Kurask gear readiness
+  considers the required owned equipment independently of 55/70 Slayer access.
+  Normal/enchanted Slayer's staff Magic Dart damage, runes and explicit task
+  bonus are implemented; other casting-staff variants remain unreviewed.
+- [ ] Vampyres and remaining flying monsters: exact weapon/spell requirements and
   exceptions; a blanket attribute block is only a temporary coverage gate.
 
 ## Acceptance for each outgoing window

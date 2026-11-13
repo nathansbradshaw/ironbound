@@ -25,6 +25,7 @@ pub mod reference;
 pub mod rules;
 pub mod setups;
 pub mod share;
+pub mod slayer;
 pub mod supplies;
 pub mod tooltip;
 pub mod tradeoffs;

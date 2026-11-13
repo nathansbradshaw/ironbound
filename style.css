@@ -862,3 +862,7 @@ footer{font-size:10px;padding:9px 4px 0}footer>span:last-child{display:none}
 .ranged-equipped>span{display:flex;align-items:center;gap:7px;min-width:0}
 .ranged-equipped img{width:32px;height:32px;object-fit:contain;image-rendering:pixelated}
 @media(max-width:440px){.ranged-type-grid{gap:5px}.ranged-type>strong{font-size:19px}.ranged-type>small{font-size:14px}}
+.slayer-tasks { margin: 12px 0; padding: 12px 16px; border: 1px solid #887148; }
+.slayer-tasks h3 { margin: 0 0 6px; }
+.slayer-target { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px; margin: 8px 0; }
+.slayer-target .combat-subtype-options { display: flex; gap: 6px; }

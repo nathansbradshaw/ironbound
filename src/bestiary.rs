@@ -349,6 +349,18 @@ fn profile(name: &str) -> Option<Profile> {
             0,
             "Quest access, sanity and movement are outside this screening.",
         ),
+        "The Hueycoatl" => (
+            80,
+            &["Melee"],
+            0,
+            "Unboosted body/head/tail gear screen. Pillar uptime, team contribution, phase transitions, movement, incoming damage and full-trip supplies are not scored.",
+        ),
+        "The Royal Titans" => (
+            70,
+            &["Melee", "Ranged", "Magic"],
+            0,
+            "Both titans, their out-of-reach ranged windows and elemental adds need all three styles. Add counts, barriers, duo contribution, movement, incoming attacks and full-trip supplies are not scored.",
+        ),
         "Nightmare" | "The Nightmare" => (
             90,
             &["Melee", "Magic"],
@@ -426,6 +438,7 @@ fn requires_all(name: &str) -> bool {
             | "Nightmare"
             | "The Nightmare"
             | "Phosani's Nightmare"
+            | "The Royal Titans"
     )
 }
 

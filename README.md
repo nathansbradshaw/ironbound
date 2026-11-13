@@ -82,6 +82,11 @@ pathfinder/enrage mechanics stay labelled. Nightmare/Phosani distinguish shield,
 totem charge and physical HP, with separate encounter counts and Phosani minion
 rules. These comparisons do not predict complete fights or supplies.
 
+Hueycoatl separates body, head, protected head and capped tail, with optional
+lit-pillar comparisons. Royal Titans separate close/withdrawn attacks and elemental
+adds; their gear screen needs melee, ranged and Magic. These are outgoing windows;
+team contribution, barriers, incoming sequences and full fights remain unverified.
+
 Recommendations use a bounded search. They are **not a proof of global BIS** or a prediction of successful kills.
 
 ## Your bank stays private

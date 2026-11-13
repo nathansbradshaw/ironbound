@@ -50,12 +50,16 @@ pub struct Assessment {
     pub readiness: Readiness,
     pub reason: String,
     pub detail: String,
+    pub wilderness: bool,
+    pub preview: Option<crate::wilderness::Preview>,
 }
 fn unknown(reason: &str) -> Assessment {
     Assessment {
         readiness: Readiness::Unknown,
         reason: reason.into(),
         detail: String::new(),
+        wilderness: false,
+        preview: None,
     }
 }
 struct Profile {
@@ -248,7 +252,7 @@ pub fn assess_catalog(snapshot: &Snapshot, preferences: &Options) -> Vec<Assessm
         let Some(p) = profile(&entry.name) else { return unknown("No reviewed readiness guideline yet. Open the gear plan where available."); };
         if !entry.bank_equipment || entry.targets.is_empty() { return unknown("This encounter needs its own equipment or mode model."); }
         if p.slayer > 0 && !member.level("Slayer").is_some_and(|level| level >= p.slayer) {
-            return Assessment { readiness: Readiness::Struggle, reason: format!("Needs {} Slayer (yours: {}).", p.slayer, member.level("Slayer").map(|v| v.to_string()).unwrap_or_else(|| "unknown".into())), detail: p.note.into() };
+            return Assessment { readiness: Readiness::Struggle, reason: format!("Needs {} Slayer (yours: {}).", p.slayer, member.level("Slayer").map(|v| v.to_string()).unwrap_or_else(|| "unknown".into())), detail: p.note.into(), wilderness: false, preview: None };
         }
         // All mapped windows must support outgoing estimates before an overall label.
         if entry.targets.iter().any(|t| planner::monster(t.id).is_none_or(|m| crate::encounters::limitation(m).is_some())) { return unknown("Phase calculations are incomplete; readiness is not rated yet."); }
@@ -272,9 +276,9 @@ pub fn assess_catalog(snapshot: &Snapshot, preferences: &Options) -> Vec<Assessm
                 }
                 if valid && lowest.is_finite() && best.as_ref().is_none_or(|b| lowest > b.0) { best = Some((lowest, *style, weapon, level, armour)); }
             }
-            if let Some(choice) = best { choices.push(choice); } else if requires_all(&entry.name) { return Assessment { readiness: Readiness::Struggle, reason: format!("No usable owned {required} setup with supported damage. Check weapons, ammunition and runes."), detail: p.note.into() }; }
+            if let Some(choice) = best { choices.push(choice); } else if requires_all(&entry.name) { return Assessment { readiness: Readiness::Struggle, reason: format!("No usable owned {required} setup with supported damage. Check weapons, ammunition and runes."), detail: p.note.into(), wilderness: false, preview: None }; }
         }
-        if choices.is_empty() { return Assessment { readiness: Readiness::Struggle, reason: "No usable owned setup with supported damage. Check weapons, ammunition and runes.".into(), detail: p.note.into() }; }
+        if choices.is_empty() { return Assessment { readiness: Readiness::Struggle, reason: "No usable owned setup with supported damage. Check weapons, ammunition and runes.".into(), detail: p.note.into(), wilderness: false, preview: None }; }
         if !requires_all(&entry.name) { choices.sort_by(|a,b| b.0.total_cmp(&a.0)); choices.truncate(1); }
         let mut readiness = Readiness::WellEquipped;
         let hp = member.level("Hitpoints").unwrap();
@@ -288,7 +292,7 @@ pub fn assess_catalog(snapshot: &Snapshot, preferences: &Options) -> Vec<Assessm
         }
         let reason = choices.iter().map(|(dps, style, weapon, _, _)| format!("{} · {style} · {dps:.1} basic DPS", planner::item_name(*weapon))).collect::<Vec<_>>().join("; ");
         let gaps = if readiness == Readiness::WellEquipped { "Levels and owned gear meet this screening baseline.".into() } else { format!("Guideline: {} offensive level / HP, {} Defence, 43 Prayer; 3+ basic DPS and four armour slots for the top band. Yours: {} HP, {} Defence, {} Prayer.", p.level, p.level.saturating_sub(10), hp, def, prayer) };
-        Assessment { readiness, reason, detail: format!("{gaps} {}", p.note) }
+        Assessment { readiness, reason, detail: format!("{gaps} {}", p.note), wilderness: false, preview: None }
     }).collect()
 }
 
@@ -339,9 +343,25 @@ pub fn card(entry: &Entry, index: usize, a: &Assessment) -> String {
     } else {
         "Recorded target · base stats"
     };
+    let location = match crate::wilderness::exposure(&entry.name) {
+        crate::wilderness::Exposure::Combat => "<span class=\"wild-tag\">Wilderness</span>",
+        crate::wilderness::Exposure::Route => "<span class=\"wild-tag\">Wilderness route</span>",
+        crate::wilderness::Exposure::None => "",
+    };
+    let kit=a.preview.as_ref().map(|p| {
+        let mut html=String::from("<div class=\"wilderness-kit\"><strong>Exact screened kit</strong><ul>");
+        for (slot,id) in p.equipment.iter().enumerate() {
+            if let Some(id)=id {
+                let quantity=crate::wilderness::gear_quantity(*id,crate::rules::DEFAULT_LOADED_SHOTS);
+                let valuable=!crate::wilderness::disposable(*id,quantity,p.kit.filler_cap);
+                html.push_str(&format!("<li>{}<span>{}{}<small>{} · {}</small></span></li>",crate::tooltip::item_icon(*id),esc(&planner::item_name(*id)),if quantity>1{format!(" ×{quantity}")}else{String::new()},planner::SLOTS[slot],if valuable{"Valuable / unpriced"}else{"Disposable filler"}));
+            }
+        }
+        html.push_str("</ul><p>All other equipment slots are empty. Food, runes, charged contents and other supplies need a separate risk check.</p></div>");html
+    }).unwrap_or_default();
     format!(
-        r#"<article class="bestiary-card"><button class="encounter-choice bestiary-open" data-action="choose-encounter:{index}" {} aria-label="Plan {}"><span class="boss-portrait">{}</span><span class="boss-entry"><span class="boss-entry-heading"><strong>{}</strong><span class="boss-readiness readiness-{}">{}</span></span><span class="boss-stats">{stats}</span><small>{context}</small><span class="boss-reason">{}</span></span><span class="boss-open-arrow" aria-hidden="true">→</span></button><details class="bestiary-notes"><summary>Readiness & encounter notes</summary><p>{}</p><p>{}</p><small>{}</small></details></article>"#,
-        if entry.targets.is_empty() {
+        r#"<article class="bestiary-card"><button class="encounter-choice bestiary-open" data-action="choose-encounter:{index}" {} aria-label="Plan {}"><span class="boss-portrait">{}</span><span class="boss-entry"><span class="boss-entry-heading"><strong>{}</strong><span class="boss-readiness readiness-{}">{}</span></span>{location}<span class="boss-stats">{stats}</span><small>{context}</small><span class="boss-reason">{}</span></span><span class="boss-open-arrow" aria-hidden="true">→</span></button><details class="bestiary-notes"><summary>Readiness & encounter notes</summary>{kit}<p>{}</p><p>{}</p><small>{}</small></details></article>"#,
+        if entry.targets.is_empty() || a.wilderness && a.preview.is_none() {
             "disabled"
         } else {
             ""
@@ -356,4 +376,82 @@ pub fn card(entry: &Entry, index: usize, a: &Assessment) -> String {
         esc(&entry.note),
         esc(entry.coverage())
     )
+}
+
+pub(crate) fn rate_setup(
+    member: &crate::account::Member,
+    name: &str,
+    style: &str,
+    set: &[Option<i32>],
+    dps: f64,
+) -> Option<Readiness> {
+    let p = profile(name)?;
+    if !p.styles.contains(&rules::base_style(style)) {
+        return None;
+    }
+    let offence = match rules::base_style(style) {
+        "Melee" => member.level("Attack")?.min(member.level("Strength")?),
+        "Magic" => member.level("Magic")?,
+        _ => member.level("Ranged")?,
+    };
+    let hp = member.level("Hitpoints")?;
+    let def = member.level("Defence")?;
+    let prayer = member.level("Prayer")?;
+    let armour = [0, 4, 7, 9, 10]
+        .iter()
+        .filter(|slot| set[**slot].is_some())
+        .count();
+    Some(
+        if dps < 1.5 || offence + 15 < p.level || hp + 20 < p.level || armour < 2 || prayer < 37 {
+            Readiness::Struggle
+        } else if dps < 3.0
+            || offence < p.level
+            || hp < p.level
+            || def + 10 < p.level
+            || armour < 4
+            || prayer < 43
+        {
+            Readiness::Doable
+        } else {
+            Readiness::WellEquipped
+        },
+    )
+}
+/// Wilderness mode replaces the damage/gear assessment; a full-kit badge is never reused.
+pub fn assess_wilderness(snapshot: &Snapshot, preferences: &Options, cap: u32) -> Vec<Assessment> {
+    let mut results = assess_catalog(snapshot, preferences);
+    for (entry, a) in crate::encounters::catalog().iter().zip(&mut results) {
+        if crate::wilderness::exposure(&entry.name) == crate::wilderness::Exposure::None {
+            continue;
+        }
+        a.wilderness = true;
+        if a.readiness == Readiness::Unknown {
+            a.detail = crate::wilderness::CAUTION.into();
+            continue;
+        }
+        if let Some(preview) =
+            crate::wilderness::preview(snapshot, preferences, entry, cap, a.readiness)
+        {
+            a.readiness = preview.readiness;
+            a.reason = format!(
+                "3-item kit: {} · {} · {:.1} basic DPS. Full kit: {}.",
+                planner::item_name(preview.equipment[3].unwrap()),
+                preview.style,
+                preview.dps,
+                preview.full_readiness.label()
+            );
+            a.detail = format!(
+                "{} Disposable gear ceiling: {cap} GP per piece or ammunition stack. Public price snapshot: {}. Unknown prices use a valuable slot. {}",
+                profile(&entry.name).map(|p| p.note).unwrap_or_default(),
+                crate::wilderness::prices().captured_at,
+                crate::wilderness::CAUTION
+            );
+            a.preview = Some(preview);
+        } else {
+            a.readiness = Readiness::Unknown;
+            a.reason="No supported three-item kit found. Check owned weapons, compatible ammunition and runes.".into();
+            a.detail = crate::wilderness::CAUTION.into();
+        }
+    }
+    results
 }

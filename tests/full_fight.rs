@@ -11,6 +11,8 @@ fn hit(damage: i32) -> Attack {
             hit_distribution: vec![(damage, 1.0)],
             hp_dependent: None,
             dps: damage as f64 / 0.6,
+            burn_dps: 0.0,
+
             potential_healing_per_second: 0.0,
             accuracy: 1.0,
             max_hit: damage,

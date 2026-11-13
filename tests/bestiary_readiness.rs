@@ -106,6 +106,8 @@ fn real_portraits_stats_and_escaped_account_text_render() {
             readiness: Readiness::Doable,
             reason: "<script>".into(),
             detail: "A & B".into(),
+            wilderness: false,
+            preview: None,
         },
     );
     assert!(html.contains("data:image/png;base64,"));

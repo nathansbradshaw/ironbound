@@ -2953,12 +2953,7 @@ fn render_with_edit(edit: Option<&str>) {
 fn encounter_detail(s: &State, p: &Plan) -> String {
     let boss = s.saved.options.boss;
     let guide = selected_encounter(&s.saved.options)
-        .map(|entry| {
-            format!(
-                "https://oldschool.runescape.wiki/w/{}/Strategies",
-                entry.name.replace(' ', "_")
-            )
-        })
+        .map(|entry| entry.guide_url())
         .unwrap_or_else(|| boss.source().into());
     let mut html = format!(
         "<section class=\"encounter-detail planner-summary\"><h1>{}</h1><div class=\"detail-facts\"><span>Gear · {} bag slot{}</span><a href=\"{}\" target=\"_blank\" rel=\"noreferrer\">Wiki guide ↗</a>",

@@ -347,6 +347,15 @@ pub struct Entry {
     pub bank_equipment: bool,
 }
 impl Entry {
+    pub fn guide_url(&self) -> String {
+        let page = match self.name.as_str() {
+            "Sliske's wights" => "Desert_Treasure_II",
+            name => name.strip_suffix(" (Quest)").unwrap_or(name),
+        };
+        let suffix = if self.note.starts_with("Quest boss") { "" } else { "/Strategies" };
+        format!("https://oldschool.runescape.wiki/w/{}{suffix}", page.replace(' ', "_"))
+    }
+
     /// Equipment style changes do not change which boss is being fought.
     pub fn matches(&self, targets: &[Target]) -> bool {
         !self.targets.is_empty()

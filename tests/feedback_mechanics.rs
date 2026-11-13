@@ -24,15 +24,7 @@ fn set(weapon: i32, ammo: Option<i32>) -> Vec<Option<i32>> {
     s
 }
 fn vorkath() -> planner::Monster {
-    planner::monsters()
-        .iter()
-        .find(|m| {
-            m.name.starts_with("Vorkath")
-                && m.attributes.contains(&"undead".into())
-                && m.attributes.contains(&"dragon".into())
-        })
-        .unwrap()
-        .clone()
+    planner::monster(8059).unwrap().clone()
 }
 fn calc(s: &[Option<i32>], style: &str, target: &planner::Monster) -> combat::ResultStats {
     combat::calculate(&member(), s, style, target, "").unwrap()

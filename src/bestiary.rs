@@ -247,6 +247,12 @@ fn profile(name: &str) -> Option<Profile> {
             0,
             "Shielded melee/Magic hybrid baseline. Protection prayers are explicit; the score assumes no unshielded bonus. While Guthix Sleeps access, shield-drop timing, protection switches, spawn interactions and incoming damage are not scored.",
         ),
+        "Fragment of Seren" => (
+            80,
+            &["Magic"],
+            0,
+            "Vulnerable-body Magic gear baseline with the per-splat limiter. Song of the Elves access, healing beams, clones, movement, near-max-HP special and full-fight supplies are not scored.",
+        ),
         "Turoths" | "Kurasks" => (
             if name == "Turoths" { 55 } else { 65 },
             &["Melee", "Ranged", "Magic"],

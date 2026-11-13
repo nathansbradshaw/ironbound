@@ -41,6 +41,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 "Thermonuclear Smoke Devil" => "Thermonuclear smoke devil",
                 "Wintertodt" => "Wintertodt prison",
                 "Zulrah" => "Zulrah (serpentine)",
+                "Sliske's wights" => "The Forsaken Assassin",
+                "Vorkath (Quest)" => "Vorkath",
+                "Duke Sucellus (Quest)" => "Duke Sucellus",
+                "Vardorvis (Quest)" => "Vardorvis",
+                "The Leviathan (Quest)" => "The Leviathan",
+                "The Whisperer (Quest)" => "The Whisperer",
                 other => other,
             };
             let file = format!("{}.png", name.replace(' ', "_").replace('\'', "%27"));

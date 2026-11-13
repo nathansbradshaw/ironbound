@@ -357,7 +357,7 @@ fn protected_bodies_and_incoming_limits_remain_explicit() {
         assert_eq!((r.max_hit, r.dps), (0, 0.0));
         assert_eq!(r.hp_dependent.unwrap().outcomes(200), vec![(0, 0.06)]);
     }
-    for id in [12214, 12204, 9416, 9425, 9469] {
+    for id in [12214, 12204, 9416, 9425, 9469, 100132, 9468, 9436] {
         assert!(
             defence::estimate(
                 &member(),

@@ -38,6 +38,7 @@ pub mod setups;
 pub mod share;
 pub mod simulation;
 pub mod slayer;
+pub mod special_attacks;
 pub mod supplies;
 pub mod tooltip;
 pub mod tradeoffs;

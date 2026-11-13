@@ -1318,6 +1318,8 @@ pub fn start() -> Result<(), JsValue> {
             "soulreaper-stacks",
             "bulwark-block",
             "obligator-style",
+            "special-energy",
+            "zorya-followups",
             "allow-void",
             "safety",
             "prayer-weight",
@@ -1466,6 +1468,18 @@ pub fn start() -> Result<(), JsValue> {
                             .contains(&value.as_str())
                         {
                             s.saved.options.combat.obligator_style = value;
+                        }
+                    }
+                }
+                "special-energy" | "zorya-followups" => {
+                    if let Ok(sel) = el.dyn_into::<HtmlSelectElement>() {
+                        if let Ok(value) = sel.value().parse::<u32>() {
+                            if id == "special-energy" && value <= 100 {
+                                s.saved.options.combat.special_energy = value;
+                            }
+                            if id == "zorya-followups" && value <= 3 {
+                                s.saved.options.combat.zorya_empowered_hits = value;
+                            }
                         }
                     }
                 }
@@ -4741,6 +4755,110 @@ fn slayer_tasks(s: &State) -> String {
     html
 }
 
+fn special_attack_panel(
+    s: &State,
+    member: &account::Member,
+    set: &[Option<i32>],
+    style: &str,
+    target: &planner::Monster,
+) -> String {
+    if !set
+        .get(3)
+        .copied()
+        .flatten()
+        .is_some_and(crate::special_attacks::supported)
+    {
+        return String::new();
+    }
+    let settings = &s.saved.options.combat;
+    let zorya = set[3]
+        .and_then(crate::rules::weapon)
+        .and_then(|r| r.weapon.special.as_ref())
+        .is_some_and(|r| r.kind == crate::rules::SpecialKind::Zorya);
+    let mut html = String::from(
+        "<section class=\"special-attacks\" aria-label=\"Special attack burst\"><h3>Special attack burst</h3><p>One activation or already-held Zorya follow-ups. Normal attack DPS and gear ranking stay separate.</p><label>Available special energy<select id=\"special-energy\">",
+    );
+    let mut energies = vec![0, 25, 50, 75, 100, settings.special_energy];
+    energies.sort();
+    energies.dedup();
+    for value in energies {
+        html.push_str(&format!(
+            "<option value=\"{value}\" {}>{value}%</option>",
+            if settings.special_energy == value {
+                "selected"
+            } else {
+                ""
+            }
+        ));
+    }
+    html.push_str("</select></label>");
+    if zorya {
+        html.push_str("<label>Zorya starting state<select id=\"zorya-followups\">");
+        for (value, label) in [
+            (0, "Activate special"),
+            (1, "1 empowered attack held"),
+            (2, "2 empowered attacks held"),
+            (3, "3 empowered attacks held"),
+        ] {
+            html.push_str(&format!(
+                "<option value=\"{value}\" {}>{label}</option>",
+                if settings.zorya_empowered_hits == value {
+                    "selected"
+                } else {
+                    ""
+                }
+            ));
+        }
+        html.push_str("</select></label>");
+    }
+    match crate::special_attacks::evaluate(
+        member,
+        set,
+        style,
+        target,
+        s.saved.options.raid_level,
+        settings,
+    ) {
+        Ok(r) => {
+            html.push_str(&format!("<dl class=\"combat-values\"><div><dt>Effective burst damage</dt><dd>{:.2}</dd></div><div><dt>Damage before overkill</dt><dd>{:.2}</dd></div><div><dt>Defeat chance</dt><dd>{:.1}%</dd></div><div><dt>Energy spent</dt><dd>{}%</dd></div><div><dt>Expected attacks</dt><dd>{:.2}</dd></div><div><dt>Attack cooldown budget</dt><dd>{:.2}s</dd></div></dl>",r.effective_damage,r.damage,r.kill_chance*100.0,r.energy_spent,r.expected_attacks,r.cooldown_ticks*0.6));
+            html.push_str("<table class=\"bonus-table\"><thead><tr><th>Attack</th><th>Hit chance</th><th>Max hit</th><th>Ticks</th></tr></thead><tbody>");
+            for (label, attack) in [
+                (
+                    if zorya {
+                        "Opener"
+                    } else {
+                        "Brutal Swing · any of four rolls"
+                    },
+                    r.opener.as_ref(),
+                ),
+                ("Empowered · starting HP", r.empowered.as_ref()),
+            ] {
+                if let Some(a) = attack {
+                    html.push_str(&format!(
+                        "<tr><th>{label}</th><td>{:.1}%</td><td>{}</td><td>{}</td></tr>",
+                        a.accuracy * 100.0,
+                        a.max_hit,
+                        a.attack_ticks
+                    ));
+                }
+            }
+            html.push_str("</tbody></table>");
+            if zorya {
+                if let Some(chance) = r.buff_chance {
+                    html.push_str(&format!("<p>Opener grants follow-ups: {:.1}% chance. A failed accuracy roll grants none; an accurate hit reduced to zero still qualifies.</p>",chance*100.0));
+                }
+                html.push_str(&format!("<p>Expected empowered attacks left: {:.2}. The burst stops when this target is defeated; held attacks can be compared against another target using the starting-state control.</p>",r.remaining_empowered_hits));
+            }
+        }
+        Err(reason) => html.push_str(&format!(
+            "<p>Special burst unavailable: {}</p>",
+            esc(&reason)
+        )),
+    }
+    html.push_str("<p class=\"small-note\">Includes misses, overkill and the finishing cooldown in one target window. No energy recovery, chained activations, movement, projectile travel or phase transitions. Verify charges and the held-buff state in game.</p></section>");
+    html
+}
+
 fn combat_panel(s: &State, p: &Plan) -> String {
     if s.shared_setup.is_some() {
         return String::new();
@@ -4855,6 +4973,7 @@ fn combat_panel(s: &State, p: &Plan) -> String {
                 if crate::rules::set_effect(&set, "blue_moon") {
                     html.push_str(&format!("<p>Blue Moon free melee: {}. Only accurate binding, Ice and Grasp spells can trigger Frostweaver.</p>", esc(&s.saved.options.combat.blue_moon_melee)));
                 }
+                html.push_str(&special_attack_panel(s, m, &set, style, target));
                 html.push_str(&combat_breakdown(s, m, &set, target, &r));
                 if r.potential_healing_per_second > 0.0 {
                     html.push_str(&format!("<p>Guthan's potential healing: {:.3} HP/s before overheal and remaining-target-HP limits. This is not subtracted from damage taken.</p>", r.potential_healing_per_second));

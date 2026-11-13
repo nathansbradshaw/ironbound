@@ -234,6 +234,33 @@ pub fn calculate_configured(
     invocation: u32,
     settings: &crate::defence::Settings,
 ) -> Result<ResultStats, String> {
+    calculate_mode(
+        member,
+        set,
+        style,
+        monster,
+        spell,
+        invocation,
+        settings,
+        AttackMode::Normal,
+    )
+}
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum AttackMode {
+    Normal,
+    Special,
+    Empowered,
+}
+pub(crate) fn calculate_mode(
+    member: &Member,
+    set: &[Option<i32>],
+    style: &str,
+    monster: &Monster,
+    spell: &str,
+    invocation: u32,
+    settings: &crate::defence::Settings,
+    mode: AttackMode,
+) -> Result<ResultStats, String> {
     if !settings.valid() {
         return Err("Invalid combat settings.".into());
     }
@@ -265,6 +292,12 @@ pub fn calculate_configured(
     let stats = stats(weapon).ok_or("Weapon stats unavailable.")?;
     let rule = rules::weapon_for_style(weapon, style)
         .ok_or("This weapon's combat mechanics are not modelled for this style.")?;
+    let special = rule.weapon.special.as_ref().map(|s| s.kind);
+    let zorya_boost = mode != AttackMode::Normal && special == Some(rules::SpecialKind::Zorya);
+    let kisten_special = mode == AttackMode::Special && special == Some(rules::SpecialKind::Kisten);
+    if mode != AttackMode::Normal && !zorya_boost && !kisten_special {
+        return Err("This attack mode is not verified for this weapon.".into());
+    }
     if !rule.permits(style) {
         return Err("This weapon does not support the selected attack style.".into());
     }
@@ -493,7 +526,10 @@ pub fn calculate_configured(
                     stats.speed.max(1)
                 },
                 get(&monster.skills, "def"),
-                get(&monster.defensive, kind),
+                get(
+                    &monster.defensive,
+                    if kisten_special { "crush" } else { kind },
+                ),
             )
         }
         "Ranged" => {
@@ -647,6 +683,10 @@ pub fn calculate_configured(
             if on_task {
                 a = a * accuracy_bonus[0] / accuracy_bonus[1];
             }
+            if zorya_boost {
+                a = a * 5 / 2;
+                max = max * 8 / 5;
+            }
             if let Some(element) = rules::spells()
                 .iter()
                 .find(|r| r.name == spell)
@@ -684,7 +724,11 @@ pub fn calculate_configured(
                 "magic",
                 a,
                 max.max(0) as i32,
-                rule.family.ticks.unwrap_or(stats.speed).max(1),
+                if zorya_boost && mode == AttackMode::Empowered {
+                    2
+                } else {
+                    rule.family.ticks.unwrap_or(stats.speed).max(1)
+                },
                 get(
                     &monster.skills,
                     if crate::encounters::mechanics()
@@ -1039,6 +1083,29 @@ pub fn calculate_configured(
         distribution.push((0, 1.0 - hit));
     }
     max_hit = ceiling;
+    if kisten_special {
+        let single_accuracy = hit;
+        distribution = vec![(0, (1.0 - single_accuracy).powi(4))];
+        max_hit = 0;
+        for successes in 1..=4 {
+            let combinations = [1.0, 4.0, 6.0, 4.0, 1.0][successes as usize];
+            let chance = combinations
+                * single_accuracy.powi(successes)
+                * (1.0 - single_accuracy).powi(4 - successes);
+            // Live/reference behaviour omits the announced final -1 cap.
+            let min = distribution_max * (50 + successes * 20) / 100;
+            let max = distribution_max * (90 + successes * 20) / 100;
+            let (_, ceiling, outcomes) =
+                conditional_hit(min, max, flat_armour, &[], monster, None, &hit_effects);
+            max_hit = max_hit.max(ceiling);
+            distribution.extend(outcomes.into_iter().map(|(d, p)| (d, p * chance)));
+        }
+        hit = 1.0 - (1.0 - single_accuracy).powi(4);
+        if always_max {
+            distribution = vec![(max_hit, 1.0)];
+            hits = distribution.clone();
+        }
+    }
     let multi_hit_effects = crate::effects::SetHitEffects {
         npc_transform: hit_effects.npc_transform,
         final_divisor: damage_divisor,

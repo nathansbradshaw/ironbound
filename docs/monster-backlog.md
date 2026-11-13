@@ -201,3 +201,20 @@ the altar is a separate comparison. Hespori's living flowers block direct body
 damage; its flower target guarantees a 10-damage hit and shows exactly 12 attack
 commitments (28.8 seconds for the example four-tick weapon). No console errors.
 This excludes travel, flower thresholds, activation sequences and incoming attacks.
+
+Fourth batch, 13 November 2026: 17 reviewed outgoing states and three explicit
+gates for Leviathan, Whisperer, normal Nightmare and Phosani. Fifteen independent
+monster regressions cover caps, fractional reductions, bolts, Scythe/Moon hits,
+enrage/debuff scope, distinct shield/charge counters, totem effects, crush minions,
+variant gates, exports and unverified burn-pulse interactions. An additional
+readiness regression requires both melee and Magic for the Nightmare screens.
+Integrated with the current burn, calibration, public-recording, death-risk and
+requirements work: 585 Rust tests and all 24 standalone references pass.
+
+Browser preview: Leviathan stunned-front ruby maximum 10 and blocked melee;
+Whisperer example Magic maximum 20 becomes 6 outside or 8 inside the realm,
+with a separate 140→0 enrage budget; normal/Phosani shield starts are 2,000/400
+and totem starts 300/200, each with twelve totems. Protected bodies deal zero;
+a weakened parasite with a guaranteed 19 max still needs several hits for 55 HP.
+No console errors. Totem accuracy follows the documented strategy interpretation
+and still needs gameplay confirmation. Deployment evidence is recorded in the PR.

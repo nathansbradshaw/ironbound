@@ -143,3 +143,42 @@ fn reported_pickaxe_alternative_has_numeric_damage_and_automatic_plan_uses_mace(
     let html = tooltip::render("Dragon pickaxe", Some(11920), &rows, None);
     assert!(!html.contains("Unverified") && !html.contains("DPS comparison unavailable"));
 }
+
+#[test]
+fn one_unknown_raid_window_does_not_erase_known_weapon_dps_in_the_summary() {
+    let mut bank = account::demo();
+    let m = &mut bank.members[0];
+    m.bank = Some(vec![11905, 1]);
+    m.inventory = None;
+    m.equipment = None;
+    m.shared_bank = None;
+    m.rune_pouch = None;
+    m.potion_storage = None;
+    for skill in account::SKILLS {
+        m.level_overrides.insert(skill.into(), 99);
+    }
+    let o = Options {
+        boss: Boss::Custom,
+        targets: vec![
+            Target {
+                id: 16667,
+                style: "Magic".into(),
+            },
+            Target {
+                id: 16684,
+                style: "Magic".into(),
+            },
+        ],
+        food: 0,
+        prayer_potions: 0,
+        ..Default::default()
+    };
+    let p = planner::plan(&bank, &o);
+    let reason = ironbound::explanations::equipment(&bank, &o, &p, None, 3);
+    assert!(reason.contains("modeled DPS in 1/2 windows"), "{reason}");
+    assert!(reason.contains("unavailable for the rest"), "{reason}");
+    assert!(!reason.contains("unverified"));
+    let phase = ironbound::explanations::equipment(&bank, &o, &p, Some(1), 3);
+    assert!(phase.contains("DPS is unavailable"), "{phase}");
+    assert!(!phase.contains("modeled DPS"));
+}

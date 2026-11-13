@@ -834,7 +834,6 @@ fn style_set(
     }
     refine_dps(&mut set, style, boss, m, owned, catalog, options);
     if !options.gear_overrides.contains_key(&format!("{style}:3"))
-        && !options.gear_overrides.contains_key(&format!("{style}:9"))
         && let Some(p) =
             refinement_target(style, boss, options).and_then(crate::quest_bosses::target)
         && let Some(quest_set) = crate::quest_bosses::best_set(
@@ -846,13 +845,28 @@ fn style_set(
                 m,
                 owned,
                 options.combat.ammo_shots,
-            ),
+            )
+            .into_iter()
+            .filter(|(_, candidate)| {
+                !options.gear_overrides.contains_key(&format!("{style}:9"))
+                    || candidate[9] == set[9]
+            })
+            .collect(),
             m,
             owned,
             &options.combat,
         )
     {
         set = quest_set;
+    }
+    // Do not present a generic weapon as a quest recommendation when the
+    // required weapon is absent, excluded or unusable. Explicit pins stay
+    // visible, with the requirement reported by the plan and combat checks.
+    if !options.gear_overrides.contains_key(&format!("{style}:3"))
+        && let Some(id) = refinement_target(style, boss, options)
+        && crate::quest_bosses::weapon_requirement(id, &set, style).is_some()
+    {
+        set[3] = None;
     }
     set
 }
@@ -1557,7 +1571,11 @@ fn plan_uncached(snapshot: &Snapshot, options: &Options) -> Plan {
     out.equipment = style_set(primary, options.boss, m, &owned, catalog, options);
     let ranged = style_set("Ranged", options.boss, m, &owned, catalog, options);
     let magic = style_set("Magic", options.boss, m, &owned, catalog, options);
-    if out.equipment[3].is_none() {
+    if let Some(issue) = refinement_target(primary, options.boss, options)
+        .and_then(|id| crate::quest_bosses::weapon_requirement(id, &out.equipment, primary))
+    {
+        out.missing.push(issue);
+    } else if out.equipment[3].is_none() {
         out.missing
             .push(format!("A supported, usable {primary} weapon"));
     }
@@ -1609,6 +1627,14 @@ fn plan_uncached(snapshot: &Snapshot, options: &Options) -> Plan {
     } else {
         vec![("Ranged", ranged.clone())]
     };
+    for target in &targets {
+        if let Some((_, set)) = sets.iter().find(|(style, _)| *style == target.style)
+            && let Some(issue) = crate::quest_bosses::weapon_requirement(target.id, set, &target.style)
+            && !out.missing.contains(&issue)
+        {
+            out.missing.push(issue);
+        }
+    }
     if options.boss == Boss::Toa {
         sets.push(("Magic", magic.clone()));
     }

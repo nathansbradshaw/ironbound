@@ -102,7 +102,8 @@ independent references, browser verification, then gameplay verification.
   charge duration, transitions, movement and incoming attack sequences.
 - [x] Doom outgoing: exact delve HP variants, 60 Defence floor, separate
   demonbane-only 500-point shield, burrow accuracy and per-splat melee-punish
-  Strength bonus. Ranged/demonbane melee gear readiness is independent of access.
+  Strength bonus. Gear readiness checks ranged/melee and the best usable owned
+  demonbane shield style, independently of access.
 - [ ] Doom full fight: actual charge/cooldown overwrite, shield damage transfer,
   larvae/volatile earth (missing verified NPC data), acid, movement and incoming damage.
 - [x] Shellbane outgoing/readiness: post-quest ordinary target/air weakness,

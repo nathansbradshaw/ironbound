@@ -195,9 +195,9 @@ fn profile(name: &str) -> Option<Profile> {
     let (level, styles, slayer, note): (_, &[&str], _, _) = match name {
         "Doom of Mokhaiotl" => (
             90,
-            &["Ranged", "Melee"],
+            &["Ranged", "Melee", "Demonbane shield"],
             0,
-            "Deep-delve ranged body plus demonbane melee shield route. No melee-punish bonus is assumed. Larvae, acid, beam timing, incoming attacks and full-trip supplies are not scored.",
+            "Deep-delve ranged body, ordinary melee and the best usable owned demonbane shield style. No melee-punish bonus is assumed. Larvae, acid, beam timing, incoming attacks and full-trip supplies are not scored.",
         ),
         "Shellbane Gryphon" => (
             65,
@@ -615,16 +615,18 @@ fn assess_gear_catalog(snapshot: &Snapshot, preferences: &Options) -> Vec<Assess
             }
         }
         if entry.name == "Doom of Mokhaiotl" {
-            // A generic melee winner may be unable to damage the shield. Also
-            // screen each owned, usable demonbane weapon in the melee baseline.
+            // Generic winners may be unable to damage the shield. Screen each
+            // owned, usable demonbane weapon in its matching style baseline.
             for (style, set) in &sets {
-                if rules::base_style(style) != "Melee" { continue; }
                 for id in owned.keys().filter(|id| planner::can_use(**id, &member)
-                    && rules::weapon(**id).is_some_and(|w| w.family.style == "Melee")
-                    && crate::monster_rules::is_demonbane(**id, "slash", "")) {
+                    && rules::weapon(**id).is_some_and(|w| w.family.style == rules::base_style(style)
+                        && (w.weapon.family == "demonbane" || crate::monster_rules::is_demonbane(**id, if w.family.style == "Ranged" {"standard"} else {"slash"}, "")))) {
                     let mut alternative = set.clone();
                     alternative[3] = Some(*id);
                     if planner::gear(*id).is_some_and(|g| g.two_handed) { alternative[5] = None; }
+                    if rules::base_style(style) == "Ranged" {
+                        alternative[13] = rules::ammo_ids(*id).iter().rev().find(|ammo| owned.get(ammo).is_some_and(|q| *q >= options.combat.ammo_shots) && planner::can_use(**ammo,&member)).copied();
+                    }
                     entry_sets.push((*style, alternative));
                 }
             }
@@ -642,20 +644,24 @@ fn assess_gear_catalog(snapshot: &Snapshot, preferences: &Options) -> Vec<Assess
         }
         let mut choices = vec![];
         for required in p.styles {
+            let shield_role = *required == "Demonbane shield";
             let mut best: Option<(f64, &str, i32, u32, usize)> = None;
             for (style, set) in &entry_sets {
-                if rules::base_style(style) != *required { continue; }
+                let actual_style = rules::base_style(style);
+                if !shield_role && actual_style != *required { continue; }
                 let Some(weapon) = set[3] else { continue; };
-                let level = match *required { "Melee" => member.level("Attack").unwrap().min(member.level("Strength").unwrap()), "Magic" => member.level("Magic").unwrap(), _ => member.level("Ranged").unwrap() };
+                let level = match actual_style { "Melee" => member.level("Attack").unwrap().min(member.level("Strength").unwrap()), "Magic" => member.level("Magic").unwrap(), _ => member.level("Ranged").unwrap() };
                 let armour = [0, 4, 7, 9, 10].iter().filter(|slot| set[**slot].is_some()).count();
                 let mut lowest = f64::INFINITY;
                 let mut valid = true;
                 for target in &entry.targets {
                     // Mixed encounters use each recorded phase's intended style.
-                    if requires_all(&entry.name) && rules::base_style(&target.style) != *required { continue; }
+                    if entry.name == "Doom of Mokhaiotl" {
+                        if (target.id == 100178) != shield_role || !shield_role && rules::base_style(&target.style) != *required { continue; }
+                    } else if requires_all(&entry.name) && rules::base_style(&target.style) != *required { continue; }
                     let Some(monster) = planner::monster(target.id) else { valid = false; break; };
                     let spell = rules::spell_name_for_target(&member, set, &owned, &options.combat, monster, 0);
-                    if *required == "Magic" && (!rules::casting_supported_for_style(&member, set, &owned, &options.combat, style) || rules::spell_requirement(&member, set, &owned, &options.combat, spell).is_some()) { valid = false; break; }
+                    if actual_style == "Magic" && (!rules::casting_supported_for_style(&member, set, &owned, &options.combat, style) || rules::spell_requirement(&member, set, &owned, &options.combat, spell).is_some()) { valid = false; break; }
                     match combat::calculate_configured(&member, set, style, monster, spell, 0, &options.combat) { Ok(result) if result.dps.is_finite() => lowest = lowest.min(result.dps), _ => { valid = false; break; } }
                 }
                 if valid && lowest.is_finite() && best.as_ref().is_none_or(|b| lowest > b.0) { best = Some((lowest, *style, weapon, level, armour)); }
@@ -682,7 +688,7 @@ fn assess_gear_catalog(snapshot: &Snapshot, preferences: &Options) -> Vec<Assess
             "Fight Caves" => "Ranged gear baseline",
             "Nightmare" | "The Nightmare" => "Base 1–5-player gear",
             "Phosani's Nightmare" => "Solo shield/totem gear",
-            "Doom of Mokhaiotl" => "Deep-delve gear · ranged/demonbane melee",
+            "Doom of Mokhaiotl" => "Deep-delve gear · body and demonbane shield",
             "Sol Heredit" => "Sol-only gear · waves excluded",
             "TzKal-Zuk" => "Zuk-only gear · waves excluded",
             _ => "",

@@ -383,6 +383,41 @@ fn newly_reviewed_bosses_get_gear_bands_separate_from_access() {
     }
 }
 #[test]
+fn doom_shield_readiness_accepts_ranged_and_magic_routes_without_demonbane_melee() {
+    let mut a = account::demo();
+    for s in account::SKILLS {
+        a.members[0].level_overrides.insert(s.into(), 99);
+    }
+    a.members[0]
+        .bank
+        .get_or_insert_with(Vec::new)
+        .extend([29591, 1, 892, 1000, 29594, 1, 554, 1000, 566, 1000, 1434, 1]);
+    let i = encounters::catalog()
+        .iter()
+        .position(|e| e.name == "Doom of Mokhaiotl")
+        .unwrap();
+    let mut base = Options::default();
+    for id in a.available(false).keys() {
+        if monster_rules::is_demonbane(*id, "slash", "") {
+            base.excluded.insert(*id);
+        }
+    }
+    let mut ranged = base.clone();
+    for id in a.available(false).keys() {
+        if ironbound::rules::weapon(*id).is_some_and(|w| w.family.style == "Magic") {
+            ranged.excluded.insert(*id);
+        }
+    }
+    let r = bestiary::assess_catalog(&a, &ranged)[i].clone();
+    assert!(!r.reason.starts_with("No usable"), "{}", r.reason);
+    assert_eq!(r.reason.split(';').count(), 3, "{}", r.reason);
+    assert!(r.reason.contains("Scorching bow"));
+    base.excluded.insert(29591);
+    let magic = bestiary::assess_catalog(&a, &base)[i].clone();
+    assert!(!magic.reason.starts_with("No usable"), "{}", magic.reason);
+    assert!(magic.reason.contains("Purging staff"), "{}", magic.reason);
+}
+#[test]
 fn counters_normalise_and_maggot_templates_do_not_duplicate_hp() {
     for (id, weapon, style) in [
         (100180, 4747, "Crush"),

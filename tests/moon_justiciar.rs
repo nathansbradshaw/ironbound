@@ -224,8 +224,9 @@ fn eclipse_burn_is_delayed_capped_and_respects_npc_immunity() {
             &options("Ranged"),
             &s
         )
-        .unwrap_err()
-        .contains("not treated as instant")
+        .unwrap()
+        .burn
+        .is_some()
     );
     for id in [
         13011, 13012, 13013, 7706, 4797, 14779, 16305, 7851, 7540, 2137,

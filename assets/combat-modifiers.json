@@ -1,0 +1,561 @@
+{
+  "sources": [
+    "https://github.com/weirdgloop/osrs-dps-calc/blob/74958b18f6559cf1bf58f7ac74e7a442a7ac8e2f/src/utils.ts",
+    "https://github.com/weirdgloop/osrs-dps-calc/blob/74958b18f6559cf1bf58f7ac74e7a442a7ac8e2f/src/lib/scaling/DefenceReduction.ts",
+    "https://oldschool.runescape.wiki/w/Overload_(-)"
+  ],
+  "boosts": [
+    {
+      "id": "Super combat",
+      "label": "Super combat",
+      "channel": "melee",
+      "stats": {
+        "Attack": {
+          "num": 15,
+          "den": 100,
+          "flat": 5
+        },
+        "Strength": {
+          "num": 15,
+          "den": 100,
+          "flat": 5
+        },
+        "Defence": {
+          "num": 15,
+          "den": 100,
+          "flat": 5
+        }
+      }
+    },
+    {
+      "id": "Super attack",
+      "label": "Super attack",
+      "channel": "melee",
+      "stats": {
+        "Attack": {
+          "num": 15,
+          "den": 100,
+          "flat": 5
+        }
+      }
+    },
+    {
+      "id": "Super strength",
+      "label": "Super strength",
+      "channel": "melee",
+      "stats": {
+        "Strength": {
+          "num": 15,
+          "den": 100,
+          "flat": 5
+        }
+      }
+    },
+    {
+      "id": "Ranging potion",
+      "label": "Ranging potion",
+      "channel": "ranged",
+      "stats": {
+        "Ranged": {
+          "num": 10,
+          "den": 100,
+          "flat": 4
+        }
+      }
+    },
+    {
+      "id": "Magic potion",
+      "label": "Magic potion",
+      "channel": "magic",
+      "stats": {
+        "Magic": {
+          "num": 0,
+          "den": 1,
+          "flat": 4
+        }
+      }
+    },
+    {
+      "id": "Imbued heart",
+      "label": "Imbued heart",
+      "channel": "magic",
+      "stats": {
+        "Magic": {
+          "num": 10,
+          "den": 100,
+          "flat": 1
+        }
+      }
+    },
+    {
+      "id": "Saturated heart",
+      "label": "Saturated heart",
+      "channel": "magic",
+      "stats": {
+        "Magic": {
+          "num": 10,
+          "den": 100,
+          "flat": 4
+        }
+      }
+    },
+    {
+      "id": "Forgotten brew",
+      "label": "Forgotten brew (drains melee stats)",
+      "channel": "magic",
+      "stats": {
+        "Magic": {
+          "num": 8,
+          "den": 100,
+          "flat": 3
+        },
+        "Attack": {
+          "num": -10,
+          "den": 100,
+          "flat": -2
+        },
+        "Strength": {
+          "num": -10,
+          "den": 100,
+          "flat": -2
+        },
+        "Defence": {
+          "num": -10,
+          "den": 100,
+          "flat": -2
+        }
+      }
+    },
+    {
+      "id": "Smelling salts",
+      "label": "Smelling salts (ToA)",
+      "channel": "encounter",
+      "stats": {
+        "Attack": {
+          "num": 16,
+          "den": 100,
+          "flat": 11
+        },
+        "Strength": {
+          "num": 16,
+          "den": 100,
+          "flat": 11
+        },
+        "Defence": {
+          "num": 16,
+          "den": 100,
+          "flat": 11
+        },
+        "Ranged": {
+          "num": 16,
+          "den": 100,
+          "flat": 11
+        },
+        "Magic": {
+          "num": 16,
+          "den": 100,
+          "flat": 11
+        }
+      }
+    },
+    {
+      "id": "Overload(-)",
+      "label": "Overload (-) (CoX)",
+      "channel": "encounter",
+      "stats": {
+        "Attack": {
+          "num": 10,
+          "den": 100,
+          "flat": 4
+        },
+        "Strength": {
+          "num": 10,
+          "den": 100,
+          "flat": 4
+        },
+        "Defence": {
+          "num": 10,
+          "den": 100,
+          "flat": 4
+        },
+        "Ranged": {
+          "num": 10,
+          "den": 100,
+          "flat": 4
+        },
+        "Magic": {
+          "num": 10,
+          "den": 100,
+          "flat": 4
+        }
+      }
+    },
+    {
+      "id": "Overload",
+      "label": "Overload (CoX)",
+      "channel": "encounter",
+      "stats": {
+        "Attack": {
+          "num": 13,
+          "den": 100,
+          "flat": 5
+        },
+        "Strength": {
+          "num": 13,
+          "den": 100,
+          "flat": 5
+        },
+        "Defence": {
+          "num": 13,
+          "den": 100,
+          "flat": 5
+        },
+        "Ranged": {
+          "num": 13,
+          "den": 100,
+          "flat": 5
+        },
+        "Magic": {
+          "num": 13,
+          "den": 100,
+          "flat": 5
+        }
+      }
+    },
+    {
+      "id": "Overload(+)",
+      "label": "Overload (+) (CoX)",
+      "channel": "encounter",
+      "stats": {
+        "Attack": {
+          "num": 16,
+          "den": 100,
+          "flat": 6
+        },
+        "Strength": {
+          "num": 16,
+          "den": 100,
+          "flat": 6
+        },
+        "Defence": {
+          "num": 16,
+          "den": 100,
+          "flat": 6
+        },
+        "Ranged": {
+          "num": 16,
+          "den": 100,
+          "flat": 6
+        },
+        "Magic": {
+          "num": 16,
+          "den": 100,
+          "flat": 6
+        }
+      }
+    },
+    {
+      "id": "Super attack + strength",
+      "label": "Super attack + strength",
+      "channel": "melee",
+      "stats": {
+        "Attack": {
+          "num": 15,
+          "den": 100,
+          "flat": 5
+        },
+        "Strength": {
+          "num": 15,
+          "den": 100,
+          "flat": 5
+        }
+      }
+    },
+    {
+      "id": "Defence potion",
+      "label": "Defence potion",
+      "channel": "defence",
+      "stats": {
+        "Defence": {
+          "num": 10,
+          "den": 100,
+          "flat": 3
+        }
+      }
+    },
+    {
+      "id": "Super defence",
+      "label": "Super defence",
+      "channel": "defence",
+      "stats": {
+        "Defence": {
+          "num": 15,
+          "den": 100,
+          "flat": 5
+        }
+      }
+    }
+  ],
+  "floors": [
+    {
+      "ids": [
+        11789,
+        11790,
+        11791,
+        11792,
+        11793,
+        11794,
+        11795,
+        11796
+      ],
+      "floor": 70
+    },
+    {
+      "ids": [
+        11778,
+        11779,
+        11780,
+        11719,
+        11721,
+        11751,
+        11750,
+        11752
+      ],
+      "floor": 60
+    },
+    {
+      "ids": [
+        11730,
+        11732,
+        11733
+      ],
+      "floor": 50
+    },
+    {
+      "ids": [
+        11761,
+        11763,
+        11762,
+        11764
+      ],
+      "floor": 120
+    },
+    {
+      "ids": [
+        14176
+      ],
+      "floor": 145
+    },
+    {
+      "ids": [
+        8387,
+        8388,
+        10867,
+        10868
+      ],
+      "floor": 100
+    },
+    {
+      "ids": [
+        378,
+        9425,
+        9426,
+        9427,
+        9428,
+        9429,
+        9430,
+        9431,
+        9432,
+        9433,
+        9460,
+        377,
+        9423,
+        9416,
+        9417,
+        9418,
+        9419,
+        9420,
+        9421,
+        9422,
+        9424,
+        11153,
+        11154,
+        11155
+      ],
+      "floor": 120
+    },
+    {
+      "ids": [
+        11278,
+        11279,
+        11280,
+        11281,
+        11282
+      ],
+      "floor": 250
+    },
+    {
+      "ids": [
+        13668
+      ],
+      "floor": 90
+    },
+    {
+      "ids": [
+        14009,
+        14010,
+        14013,
+        14017,
+        14014
+      ],
+      "floor": 120
+    },
+    {
+      "ids": [
+        10830,
+        10831,
+        10832,
+        8369,
+        8370,
+        8371,
+        10847,
+        10848,
+        10849,
+        10833,
+        10834,
+        10835,
+        8372,
+        8373,
+        8374,
+        10850,
+        10851,
+        10852,
+        12223,
+        12224,
+        12228,
+        12425,
+        12426,
+        13656
+      ],
+      "floor": 0,
+      "base_num": 1,
+      "base_den": 1
+    },
+    {
+      "ids": [
+        16659,
+        16660,
+        16640,
+        16652,
+        16667,
+        16684,
+        16673,
+        16674,
+        16677
+      ],
+      "floor": 0,
+      "base_num": 6,
+      "base_den": 10
+    }
+  ],
+  "reductions": [
+    {
+      "id": "accursed",
+      "kind": "keep_current",
+      "stats": [
+        "def",
+        "magic"
+      ],
+      "num": 17,
+      "den": 20
+    },
+    {
+      "id": "vulnerability",
+      "kind": "keep_current",
+      "stats": [
+        "def"
+      ],
+      "num": 9,
+      "den": 10
+    },
+    {
+      "id": "elder_maul",
+      "kind": "subtract_current",
+      "stats": [
+        "def"
+      ],
+      "num": 35,
+      "den": 100
+    },
+    {
+      "id": "dwh",
+      "kind": "subtract_current",
+      "stats": [
+        "def"
+      ],
+      "num": 3,
+      "den": 10
+    },
+    {
+      "id": "arclight",
+      "kind": "subtract_base",
+      "stats": [
+        "atk",
+        "str",
+        "def"
+      ],
+      "num": 1,
+      "demon_num": 2,
+      "den": 20,
+      "flat": 1
+    },
+    {
+      "id": "emberlight",
+      "kind": "subtract_base",
+      "stats": [
+        "atk",
+        "str",
+        "def"
+      ],
+      "num": 1,
+      "demon_num": 3,
+      "den": 20,
+      "flat": 1
+    },
+    {
+      "id": "tonalztic",
+      "kind": "subtract_stat",
+      "stats": [
+        "def"
+      ],
+      "source_stat": "magic",
+      "num": 1,
+      "den": 8
+    },
+    {
+      "id": "seercull",
+      "kind": "flat_level",
+      "stats": [
+        "magic"
+      ]
+    },
+    {
+      "id": "bgs",
+      "kind": "flat_spill",
+      "stats": [
+        "def",
+        "str",
+        "atk",
+        "magic",
+        "ranged"
+      ]
+    },
+    {
+      "id": "ayak",
+      "kind": "bonus_flat",
+      "stats": [
+        "magic"
+      ]
+    }
+  ]
+}

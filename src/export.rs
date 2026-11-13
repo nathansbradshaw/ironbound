@@ -21,6 +21,7 @@ pub fn bank_tags(plan: &Plan, options: &Options) -> Result<String, String> {
         .flatten()
         .copied()
         .chain(plan.inventory.iter().filter(|p| p.id > 0).map(|p| p.id))
+        .chain(plan.loaded_ammo.iter().map(|ammo| ammo.id))
         .collect();
     let mut fields = vec![
         "banktags".into(),
@@ -64,7 +65,7 @@ pub fn inventory_setup(plan: &Plan, options: &Options, _account: &str) -> Result
         .collect();
     let mut layout: Vec<i32> = plan.equipment.iter().flatten().copied().collect();
     layout.extend(plan.inventory.iter().filter(|p| p.id > 0).map(|p| p.id));
-    let notes = format!(
+    let mut notes = format!(
         "Ironbound / {}. {}. {}. Room plan: {}. Mark of Darkness: {}. Ranged stance: {}. Kandarin bolt bonus: {}. Slayer task targets: {}. Verify spellbook, charges and supplies. No automatic game actions.",
         encounter_name(options),
         plan.label,
@@ -101,5 +102,36 @@ pub fn inventory_setup(plan: &Plan, options: &Options, _account: &str) -> Result
                 .join(", ")
         }
     );
+    if let Some(ammo) = &plan.loaded_ammo {
+        notes.push_str(&format!(" Loaded weapon: {} × {} inside the blowpipe; verify contents and charges. Not worn ammo or inventory.",crate::planner::item_name(ammo.id),ammo.quantity));
+    }
+    let buffs = [
+        &options.combat.boosts.melee,
+        &options.combat.boosts.ranged,
+        &options.combat.boosts.magic,
+        &options.combat.boosts.defence,
+        &options.combat.boosts.encounter,
+    ]
+    .into_iter()
+    .filter(|id| id.as_str() != "None")
+    .cloned()
+    .collect::<Vec<_>>();
+    if !buffs.is_empty() {
+        notes.push_str(&format!(
+            " Active peak boosts: {}. Potion timing/decay excluded.",
+            buffs.join(", ")
+        ));
+    }
+    for (id, r) in &options.combat.reductions {
+        if !r.is_empty() {
+            notes.push_str(&format!(
+                " Successful reductions against {}: {}.",
+                crate::planner::monster(*id)
+                    .map(|m| m.name.clone())
+                    .unwrap_or_else(|| id.to_string()),
+                serde_json::to_string(r).unwrap_or_default()
+            ));
+        }
+    }
     serde_json::to_string(&json!({"setup":{"name":format!("Ironbound - {}",encounter_name(options)),"inv":inv,"eq":eq,"afi":{},"notes":notes,"hc":"#FFFF0000","hd":true,"fb":true,"uh":false,"sb":if options.boss==crate::planner::Boss::Barrows{0}else{4},"iId":plan.equipment[3]},"layout":layout})).map_err(|e|e.to_string())
 }

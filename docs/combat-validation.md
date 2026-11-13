@@ -25,6 +25,20 @@ All combat stats 99, no boosts or prayers, no other equipment except the stated 
 
 Attack rolls, defence rolls, accuracy and max hits also match. DPS tolerance is 0.0005 and accuracy tolerance 0.005 percentage points, because the live UI rounds those results. Integer metrics must match exactly.
 
+Seven more live comparisons used deployed revision [`74958b1`](https://github.com/weirdgloop/osrs-dps-calc/tree/74958b18f6559cf1bf58f7ac74e7a442a7ac8e2f), checked the same day. All combat stats 99, no prayers or other equipment, Vorkath 8059. Blowpipe uses Rapid, whip uses accurate Slash. Each reduction below represents a successful effect already applied; the order is fixed to the reference calculator's order.
+
+| Setup / assumptions | Attack roll | Defence roll | Max hit | Wiki DPS | Ironbound DPS |
+|---|---:|---:|---:|---:|---:|
+| Toxic blowpipe, dragon darts, unboosted | 10058 | 20070 | 20 | 2.098 | 2.098 |
+| Same, ranging potion | 11280 | 20070 | 22 | 2.586 | 2.586 |
+| Same, 1 DWH hit | 11280 | 14310 | 22 | 3.627 | 3.627 |
+| Same, 1 DWH hit + 30 BGS damage | 11280 | 11610 | 22 | 4.470 | 4.470 |
+| Trident of the seas, saturated heart, 1 DWH + 30 BGS | 9717 | 48336 | 32 | 0.671 | 0.671 |
+| Same, Accursed sceptre effect | 9717 | 41344 | 32 | 0.785 | 0.785 |
+| Abyssal whip, super combat, saturated heart, Accursed + 1 DWH + 30 BGS | 18834 | 18232 | 29 | 3.124 | 3.124 |
+
+Ranging potion was also active in the trident/whip rows; it does not affect their outgoing rolls. The whip row also retained saturated heart. The full reproducible inputs, revisions and accuracy values are in the fixture.
+
 Ten additional golden loadouts come from the upstream `BasicRolls.test.ts` and `GeneratedTests.test.ts`, pinned to [`cc149e9`](https://github.com/weirdgloop/osrs-dps-calc/tree/cc149e9f428ecd239a793eb822784f23d1aa84b2/src/tests/calc): whip, Bowfa, trident, max-melee lance and Shadow with Salve or a task helmet. These include reference effective levels above 99 to represent boosted inputs; they do not imply those are base account levels.
 
 ## Updating after a game change
@@ -37,6 +51,8 @@ Ten additional golden loadouts come from the upstream `BasicRolls.test.ts` and `
 ## Where mechanics belong
 
 - `assets/weapon-rules.json`: weapon families, level requirements, ammunition, proc rates, equipment and target-stat scaling parameters.
+- `assets/combat-modifiers.json` / `src/modifiers.rs`: current-level boost profiles and ordered NPC reductions with source-NPC floors. Integer operations distinguish multiplying the remaining level from subtracting a rounded drain. Accursed takes precedence over Vulnerability; BGS spills across stats only after a stat reaches zero. Ayak changes a defence bonus, not a skill level. Encounter windows resolve to their source NPC for floors.
+- Blowpipes declare compatible internal ammunition in their weapon family. Darts add strength, not accuracy, and ignore worn ammo. The planner reserves 100 darts outside the 28 bag slots, or records an explicit already-loaded confirmation. Export notes carry that preparation assumption; equipment slot 13 does not contain the darts.
 - Its ordered `target_bonuses` table selects mutually exclusive Salve/task bonuses. Task eligibility comes from pinned public Wiki monster metadata; task status is explicit per target, never inferred from an account or spread to a whole raid. DHCB/task damage shares a data-defined additive group; melee dragonbane still multiplies.
 - `src/effects.rs`: pure reusable arithmetic, with explicit truncation boundaries. Target curves take parameters, not item IDs.
 - `src/combat.rs`: ordered calculation stages: effective stats → base rolls/hits → equipment and target modifiers → accuracy → hit distributions/procs → expected damage and timing.
@@ -47,4 +63,4 @@ New mathematical behavior still needs a tested Rust effect. Balance changes to e
 
 ## Remaining limits
 
-These 17 reference loadouts do **not** establish full Wiki-calculator parity. Blowpipe/dart selection, many other weapon/armour effects, full buff/debuff controls, and several raid phases remain outside verified coverage. Ruby bolts still use full target HP rather than a changing-HP kill simulation. The planner is a bounded search, not proof of global BIS.
+These 24 reference loadouts (14 live and 10 upstream goldens) do **not** establish full Wiki-calculator parity. Many weapon/armour effects and several raid phases remain outside verified coverage. Boosts are peak assumptions: decay, drinking order, potion delay, venom and special-attack damage are excluded. Forgotten brew cannot be combined with melee/defence/raid boosts without an explicit drinking order. Incoming damage is withheld when a reduction changes the NPC's damage stat, because those max-hit transformations are not yet verified. Ruby bolts still use full target HP rather than a changing-HP kill simulation. The planner is a bounded search, not proof of global BIS.

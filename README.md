@@ -23,6 +23,7 @@ Your account stays on that browser. Import it again when using a different devic
 - **Switch less:** limit changed items and carried gear; favour one style or phase.
 - **Compare gear:** outgoing DPS, supported incoming damage, defence and prayer drain.
 - **Check the maths:** [live Wiki comparisons and update guide](docs/combat-validation.md). Run `cargo run --locked --bin validate_combat` to check the pinned reference loadouts.
+- **Model your fight:** Combat → **Boosts, darts & debuffs**. Choose active boosts, loaded blowpipe darts and successful reductions for each target. Numeric settings, including switch limits, update after a short typing pause.
 - **Pack your inventory:** click any slot, search owned items by type, and keep your chosen positions when exporting.
 - **Compare supplies:** food by potential healing per slot; potions by restoration or boost within each role, with fuller bottles first on ties.
 - **Plan longer trips:** weigh prayer efficiency against damage and see a prayer-supply estimate.
@@ -50,7 +51,9 @@ Share links contain the encounter, carried gear, quantities, switches and combat
 
 Weapon IDs map to shared families and reusable mechanics. Exact variants stay separate: owning a basic Keris partisan does not unlock any upgrade. Families supply attack types, stances, ammunition, requirements, rune recipes and effects to both the planner and calculator.
 
-Defaults use unboosted levels. Supported selected prayers affect combat and drain. Standard outgoing calculations cover reviewed melee, bows/crossbows, powered staves, Wind spells and Iban Blast, with supported Fang, Keris, bolt and Shadow effects. ToA calculations assume solo, path level 0 and invocation levels 0–150; Wardens remain unsupported.
+Defaults use unboosted levels. Selected boosts use peak current levels; wear requirements still use base levels. Supported prayers affect combat and drain. Reviewed outgoing calculations include melee, bows/crossbows, loaded blowpipes, powered staves, Wind spells and Iban Blast, with supported Fang, Keris, bolt and Shadow effects. ToA assumes solo, path level 0 and invocation levels 0–150; Wardens remain unsupported.
+
+Blowpipes preload 100 owned compatible darts, or you can explicitly confirm contents already loaded. These occupy no bag or worn ammo slot. Check charges and trip supply yourself. Boost decay, potion timing, venom and special-attack damage are outside these estimates.
 
 Incoming values describe an explicitly selected attack scenario, not a full-fight average. Unknown prayer interactions, special attacks, chip damage and defensive passives remain unverified. Automatic defence priority uses your selected defence bonuses; incoming scenarios remain separate estimates.
 

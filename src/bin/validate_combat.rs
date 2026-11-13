@@ -9,6 +9,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     if let Some(revision) = &suite.live_revision {
         println!("Live Wiki UI reference: {revision} (rounded DPS/accuracy)");
     }
+    for revision in suite
+        .cases
+        .iter()
+        .filter_map(|case| case.reference_revision.as_deref())
+        .collect::<std::collections::BTreeSet<_>>()
+    {
+        println!("Additional per-case reference: {revision}");
+    }
     let mut failed = 0;
     for case in &suite.cases {
         match case.check() {

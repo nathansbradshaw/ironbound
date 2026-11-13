@@ -103,6 +103,8 @@ pub struct EquipmentScaling {
 #[derive(Debug, Deserialize)]
 pub struct Family {
     #[serde(default)]
+    pub internal_ammo: Vec<i32>,
+    #[serde(default)]
     pub target_scaling: Option<crate::effects::TargetScaling>,
     pub style: String,
     pub attack_types: Vec<String>,
@@ -225,6 +227,10 @@ impl Registry {
                 || family.attack_types.is_empty()
                 || family.denominator <= 0
                 || family.ticks.is_some_and(|n| n <= 0)
+                || (!family.internal_ammo.is_empty()
+                    && (!family.ammo.is_empty()
+                        || family.style != "Ranged"
+                        || family.internal_ammo.iter().any(|id| *id <= 0)))
                 || family.target_scaling.as_ref().is_some_and(|s| !s.valid())
             {
                 return Err(format!("Invalid weapon family {name}"));
@@ -500,6 +506,47 @@ pub fn ammo_ids(weapon_id: i32) -> &'static [i32] {
         .map(|w| w.family.ammo.as_slice())
         .unwrap_or(&[])
 }
+pub const DEFAULT_LOADED_SHOTS: u32 = 100;
+pub fn all_internal_ammo_ids() -> Vec<i32> {
+    registry()
+        .families
+        .values()
+        .flat_map(|f| f.internal_ammo.iter().copied())
+        .collect::<std::collections::BTreeSet<_>>()
+        .into_iter()
+        .collect()
+}
+pub fn internal_ammo(
+    member: &Member,
+    weapon_id: i32,
+    settings: &crate::defence::Settings,
+) -> Option<i32> {
+    let rule = weapon(weapon_id)?;
+    if rule.family.internal_ammo.is_empty() {
+        return None;
+    }
+    if let Some(id) = settings.loaded_dart {
+        return rule.family.internal_ammo.contains(&id).then_some(id);
+    }
+    let mut owned = BTreeMap::new();
+    for container in [&member.bank, &member.inventory, &member.equipment]
+        .into_iter()
+        .flatten()
+    {
+        crate::account::add_pairs(&mut owned, container);
+    }
+    rule.family
+        .internal_ammo
+        .iter()
+        .copied()
+        .filter(|id| owned.get(id).copied().unwrap_or(0) >= DEFAULT_LOADED_SHOTS)
+        .max_by_key(|id| {
+            crate::combat::stats(*id)
+                .and_then(|s| s.bonuses.get("ranged_str"))
+                .copied()
+                .unwrap_or(0)
+        })
+}
 pub fn all_ammo_ids() -> Vec<i32> {
     registry()
         .families
@@ -557,6 +604,25 @@ pub fn spell_name(
     set: &[Option<i32>],
     owned: &BTreeMap<i32, u32>,
 ) -> &'static str {
+    spell_name_at_level(set, owned, member.level("Magic"))
+}
+pub fn spell_name_configured(
+    member: &Member,
+    set: &[Option<i32>],
+    owned: &BTreeMap<i32, u32>,
+    settings: &crate::defence::Settings,
+) -> &'static str {
+    spell_name_at_level(
+        set,
+        owned,
+        crate::modifiers::level(member, "Magic", &settings.boosts),
+    )
+}
+fn spell_name_at_level(
+    set: &[Option<i32>],
+    owned: &BTreeMap<i32, u32>,
+    magic: Option<u32>,
+) -> &'static str {
     let Some(rule) = set.get(3).copied().flatten().and_then(weapon) else {
         return "";
     };
@@ -569,10 +635,7 @@ pub fn spell_name(
     }
     recipes
         .iter()
-        .find(|s| {
-            member.level("Magic").is_some_and(|level| level >= s.level)
-                && has_runes(s, owned, DEFAULT_CASTS)
-        })
+        .find(|s| magic.is_some_and(|level| level >= s.level) && has_runes(s, owned, DEFAULT_CASTS))
         .or_else(|| recipes.last())
         .map(|s| s.name.as_str())
         .unwrap_or("")
@@ -612,6 +675,30 @@ pub fn casting_supported(
     owned: &BTreeMap<i32, u32>,
     casts: u32,
 ) -> bool {
+    casting_at_level(member, set, owned, casts, member.level("Magic"))
+}
+pub fn casting_supported_configured(
+    member: &Member,
+    set: &[Option<i32>],
+    owned: &BTreeMap<i32, u32>,
+    casts: u32,
+    settings: &crate::defence::Settings,
+) -> bool {
+    casting_at_level(
+        member,
+        set,
+        owned,
+        casts,
+        crate::modifiers::level(member, "Magic", &settings.boosts),
+    )
+}
+fn casting_at_level(
+    member: &Member,
+    set: &[Option<i32>],
+    owned: &BTreeMap<i32, u32>,
+    casts: u32,
+    magic: Option<u32>,
+) -> bool {
     let Some(rule) = set.get(3).copied().flatten().and_then(weapon) else {
         return false;
     };
@@ -627,12 +714,13 @@ pub fn casting_supported(
         return false;
     }
     if rule.family.formula == Formula::Powered {
-        return member.level("Magic").is_some();
+        return magic.is_some();
     }
-    let name = spell_name(member, set, owned);
-    spells().iter().find(|s| s.name == name).is_some_and(|s| {
-        member.level("Magic").is_some_and(|level| level >= s.level) && has_runes(s, owned, casts)
-    })
+    let name = spell_name_at_level(set, owned, magic);
+    spells()
+        .iter()
+        .find(|s| s.name == name)
+        .is_some_and(|s| magic.is_some_and(|level| level >= s.level) && has_runes(s, owned, casts))
 }
 pub fn spell_max_hit(name: &str, magic: u32) -> Option<i64> {
     spells().iter().find(|s| s.name == name).and_then(|s| {

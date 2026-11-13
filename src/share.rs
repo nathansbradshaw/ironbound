@@ -46,7 +46,13 @@ impl Setup {
         Self {
             recommended: o.recommended,
             ranking: o.ranking.clone(),
-            combat: o.combat.clone(),
+            combat: {
+                let mut combat = o.combat.clone();
+                if let Some(ammo) = &p.loaded_ammo {
+                    combat.loaded_dart = Some(ammo.id);
+                }
+                combat
+            },
             constraints: o.max_switches.map(|max_switches| Constraints {
                 max_switches,
                 switch_slots: o.switch_slots,
@@ -119,6 +125,16 @@ impl Setup {
         {
             if set.len() != 14 {
                 return Err(fail());
+            }
+            if let Some(weapon) = set[3].and_then(crate::rules::weapon) {
+                if !weapon.family.internal_ammo.is_empty()
+                    && self
+                        .combat
+                        .loaded_dart
+                        .is_some_and(|dart| !weapon.family.internal_ammo.contains(&dart))
+                {
+                    return Err(fail());
+                }
             }
             for (slot, id) in set.iter().enumerate() {
                 if let Some(id) = id {
@@ -296,6 +312,6 @@ impl Setup {
                 .collect(),
             Boss::Custom => self.targets.iter().map(Target::name).collect(),
         };
-        Plan{optimization:None,equipment:self.equipment.clone(),inventory:self.inventory.iter().map(|i|Packed{id:i.id,quantity:i.quantity,purpose:"Shared setup".into()}).collect(),phases:self.switches.iter().enumerate().map(|(i,s)|Phase{name:names.get(i).cloned().unwrap_or_else(||format!("Switch {}",i+1)),style:s.style.clone(),equipment:s.equipment.clone(),note:"Shared equipment; ownership, levels and access have not been checked for your account.".into()}).collect(),checks:vec![Check{name:"Shared setup".into(),state:Some(true),detail:"Carried items and capacity checked. Confirm your own ownership, levels and access.".into()}],warnings:vec!["This link contains only the encounter, equipment and inventory. Its creator’s bank, identity, levels and unlocks remain private.".into()],missing:vec![],switches:self.inventory.iter().filter(|i|planner::equipment().iter().any(|g|g.id==i.id)).count(),supported:0,owned:0,label:"Shared setup; account requirements unverified".into(),spell:String::new()}
+        Plan{loaded_ammo:self.combat.loaded_dart.filter(|_|std::iter::once(&self.equipment).chain(self.switches.iter().map(|s|&s.equipment)).any(|set|set[3].and_then(crate::rules::weapon).is_some_and(|r|!r.family.internal_ammo.is_empty()))).map(|id|Packed{id,quantity:crate::rules::DEFAULT_LOADED_SHOTS,purpose:"Shared loaded-ammunition assumption; verify contents".into()}),optimization:None,equipment:self.equipment.clone(),inventory:self.inventory.iter().map(|i|Packed{id:i.id,quantity:i.quantity,purpose:"Shared setup".into()}).collect(),phases:self.switches.iter().enumerate().map(|(i,s)|Phase{name:names.get(i).cloned().unwrap_or_else(||format!("Switch {}",i+1)),style:s.style.clone(),equipment:s.equipment.clone(),note:"Shared equipment; ownership, levels and access have not been checked for your account.".into()}).collect(),checks:vec![Check{name:"Shared setup".into(),state:Some(true),detail:"Carried items and capacity checked. Confirm your own ownership, levels and access.".into()}],warnings:vec!["This link contains only the encounter, equipment and inventory. Its creator’s bank, identity, levels and unlocks remain private.".into()],missing:vec![],switches:self.inventory.iter().filter(|i|planner::equipment().iter().any(|g|g.id==i.id)).count(),supported:0,owned:0,label:"Shared setup; account requirements unverified".into(),spell:String::new()}
     }
 }

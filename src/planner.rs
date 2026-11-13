@@ -892,20 +892,21 @@ fn refine_dps(
     catalog: &[Gear],
     options: &Options,
 ) {
-    // Refine ordinary armour and each complete Void setup independently. A
-    // one-slot search cannot enter or leave a four-piece set reliably.
-    let seeds = void_sets(set, style, m, owned, options);
+    // Refine ordinary armour and joint set/weapon combinations independently.
+    // A one-slot search cannot enter or leave interdependent effects reliably.
+    let seeds = crate::set_search::candidates(set, style, m, owned, options);
     refine_dps_seed(set, style, boss, m, owned, catalog, options);
     if seeds.is_empty() {
         return;
     }
     let mut trials = vec![set.clone()];
-    for mut seed in seeds {
+    for candidate in seeds {
+        let mut seed = candidate.equipment;
         let mut pinned = options.clone();
-        for slot in [0, 4, 7, 9] {
+        for slot in candidate.slots {
             pinned
                 .gear_overrides
-                .insert(format!("{style}:{slot}"), seed[slot].unwrap());
+                .insert(format!("{style}:{slot}"), seed[slot].unwrap_or(0));
         }
         refine_dps_seed(&mut seed, style, boss, m, owned, catalog, &pinned);
         trials.push(seed);
@@ -924,77 +925,6 @@ fn refine_dps(
         judge_magic.as_ref(),
     );
     *set = trials[chosen].clone();
-}
-
-/// Cosmetic variants share a search branch, but normal/elite pieces remain
-/// distinct. Every complete combination is eligible at every encounter.
-fn void_sets(
-    seed: &[Option<i32>],
-    style: &str,
-    m: &Member,
-    owned: &BTreeMap<i32, u32>,
-    options: &Options,
-) -> Vec<Vec<Option<i32>>> {
-    let suffix = match crate::rules::base_style(style) {
-        "Melee" => "melee",
-        "Ranged" => "ranged",
-        "Magic" => "magic",
-        _ => return Vec::new(),
-    };
-    let Some(rule) = crate::rules::registry()
-        .equipment_sets
-        .iter()
-        .find(|rule| rule.effect == format!("void_{suffix}"))
-    else {
-        return Vec::new();
-    };
-    let mut trials = vec![seed.to_vec()];
-    for piece in &rule.pieces {
-        let pin = options
-            .gear_overrides
-            .get(&format!("{style}:{}", piece.slot));
-        let mut seen = BTreeSet::new();
-        let ids: Vec<_> = piece
-            .ids
-            .iter()
-            .copied()
-            .filter(|id| {
-                pin.is_none_or(|pin| pin == id)
-                    && owned.get(id).copied().unwrap_or(0) > 0
-                    && !options.item_excluded(*id)
-                    && can_use(*id, m)
-                    && gear(*id).is_some_and(|g| g.slot == SLOT_KEYS[piece.slot])
-            })
-            .filter(|id| {
-                crate::combat::stats(*id).is_some_and(|stats| {
-                    let elite = crate::rules::registry().equipment_sets.iter().any(|set| {
-                        set.effect.starts_with("elite_void_")
-                            && set
-                                .pieces
-                                .iter()
-                                .any(|p| p.slot == piece.slot && p.ids.contains(id))
-                    });
-                    seen.insert((
-                        stats.offensive.clone(),
-                        stats.defensive.clone(),
-                        stats.bonuses.clone(),
-                        elite,
-                    ))
-                })
-            })
-            .collect();
-        trials = trials
-            .into_iter()
-            .flat_map(|set| {
-                ids.iter().map(move |id| {
-                    let mut set = set.clone();
-                    set[piece.slot] = Some(*id);
-                    set
-                })
-            })
-            .collect();
-    }
-    trials
 }
 
 fn refinement_target(style: &str, boss: Boss, options: &Options) -> Option<i32> {

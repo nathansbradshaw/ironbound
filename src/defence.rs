@@ -6,6 +6,7 @@ use serde::{Deserialize, Serialize};
 #[serde(default, deny_unknown_fields)]
 pub struct Settings {
     pub ranged_type: crate::rules::RangedType,
+    pub current_hitpoints: Option<u32>,
     pub spell_selection: crate::rules::SpellSelection,
     pub spell_casts: u32,
     pub ammo_shots: u32,
@@ -29,6 +30,7 @@ impl Default for Settings {
     fn default() -> Self {
         Self {
             ranged_type: Default::default(),
+            current_hitpoints: None,
             spell_selection: Default::default(),
             spell_casts: crate::rules::DEFAULT_CASTS,
             ammo_shots: crate::rules::DEFAULT_LOADED_SHOTS,
@@ -51,7 +53,9 @@ impl Default for Settings {
 }
 impl Settings {
     pub fn valid(&self) -> bool {
-        (1..=10_000).contains(&self.spell_casts)
+        self.current_hitpoints
+            .is_none_or(|hp| (1..=255).contains(&hp))
+            && (1..=10_000).contains(&self.spell_casts)
             && self.spell_selection.valid()
             && (1..=10_000).contains(&self.ammo_shots)
             && self.target_hp.len() <= crate::rules::MAX_TARGETS
@@ -218,6 +222,9 @@ pub fn estimate(
         if matches {
             return Err(guard.note.clone());
         }
+    }
+    if crate::rules::set_effect(set, "torag_damned") {
+        return Err("Torag's amulet defence bonus is not modelled for incoming damage.".into());
     }
     let profile = profile(target.id);
     if profile.is_some_and(|p| p.kind == "unverified") {

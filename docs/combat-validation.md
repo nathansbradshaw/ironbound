@@ -55,6 +55,8 @@ Supported elemental staves declare free runes in weapon data. Recipes contain th
 
 ## Updating after a game change
 
+Manual spellbook comparisons use `rules::SpellComparison` and the same combat engine. Auto retains target-aware recommendation; an element limits the comparison to that element, and an exact spell stays selected even if its rune supply is missing. The UI shows missing supplies separately from hypothetical damage and retains level/weapon requirements. Comparison state does not alter the trip's packed spell/runes or shared setup. `cargo test --locked --test spell_comparison` verifies manual versus Auto selection, missing rune counts, level boosts, incompatible weapons and icon coverage. Ranged/prayer buttons retain the existing settings and arithmetic; protection and stat prayers remain mutually exclusive within their own categories, with Preserve independent.
+
 1. Reproduce the change with identical stats, gear, target version, stance, prayers and options in the reference calculator. Its defaults can differ: the Wiki currently enables the Kandarin diary bonus.
 2. Save the source revision, inputs and independent expected values in `tests/fixtures/wiki-reference.json`. Never regenerate golden values using Ironbound itself.
 3. Change the smallest responsible rule or pure effect. Run the comparator and the full test suite. Investigate mismatches; do not loosen tolerances to make tests pass.

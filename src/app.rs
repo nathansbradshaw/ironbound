@@ -55,6 +55,7 @@ struct State {
     inventory_query: String,
     inventory_filter: String,
     edit_style: Option<String>,
+    spell_comparison: crate::rules::SpellComparison,
     compare_target: Option<i32>,
     edit_equipment: Option<usize>,
     gear_search: String,
@@ -148,6 +149,7 @@ impl State {
             inventory_query: String::new(),
             inventory_filter: "All".into(),
             edit_style: None,
+            spell_comparison: Default::default(),
             compare_target: None,
             edit_equipment: None,
             gear_search: String::new(),
@@ -884,15 +886,9 @@ pub fn start() -> Result<(), JsValue> {
             "max-switches",
             "switch-slots",
             "focus-style",
-            "compare-target",
             "budget-window",
             "budget-incoming",
-            "incoming-attack",
-            "protection",
-            "offensive-prayer",
-            "preserve",
             "mark-darkness",
-            "ranged-stance",
             "loaded-dart",
             "loaded-ammo-confirmed",
             "boost-melee",
@@ -1015,44 +1011,10 @@ pub fn start() -> Result<(), JsValue> {
                         s.inventory_filter = sel.value();
                     }
                 }
-                "incoming-attack" => {
-                    if let Ok(sel) = el.dyn_into::<HtmlSelectElement>() {
-                        s.incoming_attack = Some(sel.value());
-                    }
-                }
-                "protection" => {
-                    if let Ok(sel) = el.dyn_into::<HtmlSelectElement>() {
-                        let value = sel.value();
-                        if ["None", "Melee", "Ranged", "Magic"].contains(&value.as_str()) {
-                            s.saved.options.combat.protection = value;
-                        }
-                    }
-                }
-                "offensive-prayer" => {
-                    if let Ok(sel) = el.dyn_into::<HtmlSelectElement>() {
-                        let value = sel.value();
-                        if crate::prayer::prayers().iter().any(|p| p.name == value) {
-                            s.saved.options.combat.offensive = value;
-                        }
-                    }
-                }
-                "preserve" => {
-                    s.saved.options.combat.preserve = el
-                        .dyn_ref::<HtmlInputElement>()
-                        .is_some_and(|e| e.checked())
-                }
                 "mark-darkness" => {
                     s.saved.options.combat.mark_darkness = el
                         .dyn_ref::<HtmlInputElement>()
                         .is_some_and(|e| e.checked())
-                }
-                "ranged-stance" => {
-                    if let Ok(sel) = el.dyn_into::<HtmlSelectElement>() {
-                        let value = sel.value();
-                        if ["Rapid", "Accurate"].contains(&value.as_str()) {
-                            s.saved.options.combat.ranged_stance = value;
-                        }
-                    }
                 }
                 "kandarin-diary" => {
                     s.saved.options.combat.kandarin_diary = el
@@ -1088,23 +1050,6 @@ pub fn start() -> Result<(), JsValue> {
                         let value = sel.value();
                         if value == "Balanced" || crate::rules::STYLES.contains(&value.as_str()) {
                             s.saved.options.focus_style = value;
-                        }
-                    }
-                }
-                "compare-target" => {
-                    if let Ok(sel) = el.dyn_into::<HtmlSelectElement>() {
-                        s.compare_target = sel.value().parse().ok();
-                        s.incoming_attack = None;
-                        if s.saved.options.boss == Boss::Custom {
-                            if let Some(target) = s
-                                .saved
-                                .options
-                                .targets
-                                .iter()
-                                .find(|t| Some(t.id) == s.compare_target)
-                            {
-                                s.edit_style = Some(target.style.clone());
-                            }
                         }
                     }
                 }
@@ -1795,6 +1740,92 @@ fn act(action: &str) {
                     s.saved.options.inventory_overrides.insert(index, id);
                     s.saved.options.inventory_quantities.insert(index, quantity);
                     s.edit_inventory = None;
+                }
+            }
+        } else if action == "compare-spell-auto" {
+            s.spell_comparison = crate::rules::SpellComparison::Auto;
+        } else if let Some(element) = action.strip_prefix("compare-element:") {
+            if ["air", "water", "earth", "fire"].contains(&element) {
+                s.spell_comparison = crate::rules::SpellComparison::Element(element.into());
+            }
+        } else if let Some(name) = action.strip_prefix("compare-spell:") {
+            if crate::rules::spells()
+                .iter()
+                .any(|recipe| recipe.name == name)
+            {
+                s.spell_comparison = crate::rules::SpellComparison::Spell(name.into());
+            }
+        } else if let Some(stance) = action.strip_prefix("ranged-stance:") {
+            if ["Rapid", "Accurate"].contains(&stance) {
+                s.saved.options.combat.ranged_stance = stance.into();
+            }
+        } else if let Some(value) = action.strip_prefix("protect:") {
+            let minimum = match value {
+                "None" => Some(0),
+                "Magic" => Some(37),
+                "Ranged" => Some(40),
+                "Melee" => Some(43),
+                _ => None,
+            };
+            if minimum.is_some_and(|minimum| {
+                minimum == 0
+                    || s.saved.options.combat.protection == value
+                    || s.saved
+                        .snapshot
+                        .selected()
+                        .and_then(|m| m.level("Prayer"))
+                        .is_some_and(|level| level >= minimum)
+            }) {
+                s.saved.options.combat.protection = if s.saved.options.combat.protection == value {
+                    "None".into()
+                } else {
+                    value.into()
+                };
+            }
+        } else if let Some(name) = action.strip_prefix("stat-prayer:") {
+            if s.saved.options.combat.offensive == name {
+                s.saved.options.combat.offensive = "None".into();
+            } else if crate::prayer::prayers()
+                .iter()
+                .find(|p| p.name == name)
+                .is_some_and(|p| {
+                    s.saved
+                        .snapshot
+                        .selected()
+                        .is_some_and(|m| crate::prayer::eligible(m, p))
+                })
+            {
+                s.saved.options.combat.offensive = name.into();
+            }
+        } else if action == "toggle-preserve" {
+            if s.saved.options.combat.preserve
+                || s.saved
+                    .snapshot
+                    .selected()
+                    .and_then(|m| m.level("Prayer"))
+                    .is_some_and(|level| level >= 55)
+            {
+                s.saved.options.combat.preserve = !s.saved.options.combat.preserve;
+            }
+        } else if let Some(attack) = action.strip_prefix("incoming-choice:") {
+            if comparison_monster(&s).is_some_and(|target| {
+                crate::defence::attacks(target)
+                    .iter()
+                    .any(|name| name == attack)
+            }) {
+                s.incoming_attack = Some(attack.into());
+            }
+        } else if let Some(id) = action
+            .strip_prefix("compare-target:")
+            .and_then(|v| v.parse::<i32>().ok())
+        {
+            if encounter_targets(&s).contains(&id) {
+                s.compare_target = Some(id);
+                s.incoming_attack = None;
+                if s.saved.options.boss == Boss::Custom {
+                    if let Some(target) = s.saved.options.targets.iter().find(|t| t.id == id) {
+                        s.edit_style = Some(target.style.clone());
+                    }
                 }
             }
         } else if let Some(style) = action.strip_prefix("edit-style:") {
@@ -2958,13 +2989,14 @@ fn comparison_spell(
 ) -> &'static str {
     let mut owned = s.saved.snapshot.available(s.saved.options.shared);
     owned.retain(|id, _| !s.saved.options.excluded.contains(id));
-    crate::rules::spell_name_for_target(
+    crate::rules::comparison_spell_name(
         member,
         set,
         &owned,
         &s.saved.options.combat,
         target,
         s.saved.options.raid_level,
+        &s.spell_comparison,
     )
 }
 fn incoming_choice(s: &State, target: &planner::Monster) -> Option<String> {
@@ -2983,58 +3015,17 @@ fn sustain_panel(
     target: &planner::Monster,
 ) -> String {
     let settings = &s.saved.options.combat;
-    let mut html = String::from(
-        "<section class=\"sustain-panel\"><h3>Damage taken & prayer</h3><div class=\"sustain-controls\">",
-    );
-    html.push_str("<label>Protection prayer<select id=\"protection\">");
-    for value in ["None", "Melee", "Ranged", "Magic"] {
-        html.push_str(&format!(
-            "<option {}>{value}</option>",
-            if value == settings.protection {
-                "selected"
-            } else {
-                ""
-            }
-        ));
-    }
-    html.push_str("</select></label><label>Stat prayer<select id=\"offensive-prayer\">");
-    for prayer in crate::prayer::prayers() {
-        html.push_str(&format!(
-            "<option {} {}>{}</option>",
-            if prayer.name == settings.offensive {
-                "selected"
-            } else {
-                ""
-            },
-            if crate::prayer::eligible(member, prayer) {
-                ""
-            } else {
-                "disabled"
-            },
-            esc(&prayer.name)
-        ));
-    }
-    html.push_str(&format!(
-        "</select></label><label><input id=\"preserve\" type=\"checkbox\" {}> Preserve</label>",
-        if settings.preserve { "checked" } else { "" }
-    ));
+    let mut html = String::from("<section class=\"sustain-panel\"><h3>Damage taken & prayer</h3>");
+    html.push_str(&prayer_book(s, member));
     let choices = crate::defence::attacks(target);
     if !choices.is_empty() {
-        html.push_str("<label>Incoming attack scenario<select id=\"incoming-attack\">");
+        html.push_str("<div class=\"incoming-choices\" role=\"group\" aria-label=\"Incoming attack scenario\"><h4>Incoming attack scenario</h4><div class=\"combat-subtype-options\">");
         for choice in &choices {
-            html.push_str(&format!(
-                "<option {}>{}</option>",
-                if incoming_choice(s, target).as_deref() == Some(choice) {
-                    "selected"
-                } else {
-                    ""
-                },
-                esc(choice)
-            ));
+            let active = incoming_choice(s, target).as_deref() == Some(choice);
+            html.push_str(&format!("<button class=\"phase {}\" data-action=\"incoming-choice:{}\" aria-pressed=\"{active}\">{}</button>",if active {"active"}else{""},esc(choice),esc(choice)));
         }
-        html.push_str("</select></label>");
+        html.push_str("</div></div>");
     }
-    html.push_str("</div>");
     match incoming_choice(s, target)
         .ok_or("Incoming attack data unavailable.".to_string())
         .and_then(|attack| crate::defence::estimate(member, set, target, &attack, settings))
@@ -3241,9 +3232,19 @@ fn combat_breakdown(
                 .map(|w| w.severity)
                 .unwrap_or(0);
             html.push_str(&format!("<tr><th>{label}</th><td>{weakness}%</td>"));
-            let candidate = candidates
-                .iter()
-                .find(|spell| spell.element.as_deref() == Some(element));
+            let manual = (!matches!(s.spell_comparison, crate::rules::SpellComparison::Auto))
+                .then(|| {
+                    crate::rules::spells().iter().find(|spell| {
+                        spell.name == r.spell && spell.element.as_deref() == Some(element)
+                    })
+                })
+                .flatten();
+            let candidate = manual.or_else(|| {
+                candidates
+                    .iter()
+                    .copied()
+                    .find(|spell| spell.element.as_deref() == Some(element))
+            });
             if let Some(spell) = candidate {
                 match combat::calculate_configured(
                     member,
@@ -3285,7 +3286,7 @@ fn combat_breakdown(
             }
             html.push_str("</tr>");
         }
-        html.push_str("</tbody></table><p class=\"small-note\">Each row uses the strongest spell you can cast with banked runes for 150 casts. Staff-provided runes are included. Spells are checked by Magic level and rune supplies. Selection compares sustained DPS; check tome pages and charges.</p>");
+        html.push_str("</tbody></table><p class=\"small-note\">Rows show the automatic available spell for each element, or your selected comparison spell. Missing runes for a manual choice are shown above. Staff-provided runes are included; check tome pages and charges.</p>");
         if let Some(e) = &r.elemental {
             html.push_str(&format!("<h3>{} · calculation</h3><dl class=\"combat-values\"><div><dt>Base spell max</dt><dd>{}</dd></div><div><dt>After gear, prayer & task</dt><dd>{}</dd></div><div><dt>Elemental damage · {}%</dt><dd>+{}</dd></div><div><dt>Elemental accuracy roll · {}%</dt><dd>+{}</dd></div></dl><p class=\"small-note\">Weakness adds a percentage of base spell damage and the base accuracy roll ({}), after other bonuses. Damage is rounded down at each stage. {} Final max hit: {}. Damage tiers use base Magic; active boosts can unlock spells and improve accuracy.</p>",esc(&r.spell),e.base_max,e.damage_before_weakness,e.weakness_percent,e.weakness_damage,e.weakness_percent,e.weakness_accuracy,e.base_attack_roll,if e.tome { "Matching charged tome multiplies damage by 1.10 after weakness." } else { "" },r.max_hit));
         } else {
@@ -3295,25 +3296,229 @@ fn combat_breakdown(
     html.push_str("</div>");
     html
 }
+fn book_icon(name: &str) -> String {
+    static ICONS: std::sync::OnceLock<BTreeMap<String, String>> = std::sync::OnceLock::new();
+    let icons = ICONS.get_or_init(|| {
+        serde_json::from_str(include_str!("../assets/book-icons.json")).expect("book icons")
+    });
+    icons
+        .get(name)
+        .map(|src| format!("<img src=\"{src}\" alt=\"\" aria-hidden=\"true\">"))
+        .unwrap_or_else(|| "<span class=\"book-clear\" aria-hidden=\"true\">×</span>".into())
+}
+fn book_tile(
+    action: &str,
+    name: &str,
+    label: &str,
+    detail: &str,
+    active: bool,
+    enabled: bool,
+) -> String {
+    format!(
+        "<button class=\"book-tile {}\" data-action=\"{}\" aria-label=\"{}\" aria-pressed=\"{active}\" title=\"{}\" {}><span class=\"book-tile-icon\">{}</span><span class=\"book-tile-name\">{}</span><small>{}</small></button>",
+        if active { "active" } else { "" },
+        esc(action),
+        esc(name),
+        esc(&format!("{name}: {detail}")),
+        if enabled { "" } else { "disabled" },
+        book_icon(name),
+        esc(label),
+        esc(detail)
+    )
+}
+fn prayer_book(s: &State, member: &account::Member) -> String {
+    let settings = &s.saved.options.combat;
+    let mut html = String::from(
+        "<section class=\"prayer-book\" aria-label=\"Prayer book\"><h4>Prayer book</h4><p class=\"small-note\">Click a supported prayer to toggle it. Protection and stat prayers can be active together.</p><div class=\"prayer-book-groups\"><div role=\"group\" aria-label=\"Protection prayers\"><h5>Protection</h5><div class=\"book-grid\">",
+    );
+    html.push_str(&book_tile(
+        "protect:None",
+        "No protection",
+        "Off",
+        "No overhead",
+        settings.protection == "None",
+        true,
+    ));
+    for (value, name, label, level) in [
+        ("Magic", "Protect from Magic", "Magic", 37),
+        ("Ranged", "Protect from Missiles", "Missiles", 40),
+        ("Melee", "Protect from Melee", "Melee", 43),
+    ] {
+        let active = settings.protection == value;
+        let ready = member.level("Prayer").is_some_and(|l| l >= level);
+        html.push_str(&book_tile(
+            &format!("protect:{value}"),
+            name,
+            label,
+            &format!("{level} Prayer"),
+            active,
+            ready || active,
+        ));
+    }
+    html.push_str("</div></div><div role=\"group\" aria-label=\"Stat prayers\"><h5>Stat prayers</h5><div class=\"book-grid\">");
+    html.push_str(&book_tile(
+        "stat-prayer:None",
+        "No stat prayer",
+        "Off",
+        "No stat boost",
+        settings.offensive == "None",
+        true,
+    ));
+    for p in crate::prayer::prayers().iter().filter(|p| p.name != "None") {
+        let active = settings.offensive == p.name;
+        let detail = if p.defence_level > 1 {
+            format!("{} Prayer · {} Defence", p.level, p.defence_level)
+        } else {
+            format!("{} Prayer", p.level)
+        };
+        html.push_str(&book_tile(
+            &format!("stat-prayer:{}", p.name),
+            &p.name,
+            &p.name,
+            &detail,
+            active,
+            crate::prayer::eligible(member, p) || active,
+        ));
+    }
+    html.push_str("</div></div><div role=\"group\" aria-label=\"Utility prayers\"><h5>Utility</h5><div class=\"book-grid\">");
+    html.push_str(&book_tile(
+        "toggle-preserve",
+        "Preserve",
+        "Preserve",
+        "55 Prayer",
+        settings.preserve,
+        settings.preserve || member.level("Prayer").is_some_and(|l| l >= 55),
+    ));
+    html.push_str("</div></div></div><p class=\"small-note\">Grey icons need higher levels. Prayer and spellbook unlocks still need your confirmation.</p></section>");
+    html
+}
+fn magic_spell_book(s: &State, set: &[Option<i32>]) -> String {
+    use crate::rules::{Formula, SpellComparison};
+    let rule = set.get(3).copied().flatten().and_then(crate::rules::weapon);
+    let elemental = rule
+        .as_ref()
+        .is_some_and(|r| r.family.formula == Formula::Elemental);
+    let mut html = String::from(
+        "<section class=\"combat-subtypes spell-book\" aria-label=\"Spell comparison\"><h4>Spellbook · comparison</h4><div class=\"combat-subtype-options\" role=\"group\" aria-label=\"Magic elements\">",
+    );
+    let applies = match &s.spell_comparison {
+        SpellComparison::Auto => false,
+        SpellComparison::Element(_) => elemental,
+        SpellComparison::Spell(name) => crate::rules::spells()
+            .iter()
+            .find(|r| r.name == *name)
+            .is_some_and(|recipe| {
+                rule.as_ref()
+                    .is_some_and(|r| r.weapon.family == recipe.family)
+            }),
+    };
+    let auto = !applies;
+    html.push_str(&format!("<button class=\"phase {}\" data-action=\"compare-spell-auto\" aria-pressed=\"{auto}\">Auto</button>",if auto{"active"}else{""}));
+    let filter = match &s.spell_comparison {
+        SpellComparison::Element(e) => Some(e.as_str()),
+        SpellComparison::Spell(name) => crate::rules::spells()
+            .iter()
+            .find(|r| r.name == *name)
+            .and_then(|r| r.element.as_deref()),
+        _ => None,
+    };
+    for (element, label) in [
+        ("air", "Air"),
+        ("water", "Water"),
+        ("earth", "Earth"),
+        ("fire", "Fire"),
+    ] {
+        let active = elemental && filter == Some(element);
+        html.push_str(&format!("<button class=\"phase {}\" data-action=\"compare-element:{element}\" aria-pressed=\"{active}\" {} title=\"{}\">{label}</button>",if active{"active"}else{""},if elemental{""}else{"disabled"},if elemental{"Compare this element"}else{"Elemental spells need a compatible spellcasting staff"}));
+    }
+    html.push_str("</div>");
+    let Some(member) = s.saved.snapshot.selected() else {
+        html.push_str("<p>Enter your Magic level to compare spells.</p></section>");
+        return html;
+    };
+    let mut owned = s.saved.snapshot.available(s.saved.options.shared);
+    owned.retain(|id, _| !s.saved.options.excluded.contains(id));
+    let selected = comparison_monster(s)
+        .map(|target| comparison_spell(s, member, set, target))
+        .unwrap_or("");
+    let mut recipes: Vec<_> = crate::rules::spells()
+        .iter()
+        .filter(|recipe| {
+            rule.as_ref()
+                .is_some_and(|r| recipe.family == r.weapon.family)
+                && (!elemental || filter.is_none_or(|e| recipe.element.as_deref() == Some(e)))
+        })
+        .collect();
+    recipes.sort_by_key(|recipe| recipe.level);
+    if recipes.is_empty() {
+        html.push_str("<p class=\"small-note\">This weapon uses a built-in spell. Equip a spellcasting staff to compare elemental spells.</p>");
+    } else {
+        html.push_str(
+            "<div class=\"book-grid spell-grid\" role=\"group\" aria-label=\"Combat spells\">",
+        );
+        for recipe in recipes {
+            let requirement = crate::rules::spell_comparison_requirement(
+                member,
+                set,
+                &owned,
+                &s.saved.options.combat,
+                &recipe.name,
+            );
+            let detail = if crate::modifiers::level(member, "Magic", &s.saved.options.combat.boosts)
+                .is_none_or(|l| l < recipe.level)
+            {
+                format!("Requires {} Magic", recipe.level)
+            } else if requirement.is_some() {
+                format!("{} Magic · needs runes", recipe.level)
+            } else {
+                format!("{} Magic · runes ready", recipe.level)
+            };
+            html.push_str(&book_tile(
+                &format!("compare-spell:{}", recipe.name),
+                &recipe.name,
+                &recipe.name,
+                &detail,
+                recipe.name == selected,
+                true,
+            ));
+        }
+        html.push_str("</div>");
+        if !selected.is_empty() {
+            html.push_str(&format!(
+                "<p class=\"spell-selection\">{}: <strong>{}</strong></p>",
+                if auto { "Auto choice" } else { "Comparing" },
+                esc(selected)
+            ));
+            if let Some(requirement) = crate::rules::spell_comparison_requirement(
+                member,
+                set,
+                &owned,
+                &s.saved.options.combat,
+                selected,
+            ) {
+                html.push_str(&format!(
+                    "<p class=\"spell-requirement\" role=\"status\">{}</p>",
+                    esc(&requirement)
+                ));
+            }
+        }
+    }
+    html.push_str("<p class=\"small-note\">Choose an element, then a spell, or return to Auto. Manual choices change this comparison; your packing list keeps its automatic spell and runes.</p></section>");
+    html
+}
 fn combat_style_controls(s: &State, set: &[Option<i32>], style: &str) -> String {
     let main_style = crate::rules::base_style(style);
     let rule = set.get(3).copied().flatten().and_then(crate::rules::weapon);
     let mut html = String::from("<nav class=\"combat-style-tabs\" aria-label=\"Combat style\">");
     for candidate in ["Melee", "Ranged", "Magic"] {
-        html.push_str(&format!("<button class=\"phase {}\" data-action=\"edit-style:{candidate}\" aria-pressed=\"{}\">{candidate}</button>", if candidate == main_style { "active" } else { "" }, candidate == main_style));
+        html.push_str(&format!("<button class=\"phase {}\" data-action=\"edit-style:{candidate}\" aria-pressed=\"{}\">{candidate}</button>",if candidate==main_style{"active"}else{""},candidate==main_style));
     }
-    html.push_str(&format!(
-        "</nav><div class=\"combat-subtypes\" role=\"group\" aria-label=\"{main_style} subtypes\">"
-    ));
-    let label = match main_style {
-        "Melee" => "Attack type",
-        "Ranged" => "Ammunition type",
-        _ => "Spell element",
-    };
-    html.push_str(&format!(
-        "<span class=\"combat-subtype-label\">{label}</span><div class=\"combat-subtype-options\">"
-    ));
-    let note;
+    html.push_str("</nav>");
+    if main_style == "Magic" {
+        html.push_str(&magic_spell_book(s, set));
+        return html;
+    }
+    html.push_str(&format!("<div class=\"combat-subtypes\" role=\"group\" aria-label=\"{main_style} subtypes\"><span class=\"combat-subtype-label\">{}</span><div class=\"combat-subtype-options\">",if main_style=="Melee"{"Attack type"}else{"Ammunition type"}));
     if main_style == "Melee" {
         let selected = if style == "Melee" {
             rule.as_ref()
@@ -3326,50 +3531,22 @@ fn combat_style_controls(s: &State, set: &[Option<i32>], style: &str) -> String 
         };
         for kind in ["Stab", "Slash", "Crush"] {
             let active = selected.eq_ignore_ascii_case(kind);
-            html.push_str(&format!("<button class=\"phase combat-subtype {}\" data-action=\"edit-style:{kind}\" aria-pressed=\"{active}\">{kind}</button>", if active { "active" } else { "" }));
+            html.push_str(&format!("<button class=\"phase combat-subtype {}\" data-action=\"edit-style:{kind}\" aria-pressed=\"{active}\">{kind}</button>",if active{"active"}else{""}));
         }
-        note = "Choose an attack type to compare its loadout.";
+        html.push_str(
+            "</div><p class=\"small-note\">Choose an attack type to compare its loadout.</p>",
+        );
     } else {
-        let spell = s
-            .saved
-            .snapshot
-            .selected()
-            .zip(comparison_monster(s))
-            .map(|(member, target)| comparison_spell(s, member, set, target))
-            .unwrap_or("");
-        let element = crate::rules::spells()
-            .iter()
-            .find(|recipe| recipe.name == spell)
-            .and_then(|recipe| recipe.element.as_deref());
-        let selected = if main_style == "Ranged" {
-            rule.as_ref()
-                .filter(|r| r.family.style == "Ranged")
-                .and_then(|r| r.family.attack_types.first())
-                .map(String::as_str)
-        } else if rule
+        let selected = rule
             .as_ref()
-            .is_some_and(|r| r.family.formula == crate::rules::Formula::Elemental)
-        {
-            element
-        } else {
-            None
-        };
-        let kinds: &[(&str, &str)] = if main_style == "Ranged" {
-            &[
-                ("light", "Light"),
-                ("standard", "Standard"),
-                ("heavy", "Heavy"),
-            ]
-        } else {
-            &[
-                ("air", "Air"),
-                ("water", "Water"),
-                ("earth", "Earth"),
-                ("fire", "Fire"),
-            ]
-        };
-        for (kind, label) in kinds {
-            let active = selected == Some(*kind);
+            .filter(|r| r.family.style == "Ranged")
+            .and_then(|r| r.family.attack_types.first());
+        for (kind, label) in [
+            ("light", "Light"),
+            ("standard", "Standard"),
+            ("heavy", "Heavy"),
+        ] {
+            let active = selected.is_some_and(|s| s == kind);
             html.push_str(&format!(
                 "<span class=\"combat-subtype {}\">{label}{}</span>",
                 if active { "active" } else { "" },
@@ -3380,27 +3557,11 @@ fn combat_style_controls(s: &State, set: &[Option<i32>], style: &str) -> String 
                 }
             ));
         }
-        if main_style == "Magic" {
-            if let Some(rule) = rule.filter(|r| {
-                r.family.style == "Magic" && r.family.formula != crate::rules::Formula::Elemental
-            }) {
-                html.push_str(&format!(
-                    "<span class=\"combat-subtype active\">{} <small>· selected</small></span>",
-                    if rule.family.formula == crate::rules::Formula::Powered {
-                        "Powered staff"
-                    } else {
-                        "Non-elemental"
-                    }
-                ));
-            }
-        }
-        note = if main_style == "Ranged" {
-            "Determined by your weapon and ammunition."
-        } else {
-            "Determined by the selected spell. Element comparisons are below."
-        };
+        html.push_str(
+            "</div><p class=\"small-note\">Determined by your weapon and ammunition.</p>",
+        );
     }
-    html.push_str(&format!("</div><p class=\"small-note\">{note}</p></div>"));
+    html.push_str("</div>");
     html
 }
 fn combat_panel(s: &State, p: &Plan) -> String {
@@ -3414,7 +3575,7 @@ fn combat_panel(s: &State, p: &Plan) -> String {
         r#"<section class="panel combat-panel"><div class="panel-heading"><h2>Combat stats</h2></div><div class="combat-body">"#,
     );
     html.push_str(&combat_style_controls(s, &set, style));
-    html.push_str(r#"<label>Against<select id="compare-target">"#);
+    html.push_str(r#"<div class="target-choices" role="group" aria-label="Against"><h4>Against</h4><div class="combat-subtype-options">"#);
     let mut priority_ids = std::collections::BTreeSet::new();
     for id in encounter_targets(s)
         .into_iter()
@@ -3422,17 +3583,18 @@ fn combat_panel(s: &State, p: &Plan) -> String {
     {
         if let Some(m) = planner::monsters().iter().find(|m| m.id == id) {
             html.push_str(&format!(
-                r#"<option value="{id}" {}>{}</option>"#,
+                r#"<button class="phase {}" data-action="compare-target:{id}" aria-pressed="{}">{}</button>"#,
                 if comparison_monster(s).is_some_and(|m| m.id == id) {
-                    "selected"
+                    "active"
                 } else {
                     ""
                 },
+                comparison_monster(s).is_some_and(|m| m.id == id),
                 esc(&m.name)
             ));
         }
     }
-    html.push_str("</select></label>");
+    html.push_str("</div></div>");
     if let (Some(m), Some(target)) = (s.saved.snapshot.selected(), comparison_monster(s)) {
         let mut stock = s.saved.snapshot.available(s.saved.options.shared);
         for id in &s.saved.options.excluded {
@@ -3445,18 +3607,15 @@ fn combat_panel(s: &State, p: &Plan) -> String {
             html.push_str(&format!("<label><input id=\"slayer-task\" type=\"checkbox\" {}> This target is my Slayer task</label>", if s.saved.options.combat.slayer_targets.contains(&target.id) { "checked" } else { "" }));
         }
         if style == "Ranged" {
-            html.push_str("<label>Ranged stance<select id=\"ranged-stance\">");
+            html.push_str("<div class=\"ranged-stances\" role=\"group\" aria-label=\"Ranged stance\"><h4>Ranged stance</h4><div class=\"combat-subtype-options\">");
             for stance in ["Rapid", "Accurate"] {
                 html.push_str(&format!(
-                    "<option {}>{stance}</option>",
-                    if s.saved.options.combat.ranged_stance == stance {
-                        "selected"
-                    } else {
-                        ""
-                    }
+                    "<button class=\"phase {}\" data-action=\"ranged-stance:{stance}\" aria-pressed=\"{}\">{stance}</button>",
+                    if s.saved.options.combat.ranged_stance == stance { "active" } else { "" },
+                    s.saved.options.combat.ranged_stance == stance
                 ));
             }
-            html.push_str("</select></label>");
+            html.push_str("</div></div>");
             if set[3].is_some_and(|id| crate::rules::ammo_ids(id).contains(&9243)) {
                 html.push_str(&format!("<label><input id=\"kandarin-diary\" type=\"checkbox\" {}> Kandarin diary bolt bonus</label>", if s.saved.options.combat.kandarin_diary { "checked" } else { "" }));
             }
@@ -4335,14 +4494,7 @@ fn ranked_gear(s: &State) -> (Vec<GearChoice>, Vec<&'static str>) {
                         &trial,
                         trial_style,
                         target,
-                        crate::rules::spell_name_for_target(
-                            member,
-                            &trial,
-                            &owned,
-                            &s.saved.options.combat,
-                            target,
-                            s.saved.options.raid_level,
-                        ),
+                        comparison_spell(s, member, &trial, target),
                         s.saved.options.raid_level,
                         &s.saved.options.combat,
                     )

@@ -483,6 +483,7 @@ pub fn start() -> Result<(), JsValue> {
             "protection",
             "offensive-prayer",
             "preserve",
+            "mark-darkness",
             "safety",
             "prayer-weight",
             "member",
@@ -510,6 +511,7 @@ pub fn start() -> Result<(), JsValue> {
             "protection"=>{if let Ok(sel)=el.dyn_into::<HtmlSelectElement>(){let value=sel.value();if ["None","Melee","Ranged","Magic"].contains(&value.as_str()){s.saved.options.combat.protection=value;}}},
             "offensive-prayer"=>{if let Ok(sel)=el.dyn_into::<HtmlSelectElement>(){let value=sel.value();if crate::prayer::prayers().iter().any(|p|p.name==value){s.saved.options.combat.offensive=value;}}},
             "preserve"=>s.saved.options.combat.preserve=el.dyn_ref::<HtmlInputElement>().is_some_and(|e|e.checked()),
+            "mark-darkness"=>s.saved.options.combat.mark_darkness=el.dyn_ref::<HtmlInputElement>().is_some_and(|e|e.checked()),
             "safety"=>{if let Ok(sel)=el.dyn_into::<HtmlSelectElement>(){s.saved.options.combat.safety=sel.value().parse::<u32>().unwrap_or(1).min(3);}},
             "prayer-weight"=>{if let Ok(sel)=el.dyn_into::<HtmlSelectElement>(){s.saved.options.combat.prayer_weight=sel.value().parse::<u32>().unwrap_or(0).min(3);}},
             "max-switches"=>{if let Ok(control)=el.dyn_into::<HtmlInputElement>(){let value=control.value();let limit=if value.trim().is_empty(){None}else if let Ok(n)=value.parse::<usize>(){Some(n.min(11))}else{return;};s.saved.options.max_switches=limit;s.saved.options.fewer_switches=false;s.saved.options.inventory_overrides.clear();s.saved.options.inventory_quantities.clear();}},
@@ -864,6 +866,16 @@ fn act(action: &str) {
                         _ => Boss::Custom,
                     };
                     s.saved.options.targets = entry.targets.clone();
+                    if crate::guidance::profile(&s.saved.options)
+                        .is_some_and(|profile| profile.recommended_mark_darkness)
+                    {
+                        s.saved.options.combat.mark_darkness = s
+                            .saved
+                            .snapshot
+                            .selected()
+                            .and_then(|m| m.level("Magic"))
+                            .is_some_and(|level| level >= 59);
+                    }
                     s.saved.options.gear_overrides.clear();
                     s.saved.options.targets = planner::recommend_encounter(
                         &s.saved.snapshot,
@@ -2305,7 +2317,34 @@ fn combat_panel(s: &State, p: &Plan) -> String {
     }
     html.push_str("</select></label>");
     if let (Some(m), Some(target)) = (s.saved.snapshot.selected(), comparison_monster(s)) {
+        if crate::guidance::profile(&s.saved.options)
+            .is_some_and(|profile| profile.recommended_mark_darkness)
+        {
+            html.push_str(&format!("<label><input id=\"mark-darkness\" type=\"checkbox\" {}> Mark of Darkness active</label>", if s.saved.options.combat.mark_darkness { "checked" } else { "" }));
+        }
         match combat::calculate_configured(m,&set,style,target,&p.spell,s.saved.options.raid_level,&s.saved.options.combat){Ok(r)=>html.push_str(&format!(r#"<dl class="combat-values"><div><dt>Outgoing DPS</dt><dd>{:.3}</dd></div><div><dt>Hit chance</dt><dd>{:.1}%</dd></div><div><dt>Max hit</dt><dd>{}</dd></div><div><dt>Attack speed</dt><dd>{} ticks</dd></div></dl><p>{} attacks · {:.1} seconds per attack</p>"#,r.dps,r.accuracy*100.0,r.max_hit,r.attack_ticks,esc(&r.attack_type),r.attack_ticks as f64*0.6)),Err(e)=>html.push_str(&format!("<p class=\"combat-unavailable\">DPS unavailable: {}</p>",esc(&e)))}
+        if crate::yama::has_judge_cycle(&s.saved.options) {
+            let judge_set = |style| {
+                s.saved
+                    .options
+                    .targets
+                    .iter()
+                    .zip(&p.phases)
+                    .find(|(target, _)| {
+                        crate::yama::is_judge_window(target.id)
+                            && crate::rules::base_style(&target.style) == style
+                    })
+                    .map(|(_, phase)| phase.equipment.as_slice())
+            };
+            let melee = judge_set("Melee");
+            let magic = judge_set("Magic");
+            if let (Some(melee), Some(magic)) = (melee, magic) {
+                match crate::yama::judge_cycle(m, melee, magic, &s.saved.options, &s.saved.snapshot.available(s.saved.options.shared)) {
+                    Ok(cycle) => html.push_str(&format!("<details><summary>Judge cycle · {:.1}s across both interludes</summary><p class=\"small-note\">Magic first, then alternate melee and magic. Maximum hits: magic {}, melee {}. {}</p></details>", cycle.seconds, cycle.magic_max, cycle.melee_max, esc(cycle.note))),
+                    Err(reason) => html.push_str(&format!("<p class=\"small-note\">Judge cycle unavailable: {}</p>", esc(&reason))),
+                }
+            }
+        }
         html.push_str(&sustain_panel(s, p, &set, m, target));
     }
     html.push_str(

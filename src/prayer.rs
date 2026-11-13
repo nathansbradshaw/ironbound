@@ -72,17 +72,17 @@ pub fn bonus(set: &[Option<i32>]) -> i32 {
         .sum()
 }
 /// Ordinary potion restoration only: no Holy wrench, imbued Ring of the gods,
-/// prayer cape, prayer regeneration, Sanfew serum or encounter-specific drain.
+/// prayer cape, prayer regeneration or encounter-specific drain.
 pub fn restore_points(level: u32, items: &[Packed]) -> u32 {
     items.iter().fold(0u32, |total, item| {
         let doses: u32 = match item.id {
-            2434 | 3024 => 4,
-            139 | 3026 => 3,
-            141 | 3028 => 2,
-            143 | 3030 => 1,
+            2434 | 3024 | 10925 => 4,
+            139 | 3026 | 10927 => 3,
+            141 | 3028 | 10929 => 2,
+            143 | 3030 | 10931 => 1,
             _ => 0,
         };
-        let each = if [3024, 3026, 3028, 3030].contains(&item.id) {
+        let each = if [3024, 3026, 3028, 3030, 10925, 10927, 10929, 10931].contains(&item.id) {
             level / 4 + 8
         } else {
             level / 4 + 7

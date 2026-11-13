@@ -1,6 +1,15 @@
 use crate::planner::{Options, Plan};
 use serde_json::{Value, json};
 
+fn encounter_name(options: &Options) -> &str {
+    crate::encounters::catalog()
+        .iter()
+        .find(|entry| entry.matches(&options.targets))
+        .filter(|_| options.boss == crate::planner::Boss::Custom)
+        .map(|entry| entry.name.as_str())
+        .unwrap_or_else(|| options.boss.name())
+}
+
 /// RuneLite Bank Tags v1 CSV. Filtering only; quantities belong in Inventory Setups.
 pub fn bank_tags(plan: &Plan, options: &Options) -> Result<String, String> {
     if !plan.exportable() {
@@ -16,7 +25,7 @@ pub fn bank_tags(plan: &Plan, options: &Options) -> Result<String, String> {
     let mut fields = vec![
         "banktags".into(),
         "1".into(),
-        format!("Ironbound - {}", options.boss.name()),
+        format!("Ironbound - {}", encounter_name(options)),
         plan.equipment[3].unwrap_or(952).to_string(),
     ];
     fields.extend(ids.into_iter().map(|id| id.to_string()));
@@ -56,15 +65,20 @@ pub fn inventory_setup(plan: &Plan, options: &Options, _account: &str) -> Result
     let mut layout: Vec<i32> = plan.equipment.iter().flatten().copied().collect();
     layout.extend(plan.inventory.iter().filter(|p| p.id > 0).map(|p| p.id));
     let notes = format!(
-        "Ironbound / {}. {}. {}. Room plan: {}. Starter catalog; verify charges and supplies. No automatic game actions.",
-        options.boss.name(),
+        "Ironbound / {}. {}. {}. Room plan: {}. Mark of Darkness: {}. Verify spellbook, charges and supplies. No automatic game actions.",
+        encounter_name(options),
         plan.label,
         plan.spell,
         plan.phases
             .iter()
             .map(|p| format!("{}: {}", p.name, p.style))
             .collect::<Vec<_>>()
-            .join("; ")
+            .join("; "),
+        if options.combat.mark_darkness {
+            "active"
+        } else {
+            "inactive"
+        }
     );
-    serde_json::to_string(&json!({"setup":{"name":format!("Ironbound - {}",options.boss.name()),"inv":inv,"eq":eq,"afi":{},"notes":notes,"hc":"#FFFF0000","hd":true,"fb":true,"uh":false,"sb":if options.boss==crate::planner::Boss::Barrows{0}else{4},"iId":plan.equipment[3]},"layout":layout})).map_err(|e|e.to_string())
+    serde_json::to_string(&json!({"setup":{"name":format!("Ironbound - {}",encounter_name(options)),"inv":inv,"eq":eq,"afi":{},"notes":notes,"hc":"#FFFF0000","hd":true,"fb":true,"uh":false,"sb":if options.boss==crate::planner::Boss::Barrows{0}else{4},"iId":plan.equipment[3]},"layout":layout})).map_err(|e|e.to_string())
 }

@@ -1,5 +1,8 @@
 [
   {"name":"Wind Wave","family":"wind","level":62,"runes":{"565":1},"tiers":[[62,17],[65,18],[70,19],[75,20]]},
   {"name":"Wind Blast","family":"wind","level":41,"runes":{"560":1},"tiers":[[41,13],[47,14],[53,15],[59,16]]},
-  {"name":"Iban Blast","family":"iban","level":50,"runes":{"560":1,"554":5},"tiers":[[50,25]]}
+  {"name":"Iban Blast","family":"iban","level":50,"runes":{"560":1,"554":5},"tiers":[[50,25]]},
+  {"name":"Dark Demonbane","family":"demonbane","level":82,"runes":{"554":7,"566":2},"tiers":[[82,30]]},
+  {"name":"Superior Demonbane","family":"demonbane","level":62,"runes":{"554":5,"566":1},"tiers":[[62,23]]},
+  {"name":"Inferior Demonbane","family":"demonbane","level":44,"runes":{"554":3,"566":1},"tiers":[[44,16]]}
 ]

@@ -83,6 +83,8 @@ pub struct ResultStats {
     pub attack_roll: i64,
     pub defence_roll: i64,
     pub attack_type: String,
+    /// Guaranteed-hit windows retain proc probabilities for exact alternating cycles.
+    pub guaranteed_hits: Option<Vec<(i32, f64)>>,
 }
 /// Normal accuracy includes negative attack/defence rolls.
 pub fn accuracy(mut a: i64, mut d: i64) -> f64 {
@@ -146,6 +148,9 @@ pub fn calculate_configured(
     if !settings.valid() {
         return Err("Invalid combat settings.".into());
     }
+    if settings.mark_darkness && !member.level("Magic").is_some_and(|level| level >= 59) {
+        return Err("Mark of Darkness requires 59 Magic.".into());
+    }
     let prayer = crate::prayer::selected(settings);
     crate::prayer::eligible_settings(member, settings)?;
     if set.len() != 14 {
@@ -160,6 +165,25 @@ pub fn calculate_configured(
     }
     let requested_style = style;
     let style = rules::base_style(style);
+    let hit_rule = crate::encounters::hit_rule(monster.id);
+    if hit_rule.is_some_and(|rule| !rule.allowed_styles.iter().any(|allowed| allowed == style)) {
+        return Err(
+            "This attack style is blocked or not modelled for this encounter window.".into(),
+        );
+    }
+    let always_max = hit_rule.is_some_and(|rule| rule.always_max);
+    let demon = monster
+        .attributes
+        .iter()
+        .any(|attribute| attribute == "demon");
+    let demonbane_spell = style == "Magic" && rule.has(Effect::DemonbaneSpell);
+    if demonbane_spell && !demon {
+        return Err("Demonbane spells can only target demons.".into());
+    }
+    let vulnerability = i64::from(crate::encounters::demonbane_vulnerability(monster.id));
+    let spell_factor = rule.weapon.demonbane_spell_factor.unwrap_or(1);
+    let mark_bonus =
+        (demonbane_spell && settings.mark_darkness).then_some((25 * spell_factor, vulnerability));
     let void = rules::set_effect(
         set,
         match style {
@@ -364,6 +388,25 @@ pub fn calculate_configured(
                 }
                 .max(1),
                 Formula::Fixed => rule.family.offset,
+                Formula::Spell => {
+                    if rule.weapon.requirements.iter().any(|(skill, minimum)| {
+                        !member.level(skill).is_some_and(|level| level >= *minimum)
+                    }) {
+                        return Err(
+                            "This spellcasting weapon's skill requirements are unmet or unknown."
+                                .into(),
+                        );
+                    }
+                    let recipe = rules::spells()
+                        .iter()
+                        .find(|recipe| recipe.name == spell && recipe.family == rule.weapon.family)
+                        .ok_or("Choose a supported spell for this weapon.")?;
+                    if mage < i64::from(recipe.level) {
+                        return Err(format!("{} requires {} Magic.", recipe.name, recipe.level));
+                    }
+                    rules::spell_max_hit(spell, mage as u32)
+                        .ok_or("Spell damage tier unavailable.")?
+                }
                 _ => return Err("Spell or powered staff not supported.".into()),
             };
             let mut max = base + base * get(&b.other, "magic_str") as i64 / 1000;
@@ -397,6 +440,11 @@ pub fn calculate_configured(
         defence = defence * (250 + invocation.min(150) as i64) / 250;
     }
     let (mut attack, mut max_hit) = rule.scale_equipment(set, attack, max_hit);
+    if demonbane_spell {
+        let percent =
+            20 * spell_factor * if settings.mark_darkness { 2 } else { 1 } * vulnerability / 100;
+        attack += attack * percent / 100;
+    }
     if style != "Magic" {
         attack = attack * salve.0 / salve.1;
         max_hit = (i64::from(max_hit) * salve.0 / salve.1) as i32;
@@ -447,6 +495,7 @@ pub fn calculate_configured(
     if style == "Magic"
         && rules::equipped_effect(set, "confliction_accuracy")
         && crate::planner::gear(weapon).is_some_and(|g| !g.two_handed)
+        && !always_max
     {
         // The ring rolls independently each cast. Average the unbuffed and
         // after-miss transition probabilities before solving the steady state.
@@ -461,8 +510,26 @@ pub fn calculate_configured(
     if fang {
         max_hit -= min_hit;
     }
-    let (mean, ceiling) =
-        conditional_hit(min_hit, max_hit, flat_armour, &rule.family.procs, monster);
+    let (mean, ceiling, hits) = if always_max {
+        hit = 1.0;
+        conditional_hit(
+            max_hit,
+            max_hit,
+            flat_armour,
+            &rule.family.procs,
+            monster,
+            mark_bonus.filter(|_| hit_rule.is_some_and(|rule| rule.mark_damage)),
+        )
+    } else {
+        conditional_hit(
+            min_hit,
+            max_hit,
+            flat_armour,
+            &rule.family.procs,
+            monster,
+            mark_bonus,
+        )
+    };
     let mut expected = hit * mean;
     max_hit = ceiling;
     if style == "Ranged" && !rule.family.ammo.is_empty() {
@@ -497,6 +564,7 @@ pub fn calculate_configured(
         attack_roll: attack,
         defence_roll: defence,
         attack_type: attack_type.into(),
+        guaranteed_hits: always_max.then_some(hits),
     })
 }
 /// Shared single-hit distribution: composable procs, accurate-zero handling, then NPC armour.
@@ -506,9 +574,10 @@ fn conditional_hit(
     armour: i32,
     procs: &[rules::HitProc],
     monster: &Monster,
-) -> (f64, i32) {
+    mark_bonus: Option<(i64, i64)>,
+) -> (f64, i32, Vec<(i32, f64)>) {
     if max <= 0 {
-        return (0.0, 0);
+        return (0.0, 0, vec![(0, 1.0)]);
     }
     let mut hits: Vec<_> = (min..=max)
         .map(|damage| (damage, 1.0 / (max - min + 1) as f64))
@@ -543,14 +612,21 @@ fn conditional_hit(
     }
     let mut mean = 0.0;
     let mut ceiling = 0;
+    let mut outcomes = vec![];
     for (damage, probability) in hits {
+        let damage = if let Some((percent, vulnerability)) = mark_bonus {
+            damage + (i64::from(damage) * percent / 100 * vulnerability / 100) as i32
+        } else {
+            damage
+        };
         let damage = (damage - armour).max(0);
         mean += damage as f64 * probability;
         if probability > 0.0 {
             ceiling = ceiling.max(damage);
+            outcomes.push((damage, probability));
         }
     }
-    (mean, ceiling)
+    (mean, ceiling, outcomes)
 }
 pub fn fang_accuracy(a: i64, d: i64) -> f64 {
     let a = if a < 0 { (a + 2).min(0) } else { a };

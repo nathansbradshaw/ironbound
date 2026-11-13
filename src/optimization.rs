@@ -251,6 +251,8 @@ fn evaluate(
         choices: &'a [Vec<Candidate>],
         ideals: &'a [StyleSet],
         o: &'a Options,
+        member: &'a Member,
+        owned: &'a BTreeMap<i32, u32>,
         limit: usize,
         bag: usize,
         best: Option<(Vec<StyleSet>, f64)>,
@@ -263,6 +265,12 @@ fn evaluate(
                 return;
             }
             if index == self.choices.len() {
+                let Some(adjustment) =
+                    crate::yama::paired_adjustment(self.member, sets, self.o, self.owned)
+                else {
+                    return;
+                };
+                let cost = cost + adjustment;
                 let slots = carried(sets, planner::primary_style(self.o));
                 if slots <= self.bag
                     && self.best.as_ref().is_none_or(|(s, c)| {
@@ -295,6 +303,8 @@ fn evaluate(
         choices: &choices,
         ideals,
         o,
+        member: m,
+        owned,
         limit,
         bag,
         best: None,
@@ -460,7 +470,7 @@ pub fn solve(
             gear_slots,
             comparisons,
             note: format!(
-                "Best found in a bounded search over owned sets and hybrid anchor pieces. {} {}",
+                "Best found in a bounded search over owned sets and hybrid anchor pieces. {} {} {}",
                 if crate::recommendation::enabled(o) {
                     "Recommended uses reviewed encounter gear roles and supported attack windows. Moons includes normal-attack damage and Blood healing, with a 15% time tolerance; other encounters compare supported damage only."
                 } else if o.focus_style == "Balanced" {
@@ -474,6 +484,11 @@ pub fn solve(
                     "Wardens are excluded from the DPS objective; packing still includes their styles."
                 } else {
                     "Movement and supply consumption are excluded."
+                },
+                if crate::yama::has_judge_cycle(o) && crate::recommendation::enabled(o) {
+                    "The paired Judge attack-cycle estimate replaces the two independent style proxies. It includes two 400-HP intermissions, starts with Magic and alternates complete sets. The one-pair Void Flare probe is a comparison assumption, not a predicted spawn count. Movement, projectile flight, regeneration and environmental damage are excluded."
+                } else {
+                    ""
                 }
             ),
         },

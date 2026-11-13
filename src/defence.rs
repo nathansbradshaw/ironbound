@@ -11,6 +11,7 @@ pub struct Settings {
     pub offensive: String,
     pub preserve: bool,
     pub prayer_weight: u32,
+    pub mark_darkness: bool,
 }
 impl Default for Settings {
     fn default() -> Self {
@@ -20,6 +21,7 @@ impl Default for Settings {
             offensive: "None".into(),
             preserve: false,
             prayer_weight: 0,
+            mark_darkness: false,
         }
     }
 }

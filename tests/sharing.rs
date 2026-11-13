@@ -81,6 +81,21 @@ fn shared_setup_roundtrips_all_carried_items() {
     }
 }
 #[test]
+fn mark_assumption_roundtrips_and_old_links_default_inactive() {
+    let (mut options, plan) = demo(Boss::Barrows);
+    options.combat.mark_darkness = true;
+    let setup = Setup::from_plan(&plan, &options);
+    let decoded = Setup::parse(&setup.fragment().unwrap()).unwrap();
+    assert!(decoded.combat.mark_darkness);
+    let mut legacy = serde_json::to_value(setup).unwrap();
+    legacy["combat"]
+        .as_object_mut()
+        .unwrap()
+        .remove("mark_darkness");
+    let old: Setup = serde_json::from_value(legacy).unwrap();
+    assert!(!old.combat.mark_darkness);
+}
+#[test]
 fn sharing_only_contains_an_explicit_public_allowlist() {
     let (o, p) = demo(Boss::Toa);
     let value = serde_json::to_value(Setup::from_plan(&p, &o)).unwrap();

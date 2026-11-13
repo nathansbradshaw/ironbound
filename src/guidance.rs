@@ -26,6 +26,32 @@ pub struct Profile {
     pub target_ids: Vec<i32>,
     #[serde(default)]
     pub joint_sets: Vec<JointSet>,
+    #[serde(default)]
+    pub supply_roles: Vec<SupplyRole>,
+    #[serde(default)]
+    pub food_ids: Vec<i32>,
+    #[serde(default)]
+    pub skip_stamina: bool,
+    #[serde(default)]
+    pub recommended_mark_darkness: bool,
+}
+/// Ordered owned-item alternatives for a trip purpose; no encounter-specific
+/// potion IDs belong in the packer. Multi-purpose bottles count only once.
+#[derive(Debug, Deserialize)]
+pub struct SupplyRole {
+    pub id: String,
+    pub label: String,
+    pub ids: Vec<i32>,
+    #[serde(default)]
+    pub styles: Vec<String>,
+    #[serde(default)]
+    pub skipped_by: Vec<String>,
+    #[serde(default)]
+    pub required: bool,
+    #[serde(default)]
+    pub prayer_ids: Vec<i32>,
+    #[serde(default)]
+    pub requires_magic_benefit: bool,
 }
 #[derive(Debug, Deserialize)]
 pub struct JointSet {

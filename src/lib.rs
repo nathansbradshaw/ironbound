@@ -17,3 +17,4 @@ pub mod reference;
 pub mod rules;
 pub mod share;
 pub mod supplies;
+pub mod yama;

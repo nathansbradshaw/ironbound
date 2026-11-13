@@ -51,6 +51,15 @@ pub struct Mechanics {
     pub windows: Vec<Window>,
     #[serde(default)]
     pub demonbane_vulnerability: BTreeMap<i32, u32>,
+    #[serde(default)]
+    pub cycles: Vec<AlternatingCycle>,
+}
+#[derive(Debug, Deserialize)]
+pub struct AlternatingCycle {
+    pub id: String,
+    pub hp: u32,
+    pub occurrences: u32,
+    pub first_style: String,
 }
 /// Catalog target keys may describe different states of the same game NPC.
 /// `npc_id` is the real source NPC; `id` is a shareable internal attack-window key.
@@ -68,6 +77,22 @@ pub struct Window {
     pub outgoing_supported: bool,
     #[serde(default)]
     pub default_style: Option<String>,
+    #[serde(default)]
+    pub hit_rule: Option<HitRule>,
+    #[serde(default)]
+    pub cycle: Option<String>,
+    #[serde(default = "one_entity")]
+    pub entity_count: u32,
+}
+#[derive(Debug, Deserialize)]
+pub struct HitRule {
+    pub always_max: bool,
+    pub allowed_styles: Vec<String>,
+    #[serde(default)]
+    pub mark_damage: bool,
+}
+fn one_entity() -> u32 {
+    1
 }
 fn supported() -> bool {
     true
@@ -81,6 +106,12 @@ pub fn mechanics() -> &'static Mechanics {
 }
 pub fn window(id: i32) -> Option<&'static Window> {
     mechanics().windows.iter().find(|window| window.id == id)
+}
+pub fn hit_rule(id: i32) -> Option<&'static HitRule> {
+    window(id)?.hit_rule.as_ref()
+}
+pub fn alternating_cycle(id: &str) -> Option<&'static AlternatingCycle> {
+    mechanics().cycles.iter().find(|cycle| cycle.id == id)
 }
 /// Explicit progress budgets prevent each state from counting an entire boss kill.
 pub fn progress_hp(id: i32, style: &str) -> Option<f64> {

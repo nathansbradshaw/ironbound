@@ -6,6 +6,7 @@ use std::collections::BTreeMap;
 
 #[derive(Clone, Debug)]
 pub struct SetHitEffects {
+    pub npc_transform: crate::monster_rules::Transform,
     pub damage_factor: [i64; 2],
     pub critical: bool,
     pub extra_half: bool,
@@ -14,6 +15,7 @@ pub struct SetHitEffects {
 impl Default for SetHitEffects {
     fn default() -> Self {
         Self {
+            npc_transform: Default::default(),
             damage_factor: [1, 1],
             critical: false,
             extra_half: false,

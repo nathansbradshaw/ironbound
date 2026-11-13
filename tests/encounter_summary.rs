@@ -54,6 +54,68 @@ fn aggregate_uses_work_over_time_instead_of_averaging_dps() {
     near(a.prayer_per_minute, 12.0);
 }
 #[test]
+fn dynamic_burn_comparison_uses_full_workload_for_both_sides() {
+    let mut c = comparison();
+    let mut snapshot = account::demo();
+    let m = &mut snapshot.members[0];
+    for skill in account::SKILLS {
+        m.level_overrides.insert(skill.into(), 99);
+    }
+    m.bank = Some(vec![
+        29010, 1, 29004, 1, 29007, 1, 29000, 1, 28991, 1000, 9185, 1, 9144, 1000,
+    ]);
+    let mut eclipse = vec![None; 14];
+    for (slot, id) in [(0, 29010), (4, 29004), (7, 29007), (3, 29000), (13, 28991)] {
+        eclipse[slot] = Some(id);
+    }
+    let mut bow = vec![None; 14];
+    bow[3] = Some(9185);
+    bow[13] = Some(9144);
+    let mut options = Options::default();
+    options.combat.target_hp.insert(12223, 1);
+    for (side, set) in [(&mut c.left, eclipse), (&mut c.right, bow)] {
+        side.windows = vec![tradeoffs::Window {
+            target_id: 12223,
+            name: "Vardorvis".into(),
+            style: "Ranged".into(),
+            metrics: tradeoffs::measure(&snapshot, &options, &set, "Ranged", 12223),
+            equipment: set,
+        }];
+    }
+    let expected_left = c.left.windows[0]
+        .metrics
+        .dynamic_budget
+        .as_ref()
+        .unwrap()
+        .as_ref()
+        .unwrap();
+    let expected_right = c.right.windows[0]
+        .metrics
+        .dynamic_budget
+        .as_ref()
+        .unwrap()
+        .as_ref()
+        .unwrap();
+    assert_eq!(
+        (expected_left.start_hp, expected_right.start_hp),
+        (700, 700)
+    );
+    assert!(expected_left.burn.is_some() && expected_right.burn.is_none());
+    let report = encounter_summary::compare(&c);
+    assert!(report.complete(), "{:?}", report.omissions);
+    near(report.left.unwrap().seconds, expected_left.seconds);
+    near(report.right.unwrap().seconds, expected_right.seconds);
+    c.right.windows[0].metrics.dynamic_budget = Some(Err("Dynamic outcomes unavailable".into()));
+    let report = encounter_summary::compare(&c);
+    assert!(!report.complete());
+    assert!(
+        report
+            .omissions
+            .iter()
+            .any(|s| s.contains("Dynamic outcomes unavailable"))
+    );
+}
+#[test]
 fn unknown_outgoing_excludes_the_same_workload_from_both_sides() {
     let mut c = comparison();
     c.right.windows[0].metrics.attack = None;

@@ -218,6 +218,36 @@ fn exact_small_tree_matches_seeded_estimate_and_reported_sampling_error() {
     assert_eq!(sample.attacks.to_bits(), again.attacks.to_bits());
 }
 #[test]
+fn current_hp_after_a_burn_pulse_selects_the_next_attack_profile() {
+    // HP4: hit1+burn at t0. HP3: miss at t3. Burn at t4 leaves HP2.
+    // HP2: hit2 at t6 kills; no later shot or pulse is credited.
+    let profiles = vec![
+        attack(2, 0.0),
+        attack(2, 0.0),
+        attack(0, 0.0),
+        attack(1, 1.0),
+    ];
+    let run = burn::estimate_dynamic(&profiles, 3, 4, 0, 16, 1).unwrap();
+    close(run.attacks, 3.0);
+    close(run.death_ticks, 6.0);
+    close(run.cooldown_ticks, 9.0);
+    close(run.burn_damage, 1.0);
+    let mut pulse_profiles = vec![
+        attack(0, 0.0),
+        attack(1, 1.0),
+        attack(1, 1.0),
+        attack(1, 1.0),
+    ];
+    pulse_profiles[0].pulse.transform = Transform::Corporeal;
+    pulse_profiles[1].pulse.transform = Transform::Corporeal;
+    let run = burn::estimate_dynamic(&pulse_profiles, 3, 4, 0, 16, 1).unwrap();
+    close(run.attacks, 3.0);
+    close(run.death_ticks, 8.0);
+    close(run.burn_damage, 2.0);
+    assert!(burn::estimate_dynamic(&profiles[..3], 3, 4, 0, 16, 1).is_err());
+    assert!(burn::estimate_dynamic(&profiles, 3, 4, 4, 16, 1).is_err());
+}
+#[test]
 fn misses_cannot_apply_burn_while_accurate_zeroes_still_can() {
     let s = eclipse();
     for id in [26, 319, 100020] {

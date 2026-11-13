@@ -64,6 +64,7 @@ pub fn assess(
             complete = false;
             continue;
         };
+        let mut attack_set = set.to_vec();
         for weapon in crate::guidance::phase_weapon_ids(o, id) {
             if o.gear_overrides.contains_key(&format!("{style}:3"))
                 || owned.get(&weapon).copied().unwrap_or(0) == 0
@@ -94,6 +95,7 @@ pub fn assess(
             ) {
                 if candidate.dps > out.dps {
                     out = candidate;
+                    attack_set = phase;
                 }
             }
         }
@@ -122,7 +124,26 @@ pub fn assess(
                 .as_ref()
                 .is_none_or(|r| r.healing_per_second == 0.0);
         let duration = if finite {
-            match crate::attack_budget::for_window(target, &out, o, set) {
+            let budget = if crate::encounters::window(id).is_some_and(|w| w.hp_scaling.is_some()) {
+                crate::attack_budget::for_dynamic_window(
+                    m,
+                    &attack_set,
+                    style,
+                    target,
+                    crate::rules::spell_name_for_target(
+                        m,
+                        &attack_set,
+                        owned,
+                        &o.combat,
+                        target,
+                        o.raid_level,
+                    ),
+                    o,
+                )
+            } else {
+                crate::attack_budget::for_window(target, &out, o, &attack_set)
+            };
+            match budget {
                 Ok(b) => b.seconds,
                 Err(_) if out.burn.is_some() => return None,
                 Err(_) => crate::yama::window_attack_time(id, &out).unwrap_or(progress / net),

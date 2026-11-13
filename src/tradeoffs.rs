@@ -22,6 +22,8 @@ pub struct Metrics {
     pub prayer_per_minute: f64,
     pub incoming: Vec<Incoming>,
     pub attack: Option<combat::ResultStats>,
+    /// Full dynamic workload, ignoring the single-target comparison HP override.
+    pub dynamic_budget: Option<Result<crate::attack_budget::Budget, String>>,
 }
 #[derive(Clone, Debug)]
 pub struct Window {
@@ -85,6 +87,7 @@ pub fn measure(
         prayer_per_minute: prayer::drain_per_minute(prayer::bonus(set), &o.combat),
         incoming: vec![],
         attack: None,
+        dynamic_budget: None,
     };
     let Some(target) = planner::monster(target_id) else {
         let why = "This target's combat model is unavailable.".to_string();
@@ -153,6 +156,25 @@ pub fn measure(
     };
     match outgoing {
         Ok(attack) => {
+            if crate::encounters::window(target_id).is_some_and(|w| w.hp_scaling.is_some()) {
+                let mut full = o.clone();
+                full.combat.target_hp.remove(&target_id);
+                result.dynamic_budget = Some(crate::attack_budget::for_dynamic_window(
+                    &member,
+                    set,
+                    style,
+                    target,
+                    rules::spell_name_for_target(
+                        &member,
+                        set,
+                        &owned,
+                        &full.combat,
+                        target,
+                        full.raid_level,
+                    ),
+                    &full,
+                ));
+            }
             result.dps = Some(attack.dps);
             result.attack = Some(attack);
         }

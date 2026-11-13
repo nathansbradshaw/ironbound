@@ -147,4 +147,15 @@ and an independently calculated probability tree cover buildup, expiry, cap
 discard, current HP, phase clearing, target death and finishing cooldowns.
 Browser checks show zero credited burn at 1 HP and different Vorkath timelines
 under clear/retain phase assumptions. These are model checks; encounter reset
-calibration and HP-dependent NPC accuracy with burns remain open.
+calibration remains open. The HP-dependent accuracy follow-up below supersedes
+that release's dynamic-window gate.
+
+HP-dependent accuracy follow-up: Eclipse's finite model selects joint hit/proc
+outcomes from the target's current HP on every attack. Vardorvis recommendations
+and switch comparisons use changing Defence for both sides, without dropping
+Eclipse or substituting a stationary snapshot. Fixed timelines test HP changes
+from pulses between shots, per-HP pulse reductions and death. Real-set regressions
+cover competing weapons, current HP, full comparison workloads and cache changes.
+All 566 integrated Rust tests, including 24 independent reference cases, and the
+optimized Wasm build pass. Browser fixtures verify the 700-HP dynamic budget and
+zero credited burn at 1 HP; these checks are separate from gameplay calibration.

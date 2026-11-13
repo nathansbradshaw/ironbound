@@ -83,6 +83,19 @@ fn seconds(
     if !net.is_finite() || net <= 0.0 {
         return Err("Damage does not overcome modelled healing.".into());
     }
+    if encounters::window(window.target_id).is_some_and(|w| w.hp_scaling.is_some()) {
+        if healing > 0.0 {
+            return Err("Dynamic HP timing with NPC healing needs a full-fight scenario.".into());
+        }
+        return window
+            .metrics
+            .dynamic_budget
+            .as_ref()
+            .ok_or_else(|| "Dynamic HP attack budget is unavailable.".to_string())?
+            .as_ref()
+            .map(|b| b.seconds / split)
+            .map_err(Clone::clone);
+    }
     if finite_burn {
         if healing > 0.0 {
             return Err("Finite burn timing with NPC healing needs a full-fight scenario.".into());
@@ -157,7 +170,7 @@ pub fn budgets(left: &tradeoffs::Budget, right: &tradeoffs::Budget) -> Overview 
     let mut result = Overview {
         left: None, right: None, workloads: vec![], covered_windows: 0,
         total_windows: keys.len(), omissions: vec![], assumptions: vec![
-            "Attack-time estimate: allocated HP / net DPS, summed across the same windows on both sides. Effective DPS is total HP / total attack time, not an arithmetic average.".into(),
+            "Attack-time estimate: allocated HP / net DPS, or the finite attack budget for burns and HP-dependent NPC stats, summed across the same windows on both sides. Dynamic windows share their complete workload across allocated styles. Effective DPS is total HP / total attack time, not an arithmetic average.".into(),
             "Uses current prayers and boosts continuously. Excludes movement, transitions, specials, downtime, eating and encounter-imposed prayer drain; this is not a kill-time or survival prediction.".into(),
             "Phase priorities affect gear selection, not enemy HP. Multiple styles or alternative states share their target's HP equally unless an explicit paired-cycle model applies.".into(),
             "Incoming bounds use the lowest and highest recorded normal-attack scenarios in each window. Unknown scenarios make the total unverified; specials are excluded.".into(),

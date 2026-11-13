@@ -84,6 +84,7 @@ pub struct ResultStats {
     pub hp_dependent: Option<HpDependentHit>,
     pub dps: f64,
     /// Delayed Eclipse damage at steady state, with five-stack blocking.
+    #[serde(default)]
     pub burn_dps: f64,
     /// Proc potential before overhealing and target remaining-HP caps.
     pub potential_healing_per_second: f64,

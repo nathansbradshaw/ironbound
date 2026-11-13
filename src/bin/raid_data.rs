@@ -550,6 +550,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         if !overhead.is_empty() {
             let allowed: Vec<_> = all.into_iter().filter(|s| *s != overhead).collect();
             hit_styles(&mut w, &allowed);
+            if overhead == "Melee" {
+                w["default_style"] = json!("Ranged");
+            }
         }
         if let Some(speed) = explosion {
             w["ocellus_explosions"] = json!(speed);

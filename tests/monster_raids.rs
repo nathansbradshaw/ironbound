@@ -611,3 +611,38 @@ fn newer_special_rotation_models_do_not_implicitly_enable_unreviewed_raid_states
         assert!(result.unwrap_err().contains("not verified"), "{id}");
     }
 }
+#[test]
+fn every_declared_raid_state_has_a_working_default_attack() {
+    let states: Vec<_> = encounters::mechanics()
+        .windows
+        .iter()
+        .filter(|w| w.raid_scale.is_some() || w.hp_probe.is_some() || w.npc_id == 11278)
+        .collect();
+    assert_eq!(states.len(), 192);
+    for w in states {
+        let style = w
+            .default_style
+            .as_deref()
+            .expect("declared raid attack style");
+        let (weapon, ammo) = match style {
+            "Magic" => (11905, None),
+            "Ranged" => (9185, Some(9144)),
+            _ if w.npc_id == 7569 => (1275, None),
+            "Stab" => (26219, None),
+            "Slash" => (4151, None),
+            _ => (1434, None),
+        };
+        let r = combat::calculate(
+            &member(),
+            &set(weapon, ammo),
+            style,
+            planner::monster(w.id).unwrap(),
+            "",
+        )
+        .unwrap_or_else(|e| panic!("{} {}: {e}", w.id, w.label));
+        assert!(r.dps.is_finite());
+        close(r.hit_distribution.iter().map(|(_, p)| p).sum(), 1.0);
+    }
+    assert_eq!(encounters::demonbane_vulnerability(7584), 115);
+    assert_eq!(encounters::demonbane_vulnerability(16684), 80);
+}

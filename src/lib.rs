@@ -25,6 +25,7 @@ pub mod rules;
 pub mod setups;
 pub mod share;
 pub mod supplies;
+pub mod tooltip;
 pub mod tradeoffs;
 pub mod validation;
 pub mod yama;

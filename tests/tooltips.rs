@@ -1,0 +1,50 @@
+use ironbound::{alternatives::Alternative, tooltip};
+use std::collections::BTreeMap;
+
+fn alternative() -> Alternative {
+    Alternative {
+        id: 11772,
+        dps_delta: Some(0.0),
+        prayer_delta: 0.41,
+        defence_delta: BTreeMap::from([("crush".into(), 8), ("magic".into(), -5)]),
+        max_changes: 5,
+        fits_budget: true,
+        note: None,
+    }
+}
+
+#[test]
+fn tooltip_colors_benefits_and_costs_including_inverse_prayer_drain() {
+    let mut choice = alternative();
+    let html = tooltip::render(
+        "Ring: Current\nChosen for this phase.",
+        Some(11770),
+        &[choice.clone()],
+        Some(4),
+    );
+    assert!(html.contains("tooltip-gain\">+8</strong>"));
+    assert!(html.contains("tooltip-loss\">-5</strong>"));
+    assert!(html.contains("tooltip-loss\">+0.41</strong>"));
+    assert!(html.contains("tooltip-neutral\">Same DPS</strong>"));
+    assert_eq!(html.matches("data:image/png;base64,").count(), 2);
+    choice.prayer_delta = -0.2;
+    choice.dps_delta = Some(0.123);
+    let html = tooltip::render("Current", None, &[choice], None);
+    assert!(html.contains("tooltip-gain\">-0.20</strong>"));
+    assert!(html.contains("tooltip-gain\">+0.123</strong>"));
+}
+
+#[test]
+fn tooltip_keeps_unknown_metrics_and_budget_warnings_explicit_and_escapes_text() {
+    let mut choice = alternative();
+    choice.dps_delta = None;
+    choice.fits_budget = false;
+    choice.note = Some("<img src=x onerror=alert(1)> & details".into());
+    let html = tooltip::render("<script>\nA & B", None, &[choice], Some(4));
+    assert!(html.contains("tooltip-neutral\">Unverified</strong>"));
+    assert!(html.contains("Needs 5 changes"));
+    assert!(html.contains("&lt;script&gt;"));
+    assert!(html.contains("&lt;img src=x onerror=alert(1)&gt; &amp; details"));
+    assert!(!html.contains("<script>"));
+    assert!(!html.contains("<img src=x"));
+}

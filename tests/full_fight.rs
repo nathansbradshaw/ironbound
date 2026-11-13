@@ -6,23 +6,27 @@ use ironbound::{
 use std::collections::BTreeMap;
 
 fn hit(damage: i32) -> Attack {
+    // Initialize auxiliary combat metadata from an ordinary unboosted weapon.
+    // The synthetic damage, probabilities and cooldown below stay independent;
+    // adding unrelated calculator metadata must not break these timeline fixtures.
+    let mut member = account::Member::default();
+    for skill in account::SKILLS {
+        member.level_overrides.insert(skill.into(), 99);
+    }
+    let mut gear = vec![None; 14];
+    gear[3] = Some(4151);
+    let mut hits =
+        combat::calculate(&member, &gear, "Melee", planner::monster(8059).unwrap(), "").unwrap();
+    hits.hit_distribution = vec![(damage, 1.0)];
+    hits.hp_dependent = None;
+    hits.dps = damage as f64 / 0.6;
+    hits.accuracy = 1.0;
+    hits.max_hit = damage;
+    hits.attack_ticks = 1;
+    hits.expected_attack_ticks = 1.0;
+    hits.guaranteed_hits = Some(vec![(damage, 1.0)]);
     Attack {
-        hits: combat::ResultStats {
-            hit_distribution: vec![(damage, 1.0)],
-            hp_dependent: None,
-            dps: damage as f64 / 0.6,
-            potential_healing_per_second: 0.0,
-            accuracy: 1.0,
-            max_hit: damage,
-            attack_ticks: 1,
-            expected_attack_ticks: 1.0,
-            attack_roll: 1,
-            defence_roll: 0,
-            attack_type: "stab".into(),
-            spell: String::new(),
-            elemental: None,
-            guaranteed_hits: Some(vec![(damage, 1.0)]),
-        },
+        hits,
         weapon: 4151,
         runes: vec![],
         projectile: None,
@@ -282,6 +286,9 @@ fn seeds_are_reproducible_and_invalid_or_stalled_models_are_bounded() {
     );
     let mut bad = m.clone();
     bad.attacks.clear();
+    assert!(simulation::simulate(&bad).is_err());
+    bad = m.clone();
+    bad.attacks[0].hits.burn_dps = 1.0;
     assert!(simulation::simulate(&bad).is_err());
     bad = m.clone();
     bad.attacks[0].hits.hp_dependent = Some(combat::HpDependentHit {

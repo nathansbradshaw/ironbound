@@ -73,6 +73,17 @@ buffs, reproducibility, sampling against direct roll enumeration, real ring stat
 loss, validation and isolation from normal calculations. Shared-link/export
 coverage is in `tests/special_attacks.rs`.
 
+Release checks: all 719 integrated Rust tests and 24 independent reference
+loadouts pass, including the latest quest and Sailing changes. Optimized
+WebAssembly, formatting and whitespace checks pass. Synthetic browser checks
+confirm three versus five kisten activations over 500 ticks from full energy,
+zero-energy recovery, the worn ring's 15-second interval, normal-only policy,
+saved settings after reload, exported rotation notes, and Zorya's three held
+two-tick attacks before a new paid opener. Ring comparisons include displaced
+stats rather than assuming more specials always means more damage. No browser
+application errors were reported. These are model/browser checks, not gameplay
+calibration.
+
 Remaining: other weapon specials, ordered multi-weapon swaps, travel/movement,
 phase transitions and downtime, Death Charge/Surge/pool and other external
 restores, charge consumption, incoming survival and actual gameplay timing

@@ -618,7 +618,7 @@ fn assess_gear_catalog(snapshot: &Snapshot, preferences: &Options) -> Vec<Assess
                     reason: format!("Needs owned, level-usable {required} for this quest baseline."),
                     detail: p.note.into(), wilderness: false, preview: None };
             }
-            entry_sets = crate::quest_bosses::candidate_sets(quest, &sets, &member, &owned);
+            entry_sets = crate::quest_bosses::candidate_sets(quest, &sets, &member, &owned, options.combat.ammo_shots);
         }
         if matches!(entry.name.as_str(), "Turoths" | "Kurasks") {
             for (style,set) in &sets {

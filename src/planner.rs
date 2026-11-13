@@ -827,7 +827,7 @@ fn style_set(
         && !options.gear_overrides.contains_key(&format!("{style}:9"))
         && let Some(p) = refinement_target(style, boss, options).and_then(crate::quest_bosses::target)
         && let Some(quest_set) = crate::quest_bosses::best_set(p, style,
-            crate::quest_bosses::candidate_sets(p, &[(style,set.clone())],m,owned),m,owned,&options.combat)
+            crate::quest_bosses::candidate_sets(p, &[(style,set.clone())],m,owned,options.combat.ammo_shots),m,owned,&options.combat)
     {
         set = quest_set;
     }

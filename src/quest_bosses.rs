@@ -111,6 +111,7 @@ pub fn candidate_sets<'a>(
     sets: &[(&'a str, Vec<Option<i32>>)],
     member: &crate::account::Member,
     owned: &BTreeMap<i32, u32>,
+    shots: u32,
 ) -> Vec<(&'a str, Vec<Option<i32>>)> {
     let mut out = Vec::new();
     for (style, set) in sets {
@@ -153,7 +154,8 @@ pub fn candidate_sets<'a>(
                     rules::ammo_ids(w)
                         .iter()
                         .find(|a| {
-                            owned.get(a).is_some_and(|q| *q >= 100) && planner::can_use(**a, member)
+                            owned.get(a).is_some_and(|q| *q >= shots)
+                                && planner::can_use(**a, member)
                         })
                         .copied()
                 });

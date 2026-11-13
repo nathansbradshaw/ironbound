@@ -6,7 +6,18 @@ use ironbound::{
     planner::{self, Boss, Options},
     quest_bosses, rules,
 };
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
+
+#[test]
+fn quest_ammunition_candidates_respect_the_configured_shot_budget() {
+    let owned = BTreeMap::from([(9185, 1), (9144, 50), (1580, 1)]);
+    let base = vec![("Ranged", set(9185))];
+    let p = quest_bosses::profile("Fareed").unwrap();
+    let short = quest_bosses::candidate_sets(p, &base, &member(), &owned, 50);
+    assert!(short.iter().any(|(_, s)| s[13] == Some(9144)));
+    let long = quest_bosses::candidate_sets(p, &base, &member(), &owned, 100);
+    assert!(long.iter().all(|(_, s)| s[13].is_none()));
+}
 fn member() -> Member {
     let mut m = Member::default();
     for s in account::SKILLS {

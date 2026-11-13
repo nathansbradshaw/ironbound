@@ -86,6 +86,8 @@ pub struct ResultStats {
     /// Delayed Eclipse damage at steady state, with five-stack blocking.
     #[serde(default)]
     pub burn_dps: f64,
+    #[serde(default)]
+    pub burn: Option<crate::burn::BurnAttack>,
     /// Proc potential before overhealing and target remaining-HP caps.
     pub potential_healing_per_second: f64,
     pub accuracy: f64,
@@ -1211,7 +1213,13 @@ pub fn calculate_configured(
         && instant_defeat.is_none()
         && !crate::encounters::window(monster.id).is_some_and(|w| w.invulnerable)
     {
-        if damage_model != crate::encounters::DamageModel::Standard {
+        if ![
+            crate::encounters::DamageModel::Standard,
+            crate::encounters::DamageModel::VerifiedStandard,
+            crate::encounters::DamageModel::HalfDamage,
+        ]
+        .contains(&damage_model)
+        {
             return Err(
                 "Eclipse burn timing/reduction is unverified for this special attack window."
                     .into(),
@@ -1221,11 +1229,42 @@ pub fn calculate_configured(
     } else {
         0.0
     };
+    let burn = if burn_dps > 0.0 {
+        let transform = crate::monster_rules::transform_for(monster.id, weapon, attack_type);
+        let divisor = if damage_model == crate::encounters::DamageModel::HalfDamage {
+            2
+        } else {
+            1
+        };
+        let mut outcomes = vec![crate::burn::BurnHit {
+            damage: 0,
+            probability: 1.0 - hit,
+            applies_burn: false,
+        }];
+        for (damage, p) in &hits {
+            for (damage, p) in transform.outcomes(*damage, p * hit) {
+                for (applies_burn, chance) in [(false, 0.8), (true, 0.2)] {
+                    outcomes.push(crate::burn::BurnHit {
+                        damage: damage / divisor as i32,
+                        probability: p * chance,
+                        applies_burn,
+                    });
+                }
+            }
+        }
+        Some(crate::burn::BurnAttack {
+            hits: outcomes,
+            pulse: crate::burn::PulseRule { transform, divisor },
+        })
+    } else {
+        None
+    };
     Ok(ResultStats {
         hit_distribution: distribution,
         hp_dependent,
         dps: expected / (expected_ticks * 0.6) + burn_dps,
         burn_dps,
+        burn,
         potential_healing_per_second: if style == "Melee" && rules::set_effect(set, "guthan") {
             expected / (ticks as f64 * 0.6) / 4.0
         } else {

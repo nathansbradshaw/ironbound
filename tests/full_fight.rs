@@ -37,6 +37,24 @@ fn hit(damage: i32) -> Attack {
         prayer: 0.0,
     }
 }
+fn burning(damage: i32, ticks: i32) -> Attack {
+    let mut a = hit(damage);
+    a.hits.attack_ticks = ticks;
+    a.hits.expected_attack_ticks = f64::from(ticks);
+    a.hits.burn_dps = 0.5;
+    a.hits.burn = Some(ironbound::burn::BurnAttack {
+        hits: vec![ironbound::burn::BurnHit {
+            damage,
+            probability: 1.0,
+            applies_burn: true,
+        }],
+        pulse: ironbound::burn::PulseRule {
+            transform: Default::default(),
+            divisor: 1,
+        },
+    });
+    a
+}
 fn model(encounter: Encounter, damage: i32) -> Model {
     let count = if encounter == Encounter::Vorkath {
         2
@@ -91,6 +109,100 @@ fn vorkath_six_attack_blocks_alternate_specials_and_never_damage_during_freeze()
         assert_eq!(u.resources[&562], 1);
         assert!(!run.packed, "Crumble runes must be in the bag");
     }
+}
+
+#[test]
+fn eclipse_burn_death_stops_projectiles_and_new_fights_have_no_old_stacks() {
+    let mut m = model(Encounter::Vorkath, 1);
+    m.hp[0] = 4;
+    m.settings.trip_limit = 4;
+    m.attacks = vec![burning(1, 3); 2];
+    m.attacks[0].projectile = Some(28991);
+    m.attacks[0].projectile_loss = Some(100);
+    m.available.insert(28991, 8);
+    let result = simulation::simulate(&m).unwrap();
+    for run in result.runs {
+        assert!(run.completed);
+        assert_eq!(run.trip_kills, 4);
+        assert_eq!(
+            (run.usage.ticks, run.usage.attacks, run.usage.burn_damage),
+            (5, 2, 2)
+        );
+        assert_eq!(run.usage.resources[&28991], 2);
+        assert_eq!(run.usage.burns_applied, 2);
+    }
+    m.hp[0] = 1;
+    for run in simulation::simulate(&m).unwrap().runs {
+        assert_eq!(
+            (
+                run.usage.ticks,
+                run.usage.attacks,
+                run.usage.burn_damage,
+                run.usage.burns_applied
+            ),
+            (1, 1, 0, 0)
+        );
+    }
+    m.attacks = vec![burning(0, 4); 2];
+    for run in simulation::simulate(&m).unwrap().runs {
+        assert_eq!(
+            (run.usage.ticks, run.usage.attacks, run.usage.burn_damage),
+            (5, 1, 1),
+            "pulse kills before the same-tick attack"
+        );
+    }
+}
+
+#[test]
+fn full_fight_phase_clearing_is_explicit_and_changes_the_actual_burn_timeline() {
+    let mut m = model(Encounter::Vorkath, 1);
+    m.hp[0] = 100;
+    m.attacks = vec![burning(1, 3); 2];
+    let reset = simulation::simulate(&m).unwrap();
+    assert!(
+        reset
+            .runs
+            .iter()
+            .all(|r| r.completed && r.usage.burns_cleared > 0)
+    );
+    m.settings.burn_phase_resets = 0;
+    let carry = simulation::simulate(&m).unwrap();
+    assert!(
+        carry
+            .runs
+            .iter()
+            .all(|r| r.completed && r.usage.burns_cleared == 0)
+    );
+    assert!(
+        carry
+            .runs
+            .iter()
+            .zip(&reset.runs)
+            .any(|(a, b)| a.usage.ticks != b.usage.ticks)
+    );
+    let invalid = Model {
+        settings: Settings {
+            burn_phase_resets: 2,
+            ..m.settings.clone()
+        },
+        ..m.clone()
+    };
+    assert!(simulation::simulate(&invalid).is_err());
+}
+
+#[test]
+fn old_or_corrupt_burn_replays_do_not_silently_drop_delayed_damage() {
+    let mut m = model(Encounter::Vorkath, 1);
+    m.attacks = vec![burning(1, 3); 2];
+    m.attacks[0].hits.burn = None;
+    assert!(
+        simulation::simulate(&m)
+            .unwrap_err()
+            .contains("joint Eclipse")
+    );
+    m.attacks[0] = burning(1, 3);
+    m.attacks[0].hits.burn.as_mut().unwrap().hits[0].damage = 2;
+    assert!(simulation::simulate(&m).is_err());
 }
 #[test]
 fn yama_has_two_complete_magic_first_judges_and_preserves_boss_overkill() {
@@ -326,6 +438,7 @@ fn settings_migrate_validate_and_round_trip_without_changing_the_packing_plan() 
     let original = planner::plan(&snapshot, &o);
     o.simulation.incoming = 120;
     o.simulation.seed = 456;
+    o.simulation.burn_phase_resets = 0;
     let plan = planner::plan(&snapshot, &o);
     assert_eq!(original.equipment, plan.equipment);
     assert_eq!(original.inventory, plan.inventory);
@@ -340,6 +453,45 @@ fn settings_migrate_validate_and_round_trip_without_changing_the_packing_plan() 
     assert!(legacy.simulation.valid());
     o.simulation.uptime = 0;
     assert!(ironbound::setups::validate_options(&o).is_err());
+}
+#[test]
+fn real_eclipse_set_builds_and_replays_normal_and_acid_with_joint_burn_outcomes() {
+    let mut snapshot = account::demo();
+    for skill in account::SKILLS {
+        snapshot.members[0].level_overrides.insert(skill.into(), 99);
+    }
+    snapshot.members[0]
+        .bank
+        .as_mut()
+        .unwrap()
+        .extend([29010, 1, 29004, 1, 29007, 1, 29000, 1, 28991, 10000]);
+    let mut o = Options {
+        boss: Boss::Custom,
+        targets: vec![planner::Target {
+            id: 8059,
+            style: "Ranged".into(),
+        }],
+        ..Default::default()
+    };
+    o.simulation.trials = 16;
+    o.simulation.trip_limit = 1;
+    o.simulation.incoming = 0;
+    o.simulation.mistakes = 0;
+    for (slot, id) in [(0, 29010), (4, 29004), (7, 29007), (3, 29000), (13, 28991)] {
+        o.gear_overrides.insert(format!("Ranged:{slot}"), id);
+    }
+    let p = planner::plan(&snapshot, &o);
+    assert!(p.exportable(), "{:?}", p.missing);
+    let model = Model::from_plan(&snapshot, &o, &p).unwrap();
+    for (index, a) in model.attacks.iter().enumerate() {
+        let burn = a.hits.burn.as_ref().unwrap();
+        assert!(burn.matches(&a.hits.hit_distribution));
+        assert_eq!(burn.pulse.divisor, if index == 1 { 2 } else { 1 });
+    }
+    let decoded: Model = serde_json::from_str(&serde_json::to_string(&model).unwrap()).unwrap();
+    let report = simulation::simulate(&decoded).unwrap();
+    assert_eq!(report.completed(), 16);
+    assert!(report.runs.iter().any(|r| r.usage.burn_damage > 0));
 }
 #[test]
 fn all_three_build_only_from_real_carried_phase_sets() {

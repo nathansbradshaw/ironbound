@@ -740,3 +740,14 @@ footer{font-size:10px;padding:9px 4px 0}footer>span:last-child{display:none}
 .combat-breakdown .wiki-table th, .combat-breakdown .wiki-table td { padding: .4rem; text-align: left; }
 .analysis-layout { grid-template-columns: minmax(0, 1fr); }
 .combat-breakdown .wiki-table { min-width: 540px; }
+
+.combat-style-tabs{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:10px}
+.combat-style-tabs>.phase{flex:1;min-width:90px}
+.combat-subtypes{padding:10px;margin-bottom:14px;border:1px solid #89744b;background:#30291c66}
+.combat-subtype-label{display:block;margin-bottom:7px;color:#e2d3af;font:16px Scape,monospace}
+.combat-subtype-options{display:flex;flex-wrap:wrap;gap:7px;align-items:center}
+.combat-subtype-options>.combat-subtype{font:18px Scape,monospace;min-height:34px;padding:5px 10px}
+.combat-subtype-options>span{display:inline-flex;align-items:center;gap:4px;border:1px solid #89744b;border-radius:3px;color:#d5c9ae;background:#443b2e}
+.combat-subtype-options>span.active{color:#fff3bd;border-color:#e4bc48;background:#30291c}
+.combat-subtype-options>span small{font-size:14px}
+.combat-subtypes>.small-note{margin:8px 0 0;font-size:16px}

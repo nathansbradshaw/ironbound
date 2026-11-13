@@ -27,7 +27,7 @@ fn missing_levels_and_unsupported_raids_are_not_called_ready() {
     );
 }
 #[test]
-fn bankless_accounts_struggle_but_slayer_locks_are_requirements_missing() {
+fn bankless_gear_and_slayer_requirements_are_separate() {
     let mut account = account::demo();
     for member in &mut account.members {
         member.bank = None;
@@ -40,8 +40,12 @@ fn bankless_accounts_struggle_but_slayer_locks_are_requirements_missing() {
         Readiness::Struggle
     );
     let hydra = result("Alchemical Hydra", &account::demo(), &Options::default());
-    assert_eq!(hydra.readiness, Readiness::RequirementsMissing);
-    assert!(hydra.reason.contains("95 Slayer"));
+    assert_eq!(
+        hydra.requirements.status,
+        bestiary::RequirementStatus::Missing
+    );
+    assert!(hydra.requirements.reason.contains("95 Slayer"));
+    assert_ne!(hydra.readiness, Readiness::Unknown);
 }
 #[test]
 fn lower_levels_and_exclusions_cannot_earn_the_top_band() {
@@ -104,6 +108,7 @@ fn real_portraits_stats_and_escaped_account_text_render() {
         0,
         &bestiary::Assessment {
             readiness: Readiness::Doable,
+            requirements: Default::default(),
             reason: "<script>".into(),
             detail: "A & B".into(),
             wilderness: false,
@@ -353,24 +358,30 @@ fn aliases_agree_and_unreviewed_modes_explain_the_blocker() {
 }
 
 #[test]
-fn kraken_at_81_slayer_is_locked_without_a_combat_difficulty_rating() {
+fn kraken_at_81_slayer_shows_both_good_gear_and_the_unmet_entry_requirement() {
     let mut account = strong_account();
     account.members[0]
         .level_overrides
         .insert("Slayer".into(), 81);
     let a = result("Kraken", &account, &Options::default());
-    assert_eq!(a.readiness, Readiness::RequirementsMissing);
-    assert_eq!(a.reason, "Needs 87 Slayer (yours: 81).");
+    assert_eq!(a.readiness, Readiness::WellEquipped);
+    assert_eq!(a.requirements.status, bestiary::RequirementStatus::Missing);
+    assert!(a.reason.contains("basic DPS"));
     assert!(
-        a.detail
-            .contains("Reach 87 Slayer to clear this entry requirement")
+        a.requirements
+            .reason
+            .contains("Needs 87 Slayer (yours: 81).")
     );
+    assert!(a.matches_filter("Well equipped"));
+    assert!(a.matches_filter("Requirements missing"));
+    assert!(!a.matches_filter("A struggle"));
     let index = encounters::catalog()
         .iter()
         .position(|e| e.name == "Kraken")
         .unwrap();
     let html = bestiary::card(&encounters::catalog()[index], index, &a);
-    assert!(html.contains("readiness-requirements"));
+    assert!(html.contains("Gear: Well equipped"));
+    assert!(html.contains("requirement-missing"));
     assert!(html.contains("Requirements missing"));
     assert!(!html.contains("A struggle"));
     assert!(!html.contains("readiness-struggle"));
@@ -378,7 +389,7 @@ fn kraken_at_81_slayer_is_locked_without_a_combat_difficulty_rating() {
 }
 
 #[test]
-fn every_reviewed_slayer_gate_changes_to_requirements_missing_below_its_level() {
+fn changing_a_slayer_gate_does_not_change_gear_readiness_for_any_reviewed_boss() {
     for (name, minimum) in [
         ("Grotesque Guardians", 75),
         ("Abyssal Sire", 85),
@@ -393,13 +404,35 @@ fn every_reviewed_slayer_gate_changes_to_requirements_missing_below_its_level() 
             .level_overrides
             .insert("Slayer".into(), minimum - 1);
         let below = result(name, &account, &Options::default());
-        assert_eq!(below.readiness, Readiness::RequirementsMissing, "{name}");
-        assert!(below.reason.contains(&format!("Needs {minimum} Slayer")));
+        assert_eq!(
+            below.requirements.status,
+            bestiary::RequirementStatus::Missing,
+            "{name}"
+        );
+        assert!(
+            below
+                .requirements
+                .reason
+                .contains(&format!("Needs {minimum} Slayer"))
+        );
         account.members[0]
             .level_overrides
             .insert("Slayer".into(), minimum);
         let unlocked = result(name, &account, &Options::default());
-        assert_ne!(unlocked.readiness, Readiness::RequirementsMissing, "{name}");
+        assert_eq!(
+            unlocked.requirements.status,
+            bestiary::RequirementStatus::LevelMet,
+            "{name}"
+        );
+        assert_eq!(below.readiness, unlocked.readiness, "{name}");
+        assert_eq!(below.reason, unlocked.reason, "{name}");
+        assert!(!unlocked.matches_filter("Requirements missing"));
+        assert!(
+            unlocked
+                .requirements
+                .reason
+                .contains("access checks remain unverified")
+        );
         // Sire still has an unreviewed opening phase; unlocking Slayer does
         // not certify those calculations or its task/access requirements.
         if name == "Abyssal Sire" {
@@ -409,19 +442,58 @@ fn every_reviewed_slayer_gate_changes_to_requirements_missing_below_its_level() 
 }
 
 #[test]
-fn unknown_slayer_is_unassessed_and_recommendations_are_separate_from_entry_gates() {
+fn unknown_slayer_does_not_hide_a_supported_gear_rating() {
     let mut account = strong_account();
     account.members[0].skills = None;
     account.members[0].level_overrides.remove("Slayer");
     let kraken = result("Kraken", &account, &Options::default());
-    assert_eq!(kraken.readiness, Readiness::Unknown);
-    assert!(kraken.reason.contains("Add your Slayer level"));
+    assert_eq!(kraken.readiness, Readiness::WellEquipped);
+    assert_eq!(
+        kraken.requirements.status,
+        bestiary::RequirementStatus::Unverified
+    );
+    assert!(kraken.requirements.reason.contains("Add your Slayer level"));
+    assert!(!kraken.matches_filter("Requirements missing"));
     account.members[0]
         .level_overrides
         .insert("Prayer".into(), 42);
     let jad = result("TzTok-Jad", &account, &Options::default());
     assert_eq!(jad.readiness, Readiness::Struggle);
     assert!(jad.reason.contains("recommended"));
-    assert!(Readiness::Struggle < Readiness::RequirementsMissing);
-    assert!(Readiness::RequirementsMissing < Readiness::Unknown);
+    assert_eq!(
+        jad.requirements.status,
+        bestiary::RequirementStatus::Unverified
+    );
+}
+
+#[test]
+fn weak_or_unknown_gear_and_entry_locks_can_coexist() {
+    let mut account = strong_account();
+    account.members[0]
+        .level_overrides
+        .insert("Slayer".into(), 81);
+    for member in &mut account.members {
+        member.bank = None;
+        member.inventory = None;
+        member.equipment = None;
+        member.shared_bank = None;
+    }
+    let weak = result("Kraken", &account, &Options::default());
+    assert_eq!(weak.readiness, Readiness::Struggle);
+    assert_eq!(
+        weak.requirements.status,
+        bestiary::RequirementStatus::Missing
+    );
+    assert!(weak.matches_filter("A struggle") && weak.matches_filter("Requirements missing"));
+    account.members[0].skills = None;
+    account.members[0].level_overrides.remove("Magic");
+    let unknown = result("Kraken", &account, &Options::default());
+    assert_eq!(unknown.readiness, Readiness::Unknown);
+    assert_eq!(
+        unknown.requirements.status,
+        bestiary::RequirementStatus::Missing
+    );
+    assert!(
+        unknown.matches_filter("Not assessed") && unknown.matches_filter("Requirements missing")
+    );
 }

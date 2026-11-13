@@ -27,7 +27,6 @@ pub enum Readiness {
     WellEquipped,
     Doable,
     Struggle,
-    RequirementsMissing,
     Unknown,
 }
 impl Readiness {
@@ -36,7 +35,6 @@ impl Readiness {
             Self::WellEquipped => "Well equipped",
             Self::Doable => "Doable",
             Self::Struggle => "A struggle",
-            Self::RequirementsMissing => "Requirements missing",
             Self::Unknown => "Not assessed",
         }
     }
@@ -45,22 +43,67 @@ impl Readiness {
             Self::WellEquipped => "ready",
             Self::Doable => "doable",
             Self::Struggle => "struggle",
-            Self::RequirementsMissing => "requirements",
             Self::Unknown => "unknown",
+        }
+    }
+}
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum RequirementStatus {
+    Missing,
+    LevelMet,
+    Unverified,
+}
+impl RequirementStatus {
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Missing => "Requirements missing",
+            Self::LevelMet => "Slayer level met",
+            Self::Unverified => "Access unverified",
+        }
+    }
+    fn class(self) -> &'static str {
+        match self {
+            Self::Missing => "missing",
+            Self::LevelMet => "level-met",
+            Self::Unverified => "unverified",
+        }
+    }
+}
+#[derive(Clone, Debug)]
+pub struct Requirements {
+    pub status: RequirementStatus,
+    pub reason: String,
+}
+impl Default for Requirements {
+    fn default() -> Self {
+        Self {
+            status: RequirementStatus::Unverified,
+            reason: "Quest, task and other access requirements are not checked.".into(),
         }
     }
 }
 #[derive(Clone, Debug)]
 pub struct Assessment {
     pub readiness: Readiness,
+    pub requirements: Requirements,
     pub reason: String,
     pub detail: String,
     pub wilderness: bool,
     pub preview: Option<crate::wilderness::Preview>,
 }
+impl Assessment {
+    pub fn matches_filter(&self, filter: &str) -> bool {
+        if filter == "Requirements missing" {
+            self.requirements.status == RequirementStatus::Missing
+        } else {
+            self.readiness.label() == filter
+        }
+    }
+}
 fn unknown(reason: &str) -> Assessment {
     Assessment {
         readiness: Readiness::Unknown,
+        requirements: Requirements::default(),
         reason: reason.into(),
         detail: String::new(),
         wilderness: false,
@@ -295,6 +338,39 @@ fn requires_all(name: &str) -> bool {
 /// Neutral unboosted settings prevent the current boss's debuffs or prayers from
 /// leaking into unrelated encounters. Manual slot overrides do not constrain discovery.
 pub fn assess_catalog(snapshot: &Snapshot, preferences: &Options) -> Vec<Assessment> {
+    let mut assessments = assess_gear_catalog(snapshot, preferences);
+    for (entry, assessment) in crate::encounters::catalog().iter().zip(&mut assessments) {
+        let Some(minimum) = profile(&entry.name).map(|p| p.slayer).filter(|n| *n > 0) else {
+            continue;
+        };
+        assessment.requirements = match snapshot.selected().and_then(|m| m.level("Slayer")) {
+            Some(level) => Requirements {
+                status: if level < minimum {
+                    RequirementStatus::Missing
+                } else {
+                    RequirementStatus::LevelMet
+                },
+                reason: if level < minimum {
+                    format!(
+                        "Needs {minimum} Slayer (yours: {level}). Task and other access checks remain unverified."
+                    )
+                } else {
+                    format!(
+                        "{minimum} Slayer requirement met (yours: {level}). Task and other access checks remain unverified."
+                    )
+                },
+            },
+            None => Requirements {
+                status: RequirementStatus::Unverified,
+                reason: format!(
+                    "Add your Slayer level to check the {minimum} Slayer requirement. Task and other access checks remain unverified."
+                ),
+            },
+        };
+    }
+    assessments
+}
+fn assess_gear_catalog(snapshot: &Snapshot, preferences: &Options) -> Vec<Assessment> {
     if !planner::missing_combat_levels(snapshot).is_empty() {
         return crate::encounters::catalog()
             .iter()
@@ -325,23 +401,6 @@ pub fn assess_catalog(snapshot: &Snapshot, preferences: &Options) -> Vec<Assessm
         if !entry.bank_equipment { return unknown("This encounter needs its own equipment or skilling readiness model."); }
         if entry.targets.is_empty() { return unknown(if crate::encounters::mechanics().unverified_modes.contains(&entry.name) { "This mode needs its own scaling and readiness model; the base-mode rating does not apply." } else { "A verified target mapping is needed before gear readiness can be rated." }); }
         let guideline = profile(&entry.name);
-        if let Some(p) = guideline.as_ref().filter(|p| p.slayer > 0) {
-            match member.level("Slayer") {
-                Some(level) if level < p.slayer => return Assessment {
-                    readiness: Readiness::RequirementsMissing,
-                    reason: format!("Needs {} Slayer (yours: {level}).", p.slayer),
-                    detail: format!("Reach {} Slayer to clear this entry requirement. {}", p.slayer, p.note),
-                    wilderness: false,
-                    preview: None,
-                },
-                None => {
-                    let mut a = unknown(&format!("Add your Slayer level to check the {} Slayer requirement.", p.slayer));
-                    a.detail = p.note.into();
-                    return a;
-                }
-                _ => {}
-            }
-        }
         let mut incomplete: Vec<_> = entry.targets.iter().filter_map(|t| {
             let target = planner::monster(t.id);
             target.is_none_or(|m| crate::encounters::limitation(m).is_some()).then(|| target.map(|m| m.name.as_str()).unwrap_or("unmapped target"))
@@ -354,7 +413,7 @@ pub fn assess_catalog(snapshot: &Snapshot, preferences: &Options) -> Vec<Assessm
         }
         let Some(p) = guideline else { return unknown("No reviewed readiness guideline yet. Open the gear plan where available."); };
         if matches!(entry.name.as_str(), "TzTok-Jad" | "Fight Caves") && member.level("Prayer").unwrap() < 43 {
-            return Assessment { readiness: Readiness::Struggle, reason: format!("43 Prayer is recommended for this ranged baseline (yours: {}).", member.level("Prayer").unwrap()), detail: p.note.into(), wilderness: false, preview: None };
+            return Assessment { readiness: Readiness::Struggle, requirements: Requirements::default(), reason: format!("43 Prayer is recommended for this ranged baseline (yours: {}).", member.level("Prayer").unwrap()), detail: p.note.into(), wilderness: false, preview: None };
         }
         let mut choices = vec![];
         for required in p.styles {
@@ -376,9 +435,9 @@ pub fn assess_catalog(snapshot: &Snapshot, preferences: &Options) -> Vec<Assessm
                 }
                 if valid && lowest.is_finite() && best.as_ref().is_none_or(|b| lowest > b.0) { best = Some((lowest, *style, weapon, level, armour)); }
             }
-            if let Some(choice) = best { choices.push(choice); } else if requires_all(&entry.name) { return Assessment { readiness: Readiness::Struggle, reason: format!("No usable owned {required} setup with supported damage. Check weapons, ammunition and runes."), detail: p.note.into(), wilderness: false, preview: None }; }
+            if let Some(choice) = best { choices.push(choice); } else if requires_all(&entry.name) { return Assessment { readiness: Readiness::Struggle, requirements: Requirements::default(), reason: format!("No usable owned {required} setup with supported damage. Check weapons, ammunition and runes."), detail: p.note.into(), wilderness: false, preview: None }; }
         }
-        if choices.is_empty() { return Assessment { readiness: Readiness::Struggle, reason: "No usable owned setup with supported damage. Check weapons, ammunition and runes.".into(), detail: p.note.into(), wilderness: false, preview: None }; }
+        if choices.is_empty() { return Assessment { readiness: Readiness::Struggle, requirements: Requirements::default(), reason: "No usable owned setup with supported damage. Check weapons, ammunition and runes.".into(), detail: p.note.into(), wilderness: false, preview: None }; }
         if !requires_all(&entry.name) { choices.sort_by(|a,b| b.0.total_cmp(&a.0)); choices.truncate(1); }
         let mut readiness = Readiness::WellEquipped;
         let hp = member.level("Hitpoints").unwrap();
@@ -400,7 +459,7 @@ pub fn assess_catalog(snapshot: &Snapshot, preferences: &Options) -> Vec<Assessm
         };
         let reason = if scope.is_empty() { setup_reason } else { format!("{scope}: {setup_reason}") };
         let gaps = if readiness == Readiness::WellEquipped { "Levels and owned gear meet this screening baseline.".into() } else { format!("Guideline: {} offensive level / HP, {} Defence, 43 Prayer; 3+ basic DPS and four armour slots for the top band. Yours: {} HP, {} Defence, {} Prayer.", p.level, p.level.saturating_sub(10), hp, def, prayer) };
-        Assessment { readiness, reason, detail: format!("{gaps} {}", p.note), wilderness: false, preview: None }
+        Assessment { readiness, requirements: Requirements::default(), reason, detail: format!("{gaps} {}", p.note), wilderness: false, preview: None }
     }).collect()
 }
 
@@ -456,6 +515,9 @@ pub fn card(entry: &Entry, index: usize, a: &Assessment) -> String {
         crate::wilderness::Exposure::Route => "<span class=\"wild-tag\">Wilderness route</span>",
         crate::wilderness::Exposure::None => "",
     };
+    let requirement_class = a.requirements.status.class();
+    let requirement_status = a.requirements.status.label();
+    let requirement_reason = esc(&a.requirements.reason);
     let kit=a.preview.as_ref().map(|p| {
         let mut html=String::from("<div class=\"wilderness-kit\"><strong>Exact screened kit</strong><ul>");
         for (slot,id) in p.equipment.iter().enumerate() {
@@ -468,7 +530,7 @@ pub fn card(entry: &Entry, index: usize, a: &Assessment) -> String {
         html.push_str("</ul><p>All other equipment slots are empty. Food, runes, charged contents and other supplies need a separate risk check.</p></div>");html
     }).unwrap_or_default();
     format!(
-        r#"<article class="bestiary-card"><button class="encounter-choice bestiary-open" data-action="choose-encounter:{index}" {} aria-label="Plan {}"><span class="boss-portrait">{}</span><span class="boss-entry"><span class="boss-entry-heading"><strong>{}</strong><span class="boss-readiness readiness-{}">{}</span></span>{location}<span class="boss-reason">{}</span></span><span class="boss-open-arrow" aria-hidden="true">→</span></button><details class="bestiary-notes"><summary>Details & readiness</summary><div class="boss-entry"><span class="boss-stats">{stats}</span><small>{context}</small></div>{kit}<p>{}</p><p>{}</p><small>{}</small></details></article>"#,
+        r#"<article class="bestiary-card"><button class="encounter-choice bestiary-open" data-action="choose-encounter:{index}" {} aria-label="Plan {}"><span class="boss-portrait">{}</span><span class="boss-entry"><span class="boss-entry-heading"><strong>{}</strong><span class="boss-readiness readiness-{}">Gear: {}</span></span>{location}<span class="boss-reason">{}</span></span><span class="boss-open-arrow" aria-hidden="true">→</span></button><div class="boss-requirements" aria-label="Entry requirements"><span class="requirement-badge requirement-{requirement_class}">{requirement_status}</span><p>{requirement_reason}</p></div><details class="bestiary-notes"><summary>Details & readiness</summary><div class="boss-entry"><span class="boss-stats">{stats}</span><small>{context}</small></div>{kit}<p>{}</p><p>{}</p><small>{}</small></details></article>"#,
         if entry.targets.is_empty() || a.wilderness && a.preview.is_none() {
             "disabled"
         } else {
@@ -533,10 +595,7 @@ pub fn assess_wilderness(snapshot: &Snapshot, preferences: &Options, cap: u32) -
             continue;
         }
         a.wilderness = true;
-        if matches!(
-            a.readiness,
-            Readiness::Unknown | Readiness::RequirementsMissing
-        ) {
+        if a.readiness == Readiness::Unknown {
             a.detail = format!("{} {}", a.detail, crate::wilderness::CAUTION);
             continue;
         }

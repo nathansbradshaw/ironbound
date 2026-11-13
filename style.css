@@ -892,7 +892,7 @@ button.ranged-type:focus-visible{outline:3px solid #ffe087;outline-offset:2px}
 .bestiary-card .boss-entry-heading strong{font:23px Scape,monospace;line-height:1.1;color:#4b240d}
 .boss-readiness{display:inline-block;font:12px Arial,sans-serif;font-weight:bold;padding:3px 6px;border:1px solid currentColor;border-radius:2px;white-space:nowrap}
 .readiness-ready{color:#285420;background:#d2dfb3}.readiness-doable{color:#674508;background:#edda9c}.readiness-struggle{color:#822b20;background:#e7b9a0}.readiness-unknown{color:#5d5343;background:#d4c8af}
-.readiness-requirements{color:#35495d;background:#cbd6df;border-color:#8193a2}
+.boss-requirements{padding:9px 12px;border-top:1px dotted #ab9267}.requirement-badge{display:inline-block;border:1px solid #a1947b;padding:3px 6px;font:16px Scape,monospace;line-height:1.2}.boss-requirements p{font:12px/1.45 Arial,Helvetica,sans-serif;margin:6px 0 0;color:#4e351b}.requirement-missing{color:#35495d;background:#cbd6df;border-color:#8193a2}.requirement-level-met{color:#345336;background:#d3ddc1;border-color:#8d9b7b}.requirement-unverified{color:#5d5343;background:#d4c8af}
 .boss-stats{display:flex;flex-wrap:wrap;gap:4px 12px;font-size:12px;line-height:1.5;color:#533b20}
 .bestiary-card .boss-entry small{display:block;font-size:11px;color:#71532f;margin:2px 0 8px}
 .boss-reason{display:block;font-size:12px;line-height:1.5;color:#493019;overflow-wrap:anywhere}

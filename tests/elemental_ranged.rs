@@ -144,6 +144,11 @@ fn charged_tomes_apply_after_weakness_and_empty_tomes_do_not() {
         gear[5] = Some(charged);
         let r = combat::calculate(&member(99), &gear, "Magic", &weak(element, 50), spell).unwrap();
         assert_eq!(r.max_hit, 33); // floor((20+10)*1.10).
+        if element == "water" {
+            // Current PvM tome: +10% accuracy, not the old/PvP +20%.
+            // floor(8856*1.10)+floor(8856*.50)=9741+4428.
+            assert_eq!(r.attack_roll, 14169);
+        }
         assert!(r.elemental.unwrap().tome);
         assert!(
             !rules::rune_supplies_for_set(spell, 150, &gear)
@@ -153,6 +158,9 @@ fn charged_tomes_apply_after_weakness_and_empty_tomes_do_not() {
         gear[5] = Some(empty);
         let e = combat::calculate(&member(99), &gear, "Magic", &weak(element, 50), spell).unwrap();
         assert_eq!(e.max_hit, 30);
+        if element == "water" {
+            assert_eq!(e.attack_roll, 13284); // Empty tome grants no passive.
+        }
         assert!(
             rules::rune_supplies_for_set(spell, 150, &gear)
                 .iter()

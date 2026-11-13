@@ -18,6 +18,8 @@ pub struct Switch {
 pub struct Setup {
     #[serde(default)]
     pub exclude_void: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub wilderness: Option<crate::wilderness::Kit>,
     #[serde(
         default = "crate::efficient::default_tolerance",
         skip_serializing_if = "crate::efficient::is_default_tolerance"
@@ -58,6 +60,7 @@ impl Setup {
     pub fn from_plan(p: &Plan, o: &Options) -> Self {
         Self {
             exclude_void: o.exclude_void,
+            wilderness: o.wilderness.clone(),
             switch_tolerance: o.switch_tolerance,
             damage_tolerance: o.damage_tolerance,
             prayer_tolerance: o.prayer_tolerance,
@@ -276,6 +279,11 @@ impl Setup {
                 return Err(fail());
             }
         }
+        if self.wilderness.as_ref().is_some_and(|kit| {
+            !kit.valid() || !crate::wilderness::violations(&self.plan(), kit).is_empty()
+        }) {
+            return Err(fail());
+        }
         Ok(())
     }
     pub fn fragment(&self) -> Result<String, String> {
@@ -311,6 +319,7 @@ impl Setup {
     pub fn options(&self) -> Options {
         Options {
             exclude_void: self.exclude_void,
+            wilderness: self.wilderness.clone(),
             switch_tolerance: self.switch_tolerance,
             damage_tolerance: self.damage_tolerance,
             prayer_tolerance: self.prayer_tolerance,

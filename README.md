@@ -6,10 +6,12 @@ An OSRS-style bossing planner for Ironmen. Find gear **you actually own**, keep 
 
 ## Start here
 
-1. Open **Your account** and import your RuneLite bank export.
+1. Open **Your bank** and import your RuneLite bank export.
 2. Enter your levels, or look up your public skills.
 3. Pick an encounter and set your **maximum switches**.
-4. Click a gear slot to compare alternatives. Export with **Copy Inventory Setup**.
+4. Click a gear or inventory slot to change items. Export with **Copy Inventory Setup**.
+
+**Gear** is your packing workspace. **Combat** has the numbers; **Preparation** has trip checks. Optional gear policies stay in **Gear options**. Below the setup, **Save bag space** keeps DPS loss, damage taken and prayer drain allowances independent.
 
 Your account stays on that browser. Import it again when using a different device or the hosted site instead of localhost.
 
@@ -158,3 +160,5 @@ Never commit private banks, account snapshots or screenshots. `.local/`, `target
 [Data sources and attribution](SOURCES.md). Game artwork © Jagex. Independent fan project, not affiliated with Jagex or RuneLite. App logic, calculations and tools are Rust/WebAssembly.
 
 **Boss bestiary:** open **Boss bestiary** below your encounter name. **For you** puts well-equipped fights first; filter by **Well equipped**, **Doable** or **A struggle** to find your next goal. Cards include real boss artwork, recorded target stats and the owned setup behind the rating. Expand **Readiness & encounter notes** for guidelines and limitations. Ratings screen gear and levels; unreviewed fights remain **Not assessed**, and a good rating does not verify access or predict a kill.
+
+**Nervous about the Wilderness?** In **Boss bestiary**, choose **Avoid Wilderness** or **Wilderness only**. **Scaredy cat · 3 valuable items** rerates exposed bosses with three valuable pieces plus owned cheap gear. Choose a filler ceiling (default 10k GP per piece/ammo stack), expand a card to see the exact kit and full-kit comparison, then select the boss to keep that kit in the planner. **Return to full gear** removes the restriction. Price estimates use the displayed public snapshot; missing values consume a valuable slot. Confirm **Items Kept on Death** in game while unskulled with **PK Skull Prevention** on. Supplies, charges, fees and loot add risk.

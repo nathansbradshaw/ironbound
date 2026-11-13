@@ -54,7 +54,11 @@ struct State {
     building_group: bool,
     raid_rooms_open: bool,
     bestiary_open: bool,
+    wilderness_location: String,
+    scaredy_cat: bool,
+    filler_cap: u32,
     switch_preferences_open: bool,
+    packing_limits_open: bool,
     combat_options_open: bool,
     attack_budget_open: bool,
     simulation_open: bool,
@@ -159,7 +163,16 @@ impl State {
             building_group: false,
             raid_rooms_open: false,
             bestiary_open: false,
+            wilderness_location: "all".into(),
+            scaredy_cat: saved.options.wilderness.is_some(),
+            filler_cap: saved
+                .options
+                .wilderness
+                .as_ref()
+                .map(|k| k.filler_cap)
+                .unwrap_or(crate::wilderness::DEFAULT_CAP),
             switch_preferences_open: false,
+            packing_limits_open: false,
             combat_options_open: false,
             attack_budget_open: false,
             simulation_open: false,
@@ -788,15 +801,18 @@ fn show_item_tooltip(item: &Element) {
     let _ = tooltip.remove_attribute("hidden");
     let _ = tooltip.set_attribute("style", "left:0;top:0");
     let bounds = tooltip.get_bounding_client_rect();
-    let left = (anchor.left() + (anchor.width() - bounds.width()) / 2.0)
-        .clamp(8.0, (width - bounds.width() - 8.0).max(8.0));
-    let top = if anchor.top() >= bounds.height() + 8.0 {
-        anchor.top() - bounds.height() - 6.0
-    } else {
-        anchor.bottom() + 6.0
-    }
-    .clamp(8.0, (height - bounds.height() - 8.0).max(8.0));
-    let _ = tooltip.set_attribute("style", &format!("left:{left}px;top:{top}px"));
+    let position = crate::tooltip::position(
+        (anchor.left(), anchor.top(), anchor.width(), anchor.height()),
+        (width, height),
+        (bounds.width(), bounds.height()),
+    );
+    let _ = tooltip.set_attribute(
+        "style",
+        &format!(
+            "left:{}px;top:{}px;max-height:{}px",
+            position.left, position.top, position.max_height
+        ),
+    );
 }
 
 #[wasm_bindgen(start)]
@@ -956,6 +972,10 @@ pub fn start() -> Result<(), JsValue> {
             } else if el.id() == "switch-preferences" {
                 STATE.with(|state| {
                     state.borrow_mut().switch_preferences_open = el.has_attribute("open")
+                });
+            } else if el.id() == "packing-limits" {
+                STATE.with(|state| {
+                    state.borrow_mut().packing_limits_open = el.has_attribute("open")
                 });
             } else if el.id() == "combat-assumptions" {
                 STATE.with(|state| {
@@ -1450,6 +1470,35 @@ fn focus_inventory(slot: usize) {
     }
 }
 fn act(action: &str) {
+    if action == "wilderness-mode"
+        || action.starts_with("wilderness-location:")
+        || action.starts_with("wilderness-cap:")
+    {
+        STATE.with(|state| {
+            let mut s = state.borrow_mut();
+            if action == "wilderness-mode" {
+                s.scaredy_cat = !s.scaredy_cat;
+                if s.scaredy_cat {
+                    s.wilderness_location = "wild".into();
+                }
+            } else if let Some(location) = action.strip_prefix("wilderness-location:") {
+                if ["all", "safe", "wild"].contains(&location) {
+                    s.wilderness_location = location.into();
+                }
+            } else if let Some(cap) = action
+                .strip_prefix("wilderness-cap:")
+                .and_then(|v| v.parse::<u32>().ok())
+            {
+                if crate::wilderness::CAPS.contains(&cap) {
+                    s.filler_cap = cap;
+                }
+            }
+            s.bestiary_open = true;
+        });
+        render();
+        return;
+    }
+
     if let Some(filter) = action.strip_prefix("encounter-filter:") {
         if crate::bestiary::FILTERS.contains(&filter) {
             STATE.with(|state| {
@@ -1473,6 +1522,7 @@ fn act(action: &str) {
                 let mut s = state.borrow_mut();
                 s.encounter_query.clear();
                 s.encounter_filter = "For you".into();
+                s.wilderness_location = "all".into();
                 if let Some(input) = document()
                     .get_element_by_id("encounter-search")
                     .and_then(|e| e.dyn_into::<HtmlInputElement>().ok())
@@ -1481,6 +1531,7 @@ fn act(action: &str) {
                 }
                 refresh_encounter_browser(&s);
             });
+            render();
             return;
         }
         "load-levels" => {
@@ -1677,7 +1728,10 @@ fn act(action: &str) {
         let mut s = state.borrow_mut();
         s.message.clear();
         s.export_text = None;
-        if action == "save-named" {
+        if action == "wilderness-off" {
+            s.saved.options.wilderness=None; s.saved.options.gear_overrides.clear();
+            s.notice("Returned to unrestricted gear planning.",false);
+        } else if action == "save-named" {
             let options = s.saved.options.clone();
             let result = s.saved.setups.save(&input("setup-name"), &options);
             s.setups_open = true;
@@ -1838,6 +1892,7 @@ fn act(action: &str) {
         } else if action == "custom-done" {
             s.building_group = false;
         } else if let Some(boss) = action.strip_prefix("boss:") {
+            s.saved.options.wilderness=None;
             s.saved.options.boss = if boss == "toa" {
                 Boss::Toa
             } else if boss == "custom" {
@@ -1868,6 +1923,12 @@ fn act(action: &str) {
                 if entry.targets.is_empty() {
                     s.notice(&entry.note, true);
                 } else {
+                    let restricted_preview = if s.scaredy_cat && crate::wilderness::exposure(&entry.name) != crate::wilderness::Exposure::None {
+                        let index=crate::encounters::catalog().iter().position(|e|e.name==entry.name).unwrap();
+                        let Some(preview)=bestiary_assessments(&s)[index].preview.clone() else { s.notice("No supported three-item kit is available for this encounter.",true); return; };
+                        Some(preview)
+                    } else { None };
+                    s.saved.options.wilderness=None;
                     s.saved.options.boss = match entry.name.as_str() {
                         "Barrows Chests" => Boss::Barrows,
                         "Tombs of Amascut" => Boss::Toa,
@@ -1901,6 +1962,7 @@ fn act(action: &str) {
                     s.building_group = false;
                     s.raid_rooms_open = false;
                     s.bestiary_open = false;
+                    if let Some(preview) = restricted_preview { crate::wilderness::apply(&mut s.saved.options,entry,&preview); }
                 }
             } else {
                 s.notice("Choose a listed boss, raid or encounter.", true);
@@ -2269,7 +2331,7 @@ fn act(action: &str) {
             s.phase = None;
             s.edit_style = None;
             s.compare_target = None;
-            s.notice("Example preview. Your saved account is unchanged.", false);
+            s.message.clear();
         } else if action == "restore-account" {
             if let Some(saved) = s.demo_return.take() {
                 s.saved = saved;
@@ -2341,6 +2403,12 @@ fn act(action: &str) {
         s.persist();
     });
     render();
+    if action.starts_with("tab:")
+        || action.starts_with("choose-encounter:")
+        || ["demo", "restore-account"].contains(&action)
+    {
+        window().scroll_to_with_x_and_y(0.0, 0.0);
+    }
 }
 
 async fn lookup_skills(name: String) {
@@ -2600,7 +2668,7 @@ fn render_with_edit(edit: Option<&str>) {
     STATE.with(|state|{let s=state.borrow();let snapshot=&s.saved.snapshot;let options=&s.saved.options;let plan=s.plan();
     let demo=snapshot.source=="Demo";
     let nav=|(key,label,icon):(&str,&str,i32)|format!("<button class=\"nav-item {}\" data-action=\"tab:{key}\">{}<span>{label}</span>{}</button>",if s.tab==key{"active"}else{""},image(icon),if key=="goals"{format!("<span class=\"nav-count\">{}</span>",s.pins().len())}else{String::new()});
-    let mut html=format!("<div class=\"app-shell\"><aside class=\"sidebar\"><a class=\"brand\" href=\"#\" aria-label=\"Ironbound home\"><span class=\"brand-mark\">{}</span><span>IRONBOUND<small>IRONMAN BOSSING & GEAR</small></span></a><div class=\"sidebar-rule\"></div><div class=\"nav-label\">YOUR ADVENTURE</div><nav aria-label=\"Main navigation\">{}{}</nav><div class=\"sidebar-note\"><span class=\"tiny-rune\">✦</span><p>Ironman bossing planner</p></div><div class=\"sidebar-bottom\"><div class=\"local-indicator\"><span></span>Saved on this device</div><small>Independent OSRS fan project.<br>Game assets © Jagex.</small></div></aside><main class=\"main\"><header class=\"topbar\"><span class=\"breadcrumb\">Your journal <span>/</span> {}</span><div class=\"account-pill\">{}<span>{}<small>{}</small></span></div></header>",image(2347),nav(("bossing","Bossing",4151)),nav(("account","Your account",1712)),match s.tab.as_str(){"goals"=>"Progression goals","account"=>"Your account",_=>"Bossing"},image(10828),esc(&snapshot.selected),if demo{"Example Ironman"}else{"Imported account"});
+    let mut html=format!(r#"<div class="app-shell"><header class="sidebar"><button class="brand" data-action="tab:bossing" aria-label="Ironbound home"><span class="brand-mark">{}</span><span>Ironbound<small>IRONMAN BOSSING</small></span></button><nav aria-label="Main navigation">{}{}</nav></header><main class="main"><header class="topbar"><span class="local-status">Saved on this device</span><button class="account-pill text-button" data-action="tab:account" aria-label="Manage your account">{}<span>{}<small>{}</small></span></button></header>"#,image(2347),nav(("bossing","Bossing",4151)),nav(("account","Your bank",1712)),image(10828),esc(&snapshot.selected),if demo{"Example account"}else{"Local account"});
     html = html.replace("Saved on this device", if s.demo_return.is_some() { "Example preview · account unchanged" } else { s.save_status.get().label() });
     if demo{html.push_str(&format!("<div class=\"demo-banner\"><p>{}</p>{}</div>","Example bank",if s.demo_return.is_some(){button("restore-account","Return to your account","text-button")}else{button("tab:account","Import your bank","button gold")}));}
     html.push_str(&save_banner(&s));
@@ -2609,10 +2677,10 @@ fn render_with_edit(edit: Option<&str>) {
     if s.tab=="account"{html.push_str(&account_page(&s));}
     else if s.shared_setup.is_none()&&!planner::missing_combat_levels(snapshot).is_empty(){html.push_str(&format!("<section class=\"page-heading level-gate\"><h1>Add your combat levels</h1><p>Your bank is loaded. Combat levels are needed before a setup can be recommended.</p>{}</section>",button("tab:account","Add levels or look up your character","button gold")));}
     else{
+        html.push_str("<div class=\"encounter-header\">");
         html.push_str(&encounter_detail(&s,&plan));
-        if s.shared_setup.is_none(){html.push_str(&named_setups(&s));}
         html.push_str("<div class=\"encounter-actions\">");
-        html.push_str(&format!("<details class=\"encounter-picker\" id=\"boss-bestiary\" {}><summary>Boss bestiary</summary>",if s.bestiary_open||s.building_group||(options.boss==Boss::Custom&&options.targets.is_empty()){"open"}else{""}));
+        html.push_str(&format!("<details class=\"encounter-picker\" id=\"boss-bestiary\" {}><summary aria-label=\"Change encounter\">Change<span class=\"wide-label\"> encounter</span></summary>",if s.bestiary_open||s.building_group||(options.boss==Boss::Custom&&options.targets.is_empty()){"open"}else{""}));
         html.push_str(&encounter_catalog(&s));
         html.push_str(&format!("<details class=\"custom-builder\" {}><summary>Build a custom group</summary>",if s.building_group{"open"}else{""}));
         html.push_str(&custom_group(&s));
@@ -2620,10 +2688,10 @@ fn render_with_edit(edit: Option<&str>) {
         html.push_str("</details>");
         html.push_str("</details>");
         html.push_str(&raid_rooms(&s));
-        html.push_str("</div>");
-        if s.shared_setup.is_none(){html.push_str(&slayer_tasks(&s));}
+        html.push_str("</div></div>");
+        html.push_str(&wilderness_banner(&s));
         if s.shared_setup.is_some(){html.push_str(&format!("<p class=\"notice\">Viewing a shared setup. Your saved bank is unchanged. {}</p>",button("use-bank","Rebuild using my items","text-button")));}
-        if s.shared_setup.is_none(){html.push_str(&switch_controls(&s,&plan));html.push_str(&efficient_panel(&s,&plan));html.push_str(&budget_comparison(&s));}
+        if s.shared_setup.is_none(){html.push_str(&switch_controls(&s,&plan));}
         html.push_str("<nav class=\"planner-tabs\" aria-label=\"Planner sections\">");
         for (view,label) in [("loadout","Gear"),("combat","Combat"),("prepare","Preparation")] {let disabled=if view=="combat"&&s.shared_setup.is_some(){"disabled title=\"Rebuild using your items to calculate combat stats\""}else{""};html.push_str(&format!("<button class=\"workspace-tab {}\" data-action=\"view:{view}\" aria-pressed=\"{}\" {disabled}>{label}{}</button>",if s.view==view{"active"}else{""},s.view==view,if view=="prepare"&&!plan.missing.is_empty(){format!(" <span class=\"issue-count\">{}</span>",plan.missing.len())}else{String::new()}));}
         html.push_str("</nav><section class=\"workspace-view\">");
@@ -2633,6 +2701,7 @@ fn render_with_edit(edit: Option<&str>) {
             _=>{html.push_str("<div class=\"loadout-layout\">");html.push_str(&loadout_panel(&s,&plan));html.push_str(&inventory_panel(&s,&plan));html.push_str("</div>");}
         }
         html.push_str("</section><div class=\"plan-actions\">");html.push_str(&export_panel(&s,&plan));html.push_str("</div>");
+        if s.shared_setup.is_none(){html.push_str("<div class=\"plan-tools\">");html.push_str(&efficient_panel(&s,&plan));html.push_str(&budget_comparison(&s));html.push_str(&named_setups(&s));html.push_str("</div>");}
         if s.view=="loadout" && s.shared_setup.is_none(){html.push_str("<details class=\"secondary-section\"><summary>All owned gear</summary>");html.push_str(&tier_table(&s));html.push_str("</details>");}
     }
     html.push_str("</div><footer><span>Ironbound — an unofficial OSRS fan site.</span><a href=\"https://oldschool.runescape.wiki/\" target=\"_blank\" rel=\"noreferrer\">OSRS Wiki ↗</a><a href=\"./assets/osrs/NOTICE.txt\" target=\"_blank\" rel=\"noreferrer\">Asset credits</a><span>Starter catalog · 9 Nov 2026</span></footer></main></div>");
@@ -2656,35 +2725,36 @@ fn encounter_detail(s: &State, p: &Plan) -> String {
         })
         .unwrap_or_else(|| boss.source().into());
     let mut html = format!(
-        "<section class=\"encounter-detail planner-summary\"><h1>{}</h1><div class=\"detail-facts\"><span>Gear: {} bag slots</span><a href=\"{}\" target=\"_blank\" rel=\"noreferrer\">Wiki guide ↗</a></div>",
+        "<section class=\"encounter-detail planner-summary\"><h1>{}</h1><div class=\"detail-facts\"><span>Gear · {} bag slot{}</span><a href=\"{}\" target=\"_blank\" rel=\"noreferrer\">Wiki guide ↗</a>",
         encounter_label(&s.saved.options),
         p.switches,
+        if p.switches == 1 { "" } else { "s" },
         esc(&guide)
     );
-    let coverage = if s.shared_setup.is_some() {
-        "Shared packing list · levels not included"
-    } else if boss == Boss::Toa
-        || selected_encounter(&s.saved.options)
-            .is_some_and(|e| e.coverage().contains("DPS partial"))
-    {
-        "Gear plan · some damage calculations unavailable"
-    } else if boss == Boss::Custom && selected_encounter(&s.saved.options).is_none() {
-        "Custom gear plan · mechanics need review"
-    } else {
-        ""
-    };
-    if !coverage.is_empty() {
-        html.push_str(&format!("<p class=\"plan-coverage\">{coverage}</p>"));
-    }
     if boss == Boss::Toa {
-        html.push_str(&format!("<label class=\"raid-control\">Raid level <input id=\"raid-level\" type=\"number\" min=\"0\" max=\"150\" value=\"{}\"><span>Mechanic-specific invocation planning is outside this starter model.</span></label>",s.saved.options.raid_level));
+        html.push_str(&format!("<label class=\"raid-control\">Raid level <input id=\"raid-level\" type=\"number\" min=\"0\" max=\"150\" value=\"{}\" title=\"Solo, path level 0. Supports levels 0–150; invocation mechanics remain partial.\"></label>",s.saved.options.raid_level));
     }
-    if s.shared_setup.is_none() {
-        html.push_str(&format!("<details class=\"coverage-details\"><summary>Calculation coverage · {}</summary>{}</details>", esc(&crate::coverage::summary(&s.saved.options)), coverage_panel(&s.saved.options)));
+    html.push_str("</div>");
+    if s.shared_setup.is_some() {
+        html.push_str("<p class=\"plan-coverage\">Shared packing list · levels not included</p>");
+    } else {
+        let note = if boss == Boss::Toa
+            || selected_encounter(&s.saved.options)
+                .is_some_and(|e| e.coverage().contains("DPS partial"))
+        {
+            "Partial DPS · "
+        } else if boss == Boss::Custom && selected_encounter(&s.saved.options).is_none() {
+            "Mechanics unverified · "
+        } else {
+            ""
+        };
+        let rows = crate::coverage::windows(&s.saved.options);
+        html.push_str(&format!("<details class=\"coverage-details\"><summary>{note}Coverage · {}/{} attack windows</summary>{}</details>", rows.iter().filter(|r|r.supported).count(),rows.len(),coverage_panel(&s.saved.options)));
     }
     html.push_str("</section>");
     html
 }
+
 fn raid_rooms(s: &State) -> String {
     if s.saved.options.boss != Boss::Custom {
         return String::new();
@@ -2933,11 +3003,15 @@ fn inventory_panel(s: &State, p: &Plan) -> String {
         html.push_str(&format!("<p class=\"small-note\">Manual inventory edits are kept when gear changes. Resolve conflicts below or {}.</p>", button("reset-all-inventory", "Reset inventory edits", "text-button")));
     }
     if !p.missing.is_empty() {
-        html.push_str("<div class=\"missing-list\"><strong>Before you set out</strong><ul>");
+        html.push_str(&format!(
+            "<details class=\"missing-list\"><summary>{} trip item{} to review</summary><ul>",
+            p.missing.len(),
+            if p.missing.len() == 1 { "" } else { "s" }
+        ));
         for missing in &p.missing {
             html.push_str(&format!("<li>{}</li>", esc(missing)));
         }
-        html.push_str("</ul></div>");
+        html.push_str("</ul></details>");
     }
     html.push_str("<details class=\"assumptions\"><summary>Trip notes</summary><ul>");
     for w in &p.warnings {
@@ -3223,6 +3297,8 @@ fn bestiary_assessments(s: &State) -> Vec<crate::bestiary::Assessment> {
         s.saved.options.shared,
         &s.saved.options.excluded,
         s.saved.options.exclude_void,
+        s.scaredy_cat,
+        s.filler_cap,
     ))
     .unwrap_or_default();
     CACHE.with(|cache| {
@@ -3230,7 +3306,15 @@ fn bestiary_assessments(s: &State) -> Vec<crate::bestiary::Assessment> {
         if cache.as_ref().is_none_or(|(old, _)| *old != key) {
             *cache = Some((
                 key,
-                crate::bestiary::assess_catalog(&s.saved.snapshot, &s.saved.options),
+                if s.scaredy_cat {
+                    crate::bestiary::assess_wilderness(
+                        &s.saved.snapshot,
+                        &s.saved.options,
+                        s.filler_cap,
+                    )
+                } else {
+                    crate::bestiary::assess_catalog(&s.saved.snapshot, &s.saved.options)
+                },
             ));
         }
         cache.as_ref().unwrap().1.clone()
@@ -3238,13 +3322,15 @@ fn bestiary_assessments(s: &State) -> Vec<crate::bestiary::Assessment> {
 }
 fn encounter_catalog(s: &State) -> String {
     let mut html = format!(
-        r#"<section class="encounter-browser"><h2>Boss bestiary</h2><p>Find your next fight. Readiness uses your owned gear and unboosted levels; open a card for the caveats.</p><label><span class="slot-caption">Search encounters</span><input id="encounter-search" type="search" placeholder="Search bosses or raids" value="{}" autocomplete="off"></label><nav class="encounter-filters" aria-label="Encounter categories">"#,
+        r#"<section class="encounter-browser"><h2>Choose your fight</h2><p>Based on your bank and levels.</p><label><span class="slot-caption">Search encounters</span><input id="encounter-search" type="search" placeholder="Search bosses or raids" value="{}" autocomplete="off"></label><nav class="encounter-filters" aria-label="Encounter categories">"#,
         esc(&s.encounter_query)
     );
     for filter in crate::bestiary::FILTERS {
         html.push_str(&format!(r#"<button id="enc-filter-{}" class="encounter-filter {}" data-action="encounter-filter:{filter}" aria-pressed="{}">{filter}</button>"#,filter.replace(' ', "-"),if s.encounter_filter==filter{"active"}else{""},s.encounter_filter==filter));
     }
-    html.push_str("</nav><p class=\"bestiary-disclaimer\">Gear & level screening · not a kill guarantee. Access, supplies, movement and team size need checking. Expanded notes show the planner guidelines.</p><div id=\"encounter-results\">");
+    html.push_str("</nav>");
+    html.push_str(&wilderness_controls(s));
+    html.push_str("<p class=\"bestiary-disclaimer\">Gear readiness only. Check access, supplies and mechanics in each card.</p><div id=\"encounter-results\">");
     html.push_str(&encounter_results(s));
     html.push_str("</div></section>");
     html
@@ -3257,6 +3343,12 @@ fn encounter_results(s: &State) -> String {
         .iter()
         .enumerate()
         .filter(|(index, e)| {
+            let exposed = crate::wilderness::exposure(&e.name) != crate::wilderness::Exposure::None;
+            if s.wilderness_location == "safe" && exposed
+                || s.wilderness_location == "wild" && !exposed
+            {
+                return false;
+            }
             if crate::encounters::groups()
                 .iter()
                 .any(|g| g.aliases.contains(&e.name))
@@ -3301,6 +3393,8 @@ fn encounter_results(s: &State) -> String {
                 readiness: crate::bestiary::Readiness::Unknown,
                 reason: "Shared setups do not include the sender's bank or levels.".into(),
                 detail: String::new(),
+                wilderness: false,
+                preview: None,
             }
         } else {
             assessments[index].clone()
@@ -4308,6 +4402,8 @@ fn combat_panel(s: &State, p: &Plan) -> String {
     let mut html = String::from(
         r#"<section class="panel combat-panel"><div class="panel-heading"><h2>Combat stats</h2></div><div class="combat-body">"#,
     );
+    let results_index = html.len();
+    let mut headline = String::new();
     html.push_str(&combat_style_controls(s, &set, style));
     html.push_str(r#"<div class="target-choices" role="group" aria-label="Against"><h4>Against</h4><div class="combat-subtype-options">"#);
     let mut priority_ids = std::collections::BTreeSet::new();
@@ -4384,7 +4480,15 @@ fn combat_panel(s: &State, p: &Plan) -> String {
             &s.saved.options.combat,
         ) {
             Ok(r) => {
-                html.push_str(&format!(r#"<dl class="combat-values"><div><dt>Outgoing DPS</dt><dd>{:.3}</dd></div><div><dt>Hit chance</dt><dd>{:.1}%</dd></div><div><dt>Max hit</dt><dd>{}</dd></div><div><dt>Attack speed</dt><dd>{:.2} ticks</dd></div></dl><p>{} attacks · {:.2} seconds per attack (expected)</p>"#,r.dps,r.accuracy*100.0,r.max_hit,r.expected_attack_ticks,esc(&r.attack_type),r.expected_attack_ticks*0.6));
+                headline = format!(
+                    r#"<dl class="combat-values"><div><dt>Outgoing DPS</dt><dd>{:.3}</dd></div><div><dt>Hit chance</dt><dd>{:.1}%</dd></div><div><dt>Max hit</dt><dd>{}</dd></div><div><dt>Attack speed</dt><dd>{:.2} ticks</dd></div></dl><p>{} attacks · {:.2} seconds per attack (expected)</p>"#,
+                    r.dps,
+                    r.accuracy * 100.0,
+                    r.max_hit,
+                    r.expected_attack_ticks,
+                    esc(&r.attack_type),
+                    r.expected_attack_ticks * 0.6
+                );
                 html.push_str(&attack_window_budget(s, target, &set, &r));
                 if r.burn_dps > 0.0 {
                     html.push_str(&format!("<p>Eclipse burn: {:.3} of the DPS above is delayed steady-state damage (1 every 4 ticks, 10 per stack, at most 5 stacks). Short fights, phase resets and target death reduce this contribution; no finite-HP attack-time estimate is credited.</p>", r.burn_dps));
@@ -4403,10 +4507,12 @@ fn combat_panel(s: &State, p: &Plan) -> String {
                     html.push_str(&format!("<p>Dharok's uses {} current Hitpoints. Change this under Boosts, darts &amp; debuffs.</p>", s.saved.options.combat.current_hitpoints.map(|hp|hp.to_string()).unwrap_or_else(||"full-health".into())));
                 }
             }
-            Err(e) => html.push_str(&format!(
-                "<p class=\"combat-unavailable\">DPS unavailable: {}</p>",
-                esc(&e)
-            )),
+            Err(e) => {
+                headline = format!(
+                    "<p class=\"combat-unavailable\">DPS unavailable: {}</p>",
+                    esc(&e)
+                )
+            }
         }
         if crate::yama::has_judge_cycle(&s.saved.options) {
             let judge_set = |style| {
@@ -4460,6 +4566,7 @@ fn combat_panel(s: &State, p: &Plan) -> String {
         bonus.other.get("magic_str").copied().unwrap_or(0) as f64 / 10.0
     ));
     html.push_str("</tbody></table></details><details><summary>DPS assumptions</summary><p class=\"small-note\">Selected current-level boosts and stat prayer; no boost decay, special-attack damage, venom or recoil. ToA assumes solo, path level 0, raid levels 0–150. Ruby bolts use selected target HP (phase start by default) and the selected Kandarin diary setting. Outgoing DPS covers uninterrupted attacks while vulnerable. Incoming scenarios are separate and their coverage notes apply. Movement, special-phase uptime, curses and eating are not a full encounter simulation. Unsupported mechanics show no DPS.</p></details></div></section>");
+    html.insert_str(results_index, &headline);
     html
 }
 fn attack_window_budget(
@@ -4709,7 +4816,7 @@ fn switch_controls(s: &State, p: &Plan) -> String {
         return String::new();
     }
     let mut html = format!(
-        r#"<section class="flow-controls" aria-label="Switching preferences"><label>Switch limit<input id="max-switches" type="number" min="0" max="11" step="1" value="{}" placeholder="No limit" title="Maximum changed slots per switch; leave empty for no limit" aria-describedby="switch-usage"></label><details id="switch-preferences" {}><summary>Options</summary><div class="switch-preferences-fields"><label>Gear slots in bag<input id="switch-slots" type="number" min="0" max="20" value="{}"></label><label>Prioritize<select id="focus-style">"#,
+        r#"<section class="flow-controls" aria-label="Switching preferences"><label>Switch limit<input id="max-switches" type="number" min="0" max="11" step="1" value="{}" placeholder="Any" title="Maximum changed slots per switch; leave empty for no limit" aria-describedby="switch-usage"></label><details id="switch-preferences" {}><summary>Gear options</summary><div class="switch-preferences-fields"><label>Gear slots in bag<input id="switch-slots" type="number" min="0" max="20" value="{}"></label><label>Prioritize<select id="focus-style">"#,
         s.saved
             .options
             .max_switches
@@ -4744,7 +4851,6 @@ fn switch_controls(s: &State, p: &Plan) -> String {
     html.push_str("<details><summary>Advanced · custom weights</summary>");
     html.push_str(&ranking_controls(s, "plan-rank"));
     html.push_str("</details>");
-    html.push_str("</details>");
     let usage = if let Some(report) = &p.optimization {
         if let Some(limit) = s.saved.options.max_switches {
             format!(
@@ -4768,9 +4874,9 @@ fn switch_controls(s: &State, p: &Plan) -> String {
     } else {
         "Maximum changed slots per switch.".into()
     };
-    html.push_str(&format!(
-        "<p id=\"switch-usage\" class=\"switch-usage\" role=\"status\">{usage}</p>"
-    ));
+    let usage_html =
+        format!("<p id=\"switch-usage\" class=\"switch-usage\" role=\"status\">{usage}</p>");
+    html.push_str(&slayer_tasks(s));
     let recommended = crate::recommendation::enabled(&s.saved.options);
     html.push_str(&format!("<label class=\"void-preference\"><input id=\"allow-void\" type=\"checkbox\" {}> Use Void armour <small>Normal and Elite Void · turn off to compare your other gear.</small></label>", if s.saved.options.exclude_void { "" } else { "checked" }));
     html.push_str(&format!(r#"<div class="recommendation-policy"><label>Gear approach<select id="recommendation-mode"><option value="recommended" {}>Recommended</option><option value="custom" {}>Custom weights</option></select></label><details><summary>Why this gear?</summary><p>{}</p>"#,if recommended{"selected"}else{""},if recommended{""}else{"selected"},esc(crate::recommendation::summary(&s.saved.options))));
@@ -4797,7 +4903,9 @@ fn switch_controls(s: &State, p: &Plan) -> String {
             html.push_str("<p>Uses supported combat calculations and reviewed encounter roles where available.</p>");
         }
     }
-    html.push_str("</details></div></section>");
+    html.push_str("</details></div></details>");
+    html.push_str(&usage_html);
+    html.push_str("</section>");
     html
 }
 
@@ -4805,9 +4913,9 @@ fn efficient_panel(s: &State, _plan: &Plan) -> String {
     ensure_efficient(s);
     let limits = crate::efficient::Tolerances::from_options(&s.saved.options);
     let mut html = String::from(
-        "<section class=\"panel efficient-panel\" aria-label=\"Compact setup recommendation\"><h3>Pack fewer switches</h3>",
+        "<section class=\"panel efficient-panel\" aria-label=\"Compact setup recommendation\"><h3>Save bag space</h3>",
     );
-    html.push_str("<div class=\"tradeoff-limits\">");
+    html.push_str(&format!("<details id=\"packing-limits\" class=\"packing-limits\" {}><summary>Allowances <span>{}% DPS · {}% damage · {}% prayer</span></summary><div class=\"tradeoff-limits\">",if s.packing_limits_open {"open"}else{""},limits.dps_loss,limits.damage_taken,limits.prayer_drain));
     for (id, label, value) in [
         ("switch-tolerance", "DPS loss", limits.dps_loss),
         (
@@ -4823,7 +4931,7 @@ fn efficient_panel(s: &State, _plan: &Plan) -> String {
     ] {
         html.push_str(&format!("<label class=\"tolerance-control\">{label}<span><input id=\"{id}\" type=\"number\" min=\"0\" max=\"{}\" step=\"1\" inputmode=\"numeric\" value=\"{value}\" aria-describedby=\"tolerance-help\">%</span></label>",crate::efficient::MAX_TOLERANCE_PERCENT));
     }
-    html.push_str("</div><p id=\"tolerance-help\" class=\"small-note\">Effective encounter DPS. Prayer drain is points per minute; longer fights can use more prayer overall.</p>");
+    html.push_str("</div><p id=\"tolerance-help\" class=\"small-note\">Effective encounter DPS. Prayer drain is points per minute; longer fights can use more prayer overall.</p></details>");
     let Some(result) = efficient_result(s) else {
         html.push_str("<p role=\"status\">Checking switch limits…</p></section>");
         return html;
@@ -5918,4 +6026,38 @@ fn keris_family(s: &State, set: &Vec<Option<i32>>) -> String {
     }
     html.push_str("</tbody></table></section>");
     html
+}
+
+fn wilderness_controls(s: &State) -> String {
+    let mut html = String::from(
+        "<section class=\"wilderness-controls\" aria-label=\"Wilderness filters\"><div class=\"wilderness-location\" role=\"group\" aria-label=\"Boss location\">",
+    );
+    for (key, label) in [
+        ("all", "All locations"),
+        ("safe", "Avoid Wilderness"),
+        ("wild", "Wilderness only"),
+    ] {
+        html.push_str(&format!("<button class=\"encounter-filter {}\" data-action=\"wilderness-location:{key}\" aria-pressed=\"{}\">{label}</button>",if s.wilderness_location==key{"active"}else{""},s.wilderness_location==key));
+    }
+    html.push_str(&format!("</div><button class=\"encounter-filter scaredy-toggle {}\" data-action=\"wilderness-mode\" aria-pressed=\"{}\">Scaredy cat · 3 valuable items</button>",if s.scaredy_cat{"active"}else{""},s.scaredy_cat));
+    if s.scaredy_cat {
+        html.push_str("<div class=\"wilderness-cap\" role=\"group\" aria-label=\"Disposable gear price ceiling\"><span>Cheap gear per piece / ammo stack:</span>");
+        for cap in crate::wilderness::CAPS {
+            html.push_str(&format!("<button class=\"encounter-filter {}\" data-action=\"wilderness-cap:{cap}\" aria-pressed=\"{}\">≤{}k GP</button>",if s.filler_cap==cap{"active"}else{""},s.filler_cap==cap,cap/1000));
+        }
+        html.push_str("</div><p>Wilderness cards recalculate with up to 3 valuable gear pieces plus owned cheap fillers. Open a card to see the exact kit and full-gear comparison. Selecting it keeps that kit in the planner.</p><small>Unskulled + PK Skull Prevention assumed. Confirm Items Kept on Death; supplies, charges and loot add risk.</small>");
+    }
+    html.push_str("</section>");
+    html
+}
+fn wilderness_banner(s: &State) -> String {
+    let Some(kit) = &s.saved.options.wilderness else {
+        return String::new();
+    };
+    format!(
+        "<section class=\"wilderness-plan-banner\"><strong>Scaredy cat kit active · up to 3 valuable gear pieces</strong><p>Gear is locked to your screened kit; cheap fillers ≤{} GP per piece/stack. Changing quantities rechecks the carried gear limit.</p><details><summary>Protection assumptions</summary><p>{}</p></details>{}</section>",
+        kit.filler_cap,
+        esc(crate::wilderness::CAUTION),
+        button("wilderness-off", "Return to full gear", "text-button")
+    )
 }

@@ -249,3 +249,19 @@ ruby maximum 100; melee is blocked while withdrawn. The planned Magic set shows
 owned gear and separate access status; Titan phase previews identify each boss.
 No console warnings/errors. Full-fight/team/incoming/gameplay gaps remain open;
 merged publication and live verification evidence are recorded in the PR.
+
+Barrows incoming follow-up, 13 November 2026: normal Dharok and Verac now have
+explicit selected attack models. Six regressions independently verify Dharok's
+29/43/57 maxima at 100/50/1 NPC HP, unchanged accuracy and seven-tick cadence,
+matching/wrong prayer, and Verac's zero-inclusive 75/25 mixture with 23/15
+unprotected/protected Defiler maxima. Heavy armour does not reduce the protected
+bypass below 0.625 DPS; unsupported passive ordering and damage-stat drains
+remain unavailable. NPC HP does not reuse the player's armour-set HP setting.
+
+The integrated suite passes 631 Rust tests and all 24 reference cases; after
+integrating quiet access notices, all 42 affected tests and the release Wasm
+build pass again. Preview checks show example Dharok incoming DPS rising from
+1.197 at full HP to 2.352 at 1 HP, then zero under Protect from Melee. Verac
+retains 0.625 DPS under that prayer with its branch assumptions visible. No
+console warnings/errors. Prayer drain, tunnels, complete chest-trip supplies
+and matched gameplay validation remain open; publication evidence is in the PR.

@@ -62,10 +62,10 @@ fn crossbow_capabilities_accept_real_bolts_not_only_rune_bolts() {
 }
 #[test]
 fn unmodelled_enchantment_is_not_misreported_as_incompatible() {
-    assert!(rules::ammo_ids(26374).contains(&21950));
+    assert!(rules::ammo_ids(26374).contains(&21942));
     let error = combat::calculate(
         &member(),
-        &set(26374, Some(21950)),
+        &set(26374, Some(21942)),
         "Ranged",
         &vorkath(),
         "",

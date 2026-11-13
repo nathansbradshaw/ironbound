@@ -83,6 +83,7 @@ pub struct ResultStats {
     pub accuracy: f64,
     pub max_hit: i32,
     pub attack_ticks: i32,
+    pub expected_attack_ticks: f64,
     pub attack_roll: i64,
     pub defence_roll: i64,
     pub attack_type: String,
@@ -205,6 +206,12 @@ pub fn calculate_configured(
         return Err("Equipment needs 14 slots.".into());
     }
     let weapon = set[3].ok_or("Choose a weapon.")?;
+    if settings.bulwark_block && rules::equipped_effect(set, "bulwark") {
+        return Err(
+            "Dinh's Block stance prevents outgoing attacks. Disable Block to compare attacks."
+                .into(),
+        );
+    }
     let stats = stats(weapon).ok_or("Weapon stats unavailable.")?;
     let rule =
         rules::weapon(weapon).ok_or("This weapon's combat mechanics are not modelled yet.")?;
@@ -262,7 +269,16 @@ pub fn calculate_configured(
     );
     let target_bonus = crate::effects::target_bonus(set, style, monster, settings);
     let accuracy_bonus = target_bonus.map(|b| b.accuracy).unwrap_or([1, 1]);
-    let damage_bonus = target_bonus.map(|b| b.damage).unwrap_or([1, 1]);
+    let damage_bonus = if rule.has(Effect::StrengthRanged) {
+        crate::effects::target_bonus(set, "Melee", monster, settings)
+            .map(|b| b.damage)
+            .unwrap_or([1, 1])
+    } else {
+        target_bonus.map(|b| b.damage).unwrap_or([1, 1])
+    };
+    if style == "Ranged" && rules::set_effect(set, "eclipse_moon") {
+        return Err("Eclipse Moon burn stacks and timing are not modelled yet; compare partial armour or another weapon.".into());
+    }
     let prayer_attack = if prayer.style == style {
         prayer.attack
     } else {
@@ -364,6 +380,10 @@ pub fn calculate_configured(
                 level("Attack")? * (100 + prayer_attack) / 100 + 8 + stance.attack_bonus();
             let mut effective_strength =
                 level("Strength")? * (100 + prayer_strength) / 100 + 8 + stance.strength_bonus();
+            if rule.has(Effect::Soulreaper) {
+                effective_strength +=
+                    level("Strength")? * i64::from(settings.soulreaper_stacks) * 6 / 100;
+            }
             if void {
                 effective_attack = effective_attack * 11 / 10;
                 effective_strength = effective_strength * 11 / 10;
@@ -399,13 +419,24 @@ pub fn calculate_configured(
                 effective = effective * 11 / 10;
             }
             let a = effective * (get(&b.offensive, "ranged") as i64 + 64);
-            let mut strength = level("Ranged")? * (100 + prayer_strength) / 100 + 8 + stance_bonus;
+            let strength_ranged = rule.has(Effect::StrengthRanged);
+            let mut strength = level(if strength_ranged {
+                "Strength"
+            } else {
+                "Ranged"
+            })? * (100 + prayer_strength)
+                / 100
+                + 8
+                + stance_bonus;
             if rules::set_effect(set, "elite_void_ranged") {
                 strength = strength * 9 / 8;
             } else if void {
                 strength = strength * 11 / 10;
             }
-            let max = (strength * (get(&b.other, "ranged_str") as i64 + 64) + 320) / 640;
+            let max = (strength
+                * (get(&b.other, if strength_ranged { "str" } else { "ranged_str" }) as i64 + 64)
+                + 320)
+                / 640;
             (
                 rule.family.attack_types[0].as_str(),
                 a,
@@ -641,7 +672,8 @@ pub fn calculate_configured(
         (min_hit, max_hit) = crate::effects::wardens_p2_bounds(attack, defence, max_hit);
         hit = 1.0;
     }
-    let (_mean, ceiling, hits) = if always_max {
+    let splat_base_max = max_hit;
+    let (_mean, ceiling, mut hits) = if always_max {
         hit = 1.0;
         conditional_hit(
             max_hit,
@@ -667,6 +699,72 @@ pub fn calculate_configured(
         distribution.push((0, 1.0 - hit));
     }
     max_hit = ceiling;
+    let mut expected_ticks = ticks as f64;
+    if rule.has(Effect::Macuahuitl) {
+        if warden_p2 || always_max {
+            return Err(
+                "Dual macuahuitl guaranteed-hit and special-phase transforms are not verified."
+                    .into(),
+            );
+        }
+        let first_max = splat_base_max / 2;
+        let second_max = splat_base_max - first_max;
+        let (_, first_ceiling, first) =
+            conditional_hit(0, first_max, flat_armour, &[], monster, None);
+        let (_, second_ceiling, second) =
+            conditional_hit(0, second_max, flat_armour, &[], monster, None);
+        let second: Vec<_> = second
+            .into_iter()
+            .map(|(d, p)| (d, p * hit))
+            .chain(std::iter::once((0, 1.0 - hit)))
+            .collect();
+        let mut successful = crate::equipment_effects::combine_hits(&[first, second]);
+        for (_, p) in &mut successful {
+            *p *= hit;
+        }
+        successful.push((0, 1.0 - hit)); // second accuracy roll occurs only after first succeeds
+        distribution = successful;
+        max_hit = first_ceiling + second_ceiling;
+        if rules::set_effect(set, "blood_moon") {
+            expected_ticks -= hit / 3.0 + hit * hit * 2.0 / 9.0;
+        }
+    }
+    if rule.has(Effect::Scythe) {
+        if warden_p2 {
+            return Err("Scythe Wardens P2 hit transforms are not verified.".into());
+        }
+        let size = crate::equipment_effects::target_size(monster.id)
+            .ok_or("Scythe needs verified target size metadata.")?
+            .min(3);
+        let mut parts = Vec::new();
+        for index in 0..size {
+            let max = splat_base_max / (1 << index);
+            let (_, _, splats) = conditional_hit(
+                if always_max { max } else { 0 },
+                max,
+                flat_armour,
+                &[],
+                monster,
+                None,
+            );
+            let mut part: Vec<_> = splats.into_iter().map(|(d, p)| (d, p * hit)).collect();
+            if hit < 1.0 {
+                part.push((0, 1.0 - hit));
+            }
+            parts.push(part);
+        }
+        distribution = crate::equipment_effects::combine_hits(&parts);
+        max_hit = distribution
+            .iter()
+            .filter(|(_, p)| *p > 0.0)
+            .map(|(d, _)| *d)
+            .max()
+            .unwrap_or(0);
+        if always_max {
+            hits = distribution.clone();
+        }
+        hit = 1.0 - (1.0 - hit).powi(size as i32);
+    }
     if style == "Ranged" && !rule.family.ammo.is_empty() {
         let zcb = rule.has(Effect::Zaryte);
         let chance = rules::bolt_proc_chance(set[13].unwrap_or(0), settings.kandarin_diary);
@@ -708,6 +806,78 @@ pub fn calculate_configured(
                 );
                 max_hit = max_hit.max(diamond);
             }
+            effect @ (AmmoEffect::Opal
+            | AmmoEffect::Pearl
+            | AmmoEffect::Dragonstone
+            | AmmoEffect::Onyx) => {
+                if always_max || warden_p2 {
+                    return Err(
+                        "This enchanted bolt's special-phase hit transforms are not verified yet."
+                            .into(),
+                    );
+                }
+                let immune = (effect == AmmoEffect::Dragonstone
+                    && monster
+                        .attributes
+                        .iter()
+                        .any(|a| a == "dragon" || a == "fiery"))
+                    || (effect == AmmoEffect::Onyx
+                        && monster.attributes.iter().any(|a| a == "undead"));
+                if !immune {
+                    let ranged = level("Ranged")? as i32;
+                    let extra = match effect {
+                        AmmoEffect::Opal => ranged / if zcb { 9 } else { 10 },
+                        AmmoEffect::Pearl => {
+                            let divisor = if monster.attributes.iter().any(|a| a == "fiery") {
+                                15
+                            } else {
+                                20
+                            };
+                            ranged / (divisor - if zcb { 2 } else { 0 })
+                        }
+                        AmmoEffect::Dragonstone => ranged * 2 / if zcb { 9 } else { 10 },
+                        _ => 0,
+                    };
+                    let accurate_only =
+                        matches!(effect, AmmoEffect::Dragonstone | AmmoEffect::Onyx);
+                    let mut next = Vec::new();
+                    // Bonus damage precedes accurate-zero conversion. In
+                    // particular a successful rolled zero becomes `extra`,
+                    // not `extra + 1`. Keep it separate from a rolled one.
+                    let p = 1.0 / f64::from(splat_base_max - min_hit + 1);
+                    for damage in min_hit..=splat_base_max {
+                        next.push((damage.max(1), p * hit * (1.0 - chance)));
+                        if effect == AmmoEffect::Onyx {
+                            let proc_max = ceiling * if zcb { 132 } else { 120 } / 100;
+                            let (_, _, proc_hits) =
+                                conditional_hit(0, proc_max, 0, &[], monster, None);
+                            next.extend(
+                                proc_hits
+                                    .into_iter()
+                                    .map(|(d, q)| (d, q * p * hit * chance)),
+                            );
+                        } else {
+                            next.push(((damage + extra).max(1), p * hit * chance));
+                        }
+                    }
+                    if hit < 1.0 {
+                        if accurate_only {
+                            next.push((0, 1.0 - hit));
+                        } else {
+                            next.push((0, (1.0 - hit) * (1.0 - chance)));
+                            // Opal and pearl can proc on a failed accuracy roll.
+                            next.push((extra, (1.0 - hit) * chance));
+                        }
+                    }
+                    distribution = next;
+                    max_hit = distribution
+                        .iter()
+                        .filter(|(_, p)| *p > 0.0)
+                        .map(|(d, _)| *d)
+                        .max()
+                        .unwrap_or(0);
+                }
+            }
             _ => {}
         }
     }
@@ -727,10 +897,11 @@ pub fn calculate_configured(
     Ok(ResultStats {
         hit_distribution: distribution,
         hp_dependent,
-        dps: expected / (ticks as f64 * 0.6),
+        dps: expected / (expected_ticks * 0.6),
         accuracy: hit,
         max_hit,
         attack_ticks: ticks,
+        expected_attack_ticks: expected_ticks,
         attack_roll: attack,
         defence_roll: defence,
         attack_type: attack_type.into(),

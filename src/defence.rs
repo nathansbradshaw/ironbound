@@ -24,6 +24,8 @@ pub struct Settings {
     pub ranged_stance: String,
     pub kandarin_diary: bool,
     pub slayer_targets: std::collections::BTreeSet<i32>,
+    pub soulreaper_stacks: u32,
+    pub bulwark_block: bool,
 }
 impl Default for Settings {
     fn default() -> Self {
@@ -46,12 +48,15 @@ impl Default for Settings {
             ranged_stance: "Rapid".into(),
             kandarin_diary: false,
             slayer_targets: Default::default(),
+            soulreaper_stacks: 0,
+            bulwark_block: false,
         }
     }
 }
 impl Settings {
     pub fn valid(&self) -> bool {
         (1..=10_000).contains(&self.spell_casts)
+            && self.soulreaper_stacks <= 5
             && self.spell_selection.valid()
             && (1..=10_000).contains(&self.ammo_shots)
             && self.target_hp.len() <= crate::rules::MAX_TARGETS
@@ -215,7 +220,12 @@ pub fn estimate(
         } else {
             guard.names.iter().any(present)
         };
-        if matches {
+        // Passive ordering with chained attacks, boss healing and prayer chip
+        // remains unverified. Only enable ordinary unprotected single hits.
+        let ordinary = profile(target.id).is_none_or(|p| {
+            p.kind == "standard" && p.attacks.iter().all(|a| a.healing_fraction == 0.0)
+        }) && settings.protection == "None";
+        if matches && !ordinary {
             return Err(guard.note.clone());
         }
     }
@@ -282,7 +292,8 @@ pub fn estimate(
     } else {
         defence + 8
     };
-    let player_roll = effective * (get(&bonus.defensive, basic) + 64);
+    let block = settings.bulwark_block && crate::rules::equipped_effect(set, "bulwark");
+    let player_roll = (effective + if block { 3 } else { 0 }) * (get(&bonus.defensive, basic) + 64);
     let npc_level = get(
         &target.skills,
         if basic == "magic" {
@@ -351,13 +362,23 @@ pub fn estimate(
         }
         // Prayer reduction is applied to each possible hit before averaging.
         let mean = (min..=max)
-            .map(|hit| (hit as f64 * through).floor())
+            .map(|hit| {
+                crate::equipment_effects::incoming_hit(
+                    (hit as f64 * through).floor() as i32,
+                    get(&bonus.defensive, basic) as i32,
+                    set,
+                    settings,
+                )
+            })
             .sum::<f64>()
             / (max - min + 1) as f64;
         damage = chance * mean;
         healing = damage * scenario.map(|a| a.healing_fraction).unwrap_or(0.0);
     }
-    let note = profile.map(|p| p.note.clone()).unwrap_or("Unprotected basic-attack estimate only. Attack choice frequencies, chip damage, protection interactions, scaling and special mechanics are unverified.".into());
+    let mut note = profile.map(|p| p.note.clone()).unwrap_or("Unprotected basic-attack estimate only. Attack choice frequencies, chip damage, protection interactions, scaling and special mechanics are unverified.".into());
+    if crate::equipment_effects::has_defensive_passive(set) {
+        note.push_str(" Reviewed equipment reductions apply per unprotected basic hit only; chained hits, prayer chip, specials and boss-healing interactions remain unavailable.");
+    }
     Ok(Estimate {
         attack: if chained {
             "Chained slash".into()

@@ -1,5 +1,6 @@
 pub mod account;
 pub mod bestiary;
+pub mod wilderness;
 
 pub mod alternatives;
 #[cfg(target_arch = "wasm32")]

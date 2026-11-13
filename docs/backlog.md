@@ -35,6 +35,10 @@ dedicated encounter simulations.
 - [x] Third monster batch: Skotizo altar counts and Arclight/Emberlight finishers;
   Hespori flower protection, Farming Guild flower finishers and 12-flower attack
   budget. Related NPC buttons do not add targets to the default boss workload.
+- [x] Fourth monster batch: Leviathan ordinary/stunned-front/rear-Magic windows;
+  Whisperer realm reductions and separate enrage; distinct Nightmare/Phosani
+  shield/charge counters, totem effects, protected bodies and Phosani crush adds.
+  Remaining enrage, team, proc, incoming and full-fight gaps stay explicit.
 
 - [x] Show which selected attack windows have supported outgoing calculations and which are packing only.
 - [x] Explain remaining mechanics beside the encounter and in preparation/export notes. Count Wardens explicitly rather than omitting it from the supported fraction.

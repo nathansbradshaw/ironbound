@@ -15,6 +15,8 @@ pub enum Kind {
     Skotizo,
     Altar,
     Flower,
+    Totem,
+    PhosaniMinion,
 }
 #[derive(Clone, Copy, Debug, Default, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
@@ -92,9 +94,20 @@ pub fn instant_defeat(id: i32, weapon: i32) -> Option<i32> {
         .then(|| planner::monster(id).and_then(|m| m.skills.get("hp").copied()))
         .flatten()
 }
+pub fn guaranteed_accuracy(id: i32, attack_type: &str) -> bool {
+    profile(id).is_some_and(|p| p.kind == Kind::Totem && attack_type == "magic")
+}
+pub fn guaranteed_max(id: i32, attack_type: &str) -> bool {
+    profile(id).is_some_and(|p| p.kind == Kind::PhosaniMinion && attack_type == "crush")
+}
 pub fn style_limitation(id: i32, style: &str) -> Option<&'static str> {
-    let p = profile(id)?;
     let style = rules::base_style(style);
+    if encounters::hit_rule(id).is_some_and(|r| !r.allowed_styles.iter().any(|s| s == style)) {
+        return Some(
+            "Outgoing mechanics are not verified for this style in the selected attack window.",
+        );
+    }
+    let p = profile(id)?;
     if !p.allowed_styles.iter().any(|s| s == style) {
         Some("This target is immune to the selected attack style.")
     } else if style == "Melee" && p.melee == Reach::None {
@@ -136,6 +149,11 @@ pub enum Transform {
     Kraken,
     Corporeal,
     Immune,
+    Scaled {
+        numerator: u32,
+        denominator: u32,
+        cap: Option<i32>,
+    },
     Skotizo {
         altars: u8,
         light: bool,
@@ -149,6 +167,15 @@ impl Transform {
             Self::Kraken if damage > 0 => vec![((damage / 7).max(1), probability)],
             Self::Corporeal => vec![(damage / 2, probability)],
             Self::Immune => vec![(0, probability)],
+            Self::Scaled {
+                numerator,
+                denominator,
+                cap,
+            } => {
+                let scaled = (i64::from(damage) * i64::from(numerator)
+                    / i64::from(denominator.max(1))) as i32;
+                vec![(scaled.min(cap.unwrap_or(i32::MAX)), probability)]
+            }
             Self::Skotizo { altars, light } => {
                 let percent = 100 - i32::from(altars.min(4)) * if light { 15 } else { 25 };
                 vec![(
@@ -164,6 +191,13 @@ pub fn transform_for(id: i32, weapon: i32, attack_type: &str) -> Transform {
     if encounters::window(id).is_some_and(|w| w.invulnerable) {
         return Transform::Immune;
     }
+    if let Some(damage) = encounters::window(id).and_then(|w| w.npc_damage.as_ref()) {
+        return Transform::Scaled {
+            numerator: damage.factor[0],
+            denominator: damage.factor[1],
+            cap: damage.cap,
+        };
+    }
     match profile(id).map(|p| p.kind) {
         Some(Kind::Zulrah) => Transform::Zulrah,
         Some(Kind::Kraken) if ["light", "standard", "heavy"].contains(&attack_type) => {
@@ -175,6 +209,11 @@ pub fn transform_for(id: i32, weapon: i32, attack_type: &str) -> Transform {
                 .and_then(|w| w.active_altars)
                 .unwrap_or(4),
             light: profile(id).is_some_and(|p| p.light_weapons.contains(&weapon)),
+        },
+        Some(Kind::Totem) if attack_type == "magic" => Transform::Scaled {
+            numerator: 2,
+            denominator: 1,
+            cap: None,
         },
         _ => Transform::Identity,
     }

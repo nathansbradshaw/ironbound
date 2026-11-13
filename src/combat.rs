@@ -724,6 +724,7 @@ pub fn calculate_configured(
         attack = attack * (200 + weight) / 200;
         max_hit = (i64::from(max_hit) * (200 + weight) / 200) as i32;
     }
+    let always_max = always_max || crate::monster_rules::guaranteed_max(monster.id, attack_type);
     let mut hit = accuracy(attack, defence);
     let brimstone = style == "Magic" && rules::equipped_effect(set, "brimstone_accuracy");
     if brimstone {
@@ -750,6 +751,9 @@ pub fn calculate_configured(
             fang_accuracy(attack, defence)
         };
         hit = double / (1.0 + double - hit);
+    }
+    if crate::monster_rules::guaranteed_accuracy(monster.id, attack_type) {
+        hit = 1.0;
     }
     let mut min_hit = if fang { max_hit * 3 / 20 } else { 0 };
     if fang {
@@ -1042,6 +1046,11 @@ pub fn calculate_configured(
         let chance = rules::bolt_proc_chance(set[13].unwrap_or(0), settings.kandarin_diary);
         match rules::ammunition(set[13].unwrap_or(0)) {
             AmmoEffect::Ruby => {
+                if crate::encounters::window(monster.id)
+                    .is_some_and(|w| w.resource != crate::encounters::Resource::Hitpoints)
+                {
+                    return Err("Ruby bolt effects against shield and charge counters are unverified. Choose other supported ammunition.".into());
+                }
                 let hp = hp as i32;
                 let ruby = (hp * if zcb { 22 } else { 20 } / 100).min(if zcb { 110 } else { 100 });
                 for (_, p) in &mut distribution {

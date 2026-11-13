@@ -61,10 +61,23 @@ independent references, browser verification, then gameplay verification.
   the complete outgoing distribution/cooldown at every remaining HP.
 - [ ] Vardorvis full fight: axes, head, entangle, lifesteal, movement and incoming
   damage. Quest and awakened variants require separate validation.
-- [ ] Leviathan: reach restrictions, stun/rear bonuses, enrage and incoming damage.
-- [ ] Whisperer: specials, shadow realm, enrage, sanity and incoming damage.
-- [ ] Nightmare / Phosani: shield/HP phases, magic totem multiplier, husks,
-  sleepwalkers, parasite and incoming damage; normal and solo models stay distinct.
+- [x] Leviathan outgoing: normal pre-enrage ranged/Magic, melee restriction,
+  post-stun front cap and rear Magic double-damage comparison.
+- [ ] Leviathan full fight: stun cast/initial free shot, rear ranged minima and
+  bolt procs, special reductions, pathfinder/enrage, movement and incoming attacks.
+- [x] Whisperer outgoing: normal body, per-hit special reductions outside/inside
+  the Shadow Realm, earth weakness and a separate 140-HP enrage with reset stats
+  and independent debuff assumptions.
+- [ ] Whisperer full fight: special thresholds/uptime, sanity, souls/healing,
+  tentacles, travel and incoming attacks; quest/awakened need separate validation.
+- [x] Nightmare / Phosani outgoing: distinct base-team/solo shield and charge
+  counters, protected bodies, totem Magic damage/accuracy, separate Phosani final
+  HP, and maximum crush hits on Phosani husks/weakened parasite. Counters travel
+  through comparisons/exports; ruby against shields/charge stays blocked.
+- [ ] Nightmare / Phosani full fight: larger-team scaling, shield/ruby proc
+  semantics, stat recovery, parasite emergence/healing, sleepwalkers, spawn counts,
+  spores/flowers, movement and incoming damage. Confirm the totem accuracy model
+  in gameplay; normal and solo models stay distinct.
 - [ ] Nex: phase-specific HP, immunities, blood healing, minions, team scaling
   and attack mixtures. Existing Smoke/Ice incoming scenario is only partial.
 - [x] Hespori outgoing: flowers-cleared and flowers-alive body comparisons,

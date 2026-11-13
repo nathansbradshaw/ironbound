@@ -3612,6 +3612,8 @@ fn encounter_targets(s: &State) -> Vec<i32> {
             })
             .map(|w| w.id),
     );
+    let mut seen = std::collections::BTreeSet::new();
+    targets.retain(|id| seen.insert(*id));
     targets
 }
 fn comparison_style(s: &State) -> &str {
@@ -4437,7 +4439,11 @@ fn combat_panel(s: &State, p: &Plan) -> String {
     if let (Some(m), Some(target)) = (s.saved.snapshot.selected(), comparison_monster(s)) {
         if let Some(hp) = s.saved.options.combat.target_hp.get(&target.id) {
             html.push_str(&format!(
-                "<p class=\"small-note\">Current target HP: {hp}. {}</p>",
+                "<p class=\"small-note\">{}: {hp}. {}</p>",
+                crate::encounters::window(target.id)
+                    .map(|w| w.resource)
+                    .unwrap_or_default()
+                    .input_label(),
                 button("reset-target-hp", "Reset target HP", "text-button")
             ));
         }
@@ -4578,6 +4584,9 @@ fn attack_window_budget(
     set: &[Option<i32>],
     result: &combat::ResultStats,
 ) -> String {
+    let resource = crate::encounters::window(target.id)
+        .map(|w| w.resource)
+        .unwrap_or_default();
     let (min, max) = combat::target_hp_bounds(target, s.saved.options.raid_level).unwrap_or((1, 1));
     let current = s
         .saved
@@ -4588,8 +4597,14 @@ fn attack_window_budget(
         .map(u32::to_string)
         .unwrap_or_default();
     let mut html = format!(
-        "<details id=\"attack-budget\" class=\"attack-budget\" {}><summary>Attack window & supply budget</summary><label>Current target HP<input id=\"target-hp\" type=\"number\" min=\"{min}\" max=\"{max}\" placeholder=\"{max}\" value=\"{current}\"></label><p class=\"small-note\">Leave empty for this window's starting HP. Ruby bolts and HP-dependent NPC stats use this HP; the attack budget recalculates them as HP falls.</p>",
-        if s.attack_budget_open { "open" } else { "" }
+        "<details id=\"attack-budget\" class=\"attack-budget\" {}><summary>Attack window & supply budget</summary><label>{}<input id=\"target-hp\" type=\"number\" min=\"{min}\" max=\"{max}\" placeholder=\"{max}\" value=\"{current}\"></label><p class=\"small-note\">{}</p>",
+        if s.attack_budget_open { "open" } else { "" },
+        resource.input_label(),
+        if resource == crate::encounters::Resource::Hitpoints {
+            "Leave empty for this window's starting HP. Ruby bolts and HP-dependent NPC stats use this HP; the attack budget recalculates them as HP falls."
+        } else {
+            "Leave empty for this window's starting counter. Shield and totem charge are separate from physical HP; unverified ruby effects against these counters are blocked."
+        }
     );
     if let Some(window) = crate::encounters::window(target.id) {
         html.push_str(&format!("<p>{}</p>", esc(&window.description)));
@@ -4613,7 +4628,7 @@ fn attack_window_budget(
         crate::attack_budget::for_window(target, result, &s.saved.options, set)
     };
     match budget {
-        Ok(budget) => html.push_str(&format!("<dl class=\"combat-values\"><div><dt>Expected attacks</dt><dd>{:.1}</dd></div><div><dt>Attack cooldown budget</dt><dd>{:.1}s</dd></div><div><dt>HP window · each of {} target(s)</dt><dd>{} → {}</dd></div></dl><p class=\"small-note\">Includes misses, overkill and the finishing cooldown. This is an expectation, not a safe supply minimum or kill-time prediction. Compare with your {}-cast / {}-projectile packing budgets; projectile recovery, ruby self-damage, movement, specials, regeneration and eating are excluded.</p>", budget.attacks, budget.seconds, budget.entities, budget.start_hp, budget.stop_hp, s.saved.options.combat.spell_casts, s.saved.options.combat.ammo_shots)),
+        Ok(budget) => html.push_str(&format!("<dl class=\"combat-values\"><div><dt>Expected attacks</dt><dd>{:.1}</dd></div><div><dt>Attack cooldown budget</dt><dd>{:.1}s</dd></div><div><dt>{} · each of {} target(s)</dt><dd>{} → {}</dd></div></dl><p class=\"small-note\">Includes misses, overkill and the finishing cooldown. This is an expectation, not a safe supply minimum or kill-time prediction. Compare with your {}-cast / {}-projectile packing budgets; projectile recovery, ruby self-damage, movement, specials, regeneration and eating are excluded.</p>", budget.attacks, budget.seconds, resource.window_label(), budget.entities, budget.start_hp, budget.stop_hp, s.saved.options.combat.spell_casts, s.saved.options.combat.ammo_shots)),
         Err(reason) => html.push_str(&format!("<p class=\"small-note\">{}</p>", esc(&reason))),
     }
     html.push_str("</details>");

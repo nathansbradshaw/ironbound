@@ -1,5 +1,9 @@
 {
   "profiles": [
+    {"ids": [12214], "kind": "standard", "melee": "none", "allowed_styles": ["Ranged","Magic"]},
+    {"ids": [12204,9416,9425], "kind": "standard", "allowed_styles": ["Melee","Ranged","Magic"]},
+    {"ids": [9435], "kind": "totem", "allowed_styles": ["Melee","Ranged","Magic"]},
+    {"ids": [9466,9467,9469], "kind": "phosani_minion", "allowed_styles": ["Melee","Ranged","Magic"]},
     {"ids": [7286], "kind": "skotizo", "light_weapons": [19675,29589], "allowed_styles": ["Melee","Ranged","Magic"]},
     {"ids": [7288], "kind": "altar", "light_weapons": [19675,29589], "allowed_styles": ["Melee","Ranged","Magic"]},
     {"ids": [8583], "kind": "standard", "allowed_styles": ["Melee","Ranged","Magic"]},

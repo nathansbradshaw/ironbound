@@ -140,3 +140,11 @@ to 5.984 DPS, surviving reload; Eclipse displays 1.023 delayed burn DPS within
 expected ticks. These values describe those synthetic fixtures, not gameplay
 measurements. See [armour coverage](armour-sets.md) for supported effects and
 remaining finite-state/special-attack limits.
+
+Eclipse timing follow-up (13 November 2026): 547 integrated Rust tests, including
+24 independent reference cases, and the optimized Wasm build pass. Fixed timelines
+and an independently calculated probability tree cover buildup, expiry, cap
+discard, current HP, phase clearing, target death and finishing cooldowns.
+Browser checks show zero credited burn at 1 HP and different Vorkath timelines
+under clear/retain phase assumptions. These are model checks; encounter reset
+calibration and HP-dependent NPC accuracy with burns remain open.

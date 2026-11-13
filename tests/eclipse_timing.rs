@@ -105,6 +105,17 @@ fn npc_reductions_apply_to_the_combined_ranged_burn_pulse() {
         .damage(5),
         2
     );
+    let mut profile = attack(1, 1.0);
+    profile.pulse.transform = Transform::Skotizo {
+        altars: 0,
+        light: false,
+    };
+    close(burn::estimate(&profile, 3, 4, 0).unwrap().attacks, 2.0);
+    profile.pulse.transform = Transform::Skotizo {
+        altars: 4,
+        light: false,
+    };
+    close(burn::estimate(&profile, 3, 4, 0).unwrap().attacks, 4.0);
 }
 #[test]
 fn burn_kills_stop_shots_and_cap_damage_at_actual_remaining_hp() {

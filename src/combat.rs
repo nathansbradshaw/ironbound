@@ -274,9 +274,12 @@ pub fn calculate_configured(
     let toa = crate::encounters::mechanics().toa_ids.contains(&monster.id);
     let mut b = bonuses_in_context(set, toa);
     if !rule.family.internal_ammo.is_empty() {
-        let dart = rules::internal_ammo(member, weapon, settings).ok_or(
-            "Choose compatible loaded darts, or provide at least 100 owned darts to load.",
-        )?;
+        let dart = rules::internal_ammo(member, weapon, settings).ok_or_else(|| {
+            format!(
+                "Choose compatible loaded darts, or provide at least {} owned darts to load.",
+                settings.ammo_shots
+            )
+        })?;
         let dart_stats = self::stats(dart).ok_or("Loaded ammunition stats unavailable.")?;
         *b.other.entry("ranged_str".into()).or_default() +=
             dart_stats.bonuses.get("ranged_str").copied().unwrap_or(0);

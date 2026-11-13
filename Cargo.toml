@@ -29,3 +29,11 @@ strip = "debuginfo"
 
 [profile.dev]
 incremental = false
+
+# Separate package artifacts for verification while another checkout is building.
+# Reuse one Cargo target root; avoid racing its default dev/release library outputs.
+[profile.verify-dev]
+inherits = "dev"
+
+[profile.verify-release]
+inherits = "release"

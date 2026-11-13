@@ -274,6 +274,7 @@ pub struct Check {
 }
 #[derive(Clone, Debug)]
 pub struct Plan {
+    pub ammo_shots: u32,
     pub loaded_ammo: Option<Packed>,
     pub optimization: Option<crate::optimization::Report>,
     pub equipment: Vec<Option<i32>>,
@@ -307,7 +308,7 @@ impl Plan {
                     .iter()
                     .position(|item| item.id == id && item.quantity > 0)
             }) {
-                let quantity = if slot == 13 { 100 } else { 1 };
+                let quantity = equipped_quantity(slot, target.unwrap(), self.ammo_shots);
                 inventory[index].quantity = inventory[index].quantity.saturating_sub(quantity);
                 if inventory[index].quantity == 0 {
                     inventory[index].id = 0;
@@ -320,7 +321,7 @@ impl Plan {
                 continue;
             }
             let Some(id) = *start else { continue };
-            let quantity = if slot == 13 { 100 } else { 1 };
+            let quantity = equipped_quantity(slot, id, self.ammo_shots);
             if is_stackable(id) {
                 if let Some(item) = inventory
                     .iter_mut()
@@ -542,7 +543,7 @@ pub fn owned_tiers(
             id: *id,
             usable: can_use(*id, m)
                 && (slot != 13
-                    || (owned.get(id).copied().unwrap_or(0) >= 100 && {
+                    || (owned.get(id).copied().unwrap_or(0) >= options.combat.ammo_shots && {
                         let set = equipment_for_style(snapshot, options, style);
                         crate::rules::ammo_ids(set[3].unwrap_or(0)).contains(id)
                     })),
@@ -746,7 +747,7 @@ fn style_set(
             .iter()
             .copied()
             .find(|id| {
-                owned.get(id).copied().unwrap_or(0) >= 100
+                owned.get(id).copied().unwrap_or(0) >= options.combat.ammo_shots
                     && can_use(*id, m)
                     && crate::rules::ammunition(*id) != crate::rules::AmmoEffect::Unsupported
             })
@@ -754,11 +755,14 @@ fn style_set(
                 crate::rules::ammo_ids(set[3].unwrap_or(0))
                     .iter()
                     .copied()
-                    .find(|id| owned.get(id).copied().unwrap_or(0) >= 100 && can_use(*id, m))
+                    .find(|id| {
+                        owned.get(id).copied().unwrap_or(0) >= options.combat.ammo_shots
+                            && can_use(*id, m)
+                    })
             });
         if let Some(id) = options.gear_overrides.get("Ranged:13") {
             let allowed = crate::rules::ammo_ids(set[3].unwrap_or(0)).contains(id);
-            if allowed && owned.get(id).copied().unwrap_or(0) >= 100 {
+            if allowed && owned.get(id).copied().unwrap_or(0) >= options.combat.ammo_shots {
                 set[13] = Some(*id);
             }
         }
@@ -961,7 +965,7 @@ fn refine_dps(
                 if owned.get(&id).copied().unwrap_or(0) == 0 || !can_use(id, m) {
                     continue;
                 }
-                if slot == 13 && owned.get(&id).copied().unwrap_or(0) < 100 {
+                if slot == 13 && owned.get(&id).copied().unwrap_or(0) < options.combat.ammo_shots {
                     continue;
                 }
                 if slot == 13
@@ -1006,7 +1010,7 @@ fn refine_dps(
                             allowed
                                 .iter()
                                 .filter(|id| {
-                                    owned.get(id).copied().unwrap_or(0) >= 100
+                                    owned.get(id).copied().unwrap_or(0) >= options.combat.ammo_shots
                                         && can_use(**id, m)
                                         && crate::rules::ammunition(**id)
                                             != crate::rules::AmmoEffect::Unsupported
@@ -1227,6 +1231,7 @@ fn pack_profile_supplies(
 }
 fn plan_uncached(snapshot: &Snapshot, options: &Options) -> Plan {
     let mut out = Plan {
+        ammo_shots: options.combat.ammo_shots,
         loaded_ammo: None,
         optimization: None,
         equipment: vec![None; 14],
@@ -1339,8 +1344,10 @@ fn plan_uncached(snapshot: &Snapshot, options: &Options) -> Plan {
         && ranged[3].is_some_and(|id| !crate::rules::ammo_ids(id).is_empty())
         && ranged[13].is_none()
     {
-        out.missing
-            .push("At least 100 compatible bolts or arrows".into());
+        out.missing.push(format!(
+            "At least {} compatible bolts or arrows",
+            options.combat.ammo_shots
+        ));
     }
     if (options.boss == Boss::Toa
         || (options.boss == Boss::Custom && targets.iter().any(|t| t.style == "Magic")))
@@ -1424,10 +1431,11 @@ fn plan_uncached(snapshot: &Snapshot, options: &Options) -> Plan {
                 if out.equipment[slot] != Some(*id) && !out.inventory.iter().any(|p| p.id == *id) {
                     out.inventory.push(Packed {
                         id: *id,
-                        quantity: if slot == 13 { 100 } else { 1 },
+                        quantity: equipped_quantity(slot, *id, options.combat.ammo_shots),
                         purpose: format!("{style} switch"),
                     });
-                    *allocated.entry(*id).or_default() += if slot == 13 { 100 } else { 1 };
+                    *allocated.entry(*id).or_default() +=
+                        equipped_quantity(slot, *id, options.combat.ammo_shots);
                 }
             }
         }
@@ -1561,7 +1569,7 @@ fn plan_uncached(snapshot: &Snapshot, options: &Options) -> Plan {
     }
     // Deduct worn ammunition properly; a worn ammo slot is one stack, not one projectile.
     if let Some(id) = out.equipment[13] {
-        allocated.insert(id, 100);
+        allocated.insert(id, equipped_quantity(13, id, options.combat.ammo_shots));
     }
     let mut spell_runes = BTreeMap::<i32, u32>::new();
     let mut trip_spells = std::collections::BTreeSet::new();
@@ -1898,7 +1906,8 @@ fn plan_uncached(snapshot: &Snapshot, options: &Options) -> Plan {
     let mut total = BTreeMap::new();
     for (slot, id) in out.equipment.iter().enumerate() {
         if let Some(id) = id {
-            *total.entry(*id).or_insert(0u32) += if slot == 13 { 100 } else { 1 };
+            *total.entry(*id).or_insert(0u32) +=
+                equipped_quantity(slot, *id, options.combat.ammo_shots);
         }
     }
     for p in &out.inventory {
@@ -1912,7 +1921,7 @@ fn plan_uncached(snapshot: &Snapshot, options: &Options) -> Plan {
             continue;
         }
         if let Some(dart) = crate::rules::internal_ammo(m, weapon, &options.combat) {
-            let q = crate::rules::DEFAULT_LOADED_SHOTS;
+            let q = options.combat.ammo_shots;
             out.loaded_ammo = Some(Packed {
                 id: dart,
                 quantity: q,
@@ -1926,10 +1935,10 @@ fn plan_uncached(snapshot: &Snapshot, options: &Options) -> Plan {
             }
             out.checks.push(Check{name:"Loaded darts".into(),state:Some(loaded_ok),detail:format!("{} × {q}. {} Verify remaining darts and charges; these are not worn in the ammo slot.",item_name(dart),if options.combat.loaded_ammo_confirmed{"Existing contents confirmed by you."}else{"Load from your bank before leaving."})});
         } else {
-            out.missing.push(
-                "Select compatible blowpipe darts or import at least 100 owned darts to load."
-                    .into(),
-            );
+            out.missing.push(format!(
+                "Select compatible blowpipe darts or import at least {} owned darts to load.",
+                options.combat.ammo_shots
+            ));
         }
         break;
     }
@@ -1946,7 +1955,7 @@ fn plan_uncached(snapshot: &Snapshot, options: &Options) -> Plan {
         for (slot, id) in phase.equipment.iter().enumerate() {
             if let Some(id) = id {
                 let q = carried.entry(*id).or_default();
-                let need = if slot == 13 { 100 } else { 1 };
+                let need = equipped_quantity(slot, *id, options.combat.ammo_shots);
                 if *q < need {
                     out.missing.push(format!(
                         "{} needs {} in the carried pool.",
@@ -2041,6 +2050,15 @@ pub fn raw_item_count(m: &Member) -> usize {
         crate::account::add_pairs(&mut pairs, c);
     }
     pairs.len()
+}
+/// Projectiles use the selected stack budget; nonstackable ammo-slot items
+/// (such as blessings) are single pieces of equipment.
+pub fn equipped_quantity(slot: usize, id: i32, ammo_shots: u32) -> u32 {
+    if slot == 13 && is_stackable(id) {
+        ammo_shots
+    } else {
+        1
+    }
 }
 pub fn is_stackable(id: i32) -> bool {
     if crate::rules::all_ammo_ids().contains(&id)

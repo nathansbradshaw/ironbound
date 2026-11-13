@@ -33,7 +33,7 @@ If browser saving fails, a persistent warning offers a private backup and retry.
 - **Check the maths:** [live Wiki comparisons and update guide](docs/combat-validation.md). Run `cargo run --locked --bin validate_combat` to check the pinned reference loadouts.
 - **Model your fight:** Combat → **Boosts, darts & debuffs**. Choose active boosts, loaded blowpipe darts and successful reductions for each target.
 - **See weaknesses:** Combat breaks ranged defence into Light / Standard / Heavy and magic into Air / Water / Earth / Fire. Compare supported owned spells, hit chance, max hit and DPS; the selected spell shows its base and elemental bonuses.
-- **Try spells manually:** Combat → Magic. Click an element and a spell in the icon grid, or choose **Auto**. Missing runes are shown while you compare hypothetical damage. These comparison choices leave the trip's automatic spell and rune packing in place.
+- **Try spells manually:** Combat → Magic. Click an element and a spell in the icon grid, or choose **Auto**. Your selection is saved and used for the Magic plan, rune packing and exports. Missing runes are flagged; **Auto** restores automatic choice.
 - **Choose prayers:** click icons in the **Prayer book** to toggle protection, a stat prayer and Preserve. Grey icons show unmet levels. Ranged stance uses **Rapid / Accurate** buttons.
 - **Choose your switch limit:** this is a maximum. See how many changes the plan actually uses. Equal combat scores prefer lower prayer use, then fewer packed items. Numeric controls update while typing or using their arrows.
 - **Why this item?** Hover or keyboard-focus gear for its role and up to two owned alternatives with signed trade-offs. Supplies show their packing purpose.

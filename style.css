@@ -840,3 +840,16 @@ footer{font-size:10px;padding:9px 4px 0}footer>span:last-child{display:none}
 .incoming-choices,.target-choices,.ranged-stances{margin:14px 0}
 .target-choices>.combat-subtype-options{max-height:200px;overflow:auto;padding:3px}
 @media(max-width:420px){.book-grid{gap:5px}.book-tile{padding:6px 3px}.book-tile-name{font-size:15px}.book-tile small{font-size:12px}.prayer-book{padding:8px}}
+
+.ranged-ammunition h4{font:21px Scape,monospace;color:#e2d3af;margin:0 0 10px}
+.ranged-type-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
+.ranged-type{display:flex;flex-direction:column;align-items:center;gap:5px;min-width:0;padding:12px 5px 7px;border:1px solid #75654a;background:#322c23;color:#b9af99;text-align:center}
+.ranged-type>img{width:32px;height:32px;object-fit:contain;image-rendering:pixelated}
+.ranged-type>strong{font:21px Scape,monospace}
+.ranged-type>small{font:15px Scape,monospace;line-height:1.2}
+.ranged-type.active{border-color:#e4bc48;background:#51452b;color:#fff3bd;box-shadow:inset 0 3px #e4bc48}
+.ranged-type-state{height:18px;font:15px Scape,monospace;color:#ffcf00}
+.ranged-equipped{display:flex;flex-wrap:wrap;gap:8px 20px;padding:12px 0 2px;color:#e2d3af;font:17px Scape,monospace}
+.ranged-equipped>span{display:flex;align-items:center;gap:7px;min-width:0}
+.ranged-equipped img{width:32px;height:32px;object-fit:contain;image-rendering:pixelated}
+@media(max-width:440px){.ranged-type-grid{gap:5px}.ranged-type>strong{font-size:19px}.ranged-type>small{font-size:14px}}

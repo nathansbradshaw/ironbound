@@ -492,6 +492,15 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     ground["melee_reach"] = json!("any");
     ground["comparison_alternative"] = json!(true);
     b.probe(ground,500,30000,"Grounded recorded stats, with unrestricted melee reach, changed defences and the same fire weakness. Current HP is an explicit point, not team-scaled total HP. Transformation timing, flight/ground HP transfer, incoming attacks and whole-room supplies are unverified.");
+    let mut xarth = b.window(
+        205030,
+        16684,
+        "Xarth · phase 2 vulnerable body",
+        "Crush",
+        None,
+    );
+    xarth["comparison_alternative"] = json!(true);
+    b.probe(xarth,500,30000,"Phase-2 vulnerable body at recorded defences and 80% Demonbane effectiveness. Phase 1 uses the separate ranged/Magic route suggestion; phase 2 adds a melee gear screen. These are ordinary damage comparisons, not a protection-rotation or shield model. Corpse spawns, water/ice cast-speed changes on corpses, healing, pillars, fire-spell side effects, enrage, incoming damage and complete supplies are excluded.");
     for (i, (label, armour, resistance, stun)) in [
         ("Smorks HP 75–50%", 10, 2, false),
         ("Smorks HP 50–25%", 12, 4, false),
@@ -637,7 +646,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     );
     let mut mechanics: Value =
         serde_json::from_slice(&fs::read("assets/encounter-mechanics.json")?)?;
-    let old_modes = mechanics["unverified_modes"].to_string();
     mechanics["unverified_modes"]
         .as_array_mut()
         .unwrap()
@@ -646,13 +654,34 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // That array was formatted on one line; replace by key boundaries, preserving all other data.
     let start = text.find("\"unverified_modes\": ").unwrap() + "\"unverified_modes\": ".len();
     let end = start + text[start..].find(']').unwrap() + 1;
-    let _ = old_modes;
     fs::write(
         "assets/encounter-mechanics.json",
         format!(
             "{}{}{}",
             &text[..start],
             mechanics["unverified_modes"],
+            &text[end..]
+        ),
+    )?;
+    let text = fs::read_to_string("assets/encounter-mechanics.json")?;
+    for (id, percent) in [
+        (7584, 115),
+        (16665, 25),
+        (16673, 80),
+        (16677, 80),
+        (16684, 80),
+    ] {
+        mechanics["demonbane_vulnerability"][id.to_string()] = json!(percent);
+    }
+    let marker = "\"demonbane_vulnerability\": ";
+    let start = text.find(marker).unwrap() + marker.len();
+    let end = start + text[start..].find('}').unwrap() + 1;
+    fs::write(
+        "assets/encounter-mechanics.json",
+        format!(
+            "{}{}{}",
+            &text[..start],
+            mechanics["demonbane_vulnerability"],
             &text[end..]
         ),
     )?;

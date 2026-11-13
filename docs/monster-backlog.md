@@ -1,6 +1,6 @@
 # Monster mechanics backlog
 
-Latest raid follow-up, 13 November 2026: 191 declared Nex/raid attack states and
+Latest raid follow-up, 13 November 2026: 192 declared Nex/raid attack states and
 nine gear references, including normal/CM Chambers, normal/Hard Theatre,
 recorded-defence Archive and fixed solo-300 Expert ToA. [Scope, sources and
 refresh](raid-support.md). Access checks remain independent. Entry Theatre,

@@ -2617,6 +2617,7 @@ fn act(action: &str) {
                         s.edit_style = Some(target.style.clone());
                     }
                 }
+                if crate::encounters::window(id).is_some_and(|w|w.comparison_weapon.is_some()) {s.edit_style=Some("Magic".into());}
             }
         } else if let Some(style) = action.strip_prefix("edit-style:") {
             if crate::rules::STYLES.contains(&style) {
@@ -5106,7 +5107,11 @@ fn combat_panel(s: &State, p: &Plan) -> String {
         return String::new();
     }
     let style = comparison_style(s);
-    let set = planned_style(s, p, style);
+    let mut set = planned_style(s, p, style);
+    if let Some(weapon)=comparison_monster(s).and_then(|m|crate::encounters::window(m.id)).and_then(|w|w.comparison_weapon) {
+        set[3]=Some(weapon);
+        if planner::gear(weapon).is_some_and(|g|g.two_handed){set[5]=None;}
+    }
     let bonus = combat::bonuses(&set);
     let mut html = String::from(
         r#"<section class="panel combat-panel"><div class="panel-heading"><h2>Combat stats</h2></div><div class="combat-body">"#,

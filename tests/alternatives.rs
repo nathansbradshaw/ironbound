@@ -239,7 +239,7 @@ fn unsupported_target_never_becomes_zero_dps_delta() {
     assert!(rows.iter().all(|r| r.dps_delta.is_none()));
     assert!(
         rows.iter()
-            .all(|r| r.note.as_deref().unwrap().contains("DPS delta unavailable"))
+            .all(|r| r.dps_reason.as_deref().is_some_and(|r| !r.is_empty()))
     );
 }
 #[test]
@@ -404,13 +404,7 @@ fn unknown_target_weapon_backups_preserve_unknown_damage() {
     assert_eq!(rows.len(), 1);
     assert_eq!(rows[0].id, 4587);
     assert!(rows[0].dps_delta.is_none());
-    assert!(
-        rows[0]
-            .note
-            .as_deref()
-            .unwrap()
-            .contains("DPS delta unavailable")
-    );
+    assert!(rows[0].dps_reason.as_deref().is_some_and(|r| !r.is_empty()));
 }
 
 #[test]

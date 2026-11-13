@@ -81,6 +81,19 @@ pub fn render(
         return html;
     }
     html.push_str(r#"<div class="tooltip-alternatives"><strong class="tooltip-heading">Owned alternatives</strong><p class="tooltip-context">Key changes vs this item · one attack window</p>"#);
+    let shared_reason = choices.first().and_then(|first| {
+        let reason = first.dps_reason.as_deref()?;
+        choices
+            .iter()
+            .all(|c| c.dps_delta.is_none() && c.dps_reason.as_deref() == Some(reason))
+            .then_some(reason)
+    });
+    if let Some(reason) = shared_reason {
+        html.push_str(&format!(
+            r#"<p class="tooltip-context">DPS comparison unavailable: {}</p>"#,
+            esc(reason)
+        ));
+    }
     for choice in choices {
         html.push_str(&format!(
             r#"<button type="button" class="tooltip-choice" data-action="pick-gear:{}:{}:{}" data-slot="{}" aria-label="Equip {}"><span class="tooltip-item">{}<strong>{}</strong><span class="tooltip-equip-label">Equip</span></span><span class="tooltip-metrics">"#,
@@ -90,7 +103,7 @@ pub fn render(
         let (dps, benefit) = match choice.dps_delta {
             Some(delta) if delta.abs() < 0.0005 => ("Same DPS".into(), 0.0),
             Some(delta) => (format!("{delta:+.3}"), delta),
-            None => ("Unverified".into(), 0.0),
+            None => ("Unavailable".into(), 0.0),
         };
         html.push_str(&metric("dps", "DPS", &dps, benefit));
         // Keep the existing two-highlight policy, preserving both sides of a tradeoff.
@@ -145,6 +158,14 @@ pub fn render(
                 r#"<span class="tooltip-warning">{}</span>"#,
                 esc(&warning)
             ));
+        }
+        if shared_reason.is_none() {
+            if let Some(reason) = &choice.dps_reason {
+                html.push_str(&format!(
+                    r#"<span class="tooltip-note">DPS: {}</span>"#,
+                    esc(reason)
+                ));
+            }
         }
         if let Some(note) = &choice.note {
             let mut compact = note.split_whitespace().collect::<Vec<_>>().join(" ");

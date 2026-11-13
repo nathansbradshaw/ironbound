@@ -2,7 +2,7 @@
 use crate::planner::Target;
 use serde::Deserialize;
 use std::collections::{BTreeMap, BTreeSet};
-fn source(id:i32)->i32 {crate::encounters::source_npc_id(id)}
+fn source(id:i32)->i32 {if scale(id).is_some(){crate::encounters::source_npc_id(id)}else{id}}
 fn scale(id:i32)->Option<&'static crate::raid_scaling::Scale> {crate::encounters::window(id).and_then(|w|w.raid_scale.as_ref())}
 
 #[derive(Clone, Debug, Deserialize)]
@@ -98,6 +98,7 @@ impl Raid {
                             .iter()
                             .find(|t| source(t.id) == phase.id)
                             .cloned()
+                            .or_else(|| (scale(phase.id)==targets.first().and_then(|t|scale(t.id)) && crate::planner::monster(phase.id).is_some()).then(||phase.clone()))
                             .or_else(||{
                                 let context=targets.first().and_then(|t|scale(t.id));
                                 crate::encounters::mechanics().windows.iter().find(|w|w.npc_id==phase.id && w.raid_scale.as_ref()==context && (context.is_some() || w.id==phase.id)).map(|w|Target{id:w.id,style:phase.style.clone()})

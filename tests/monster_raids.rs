@@ -598,9 +598,16 @@ fn ruby_and_multi_hit_weapons_keep_verzik_limiters_per_splat() {
     );
 }
 #[test]
-fn newer_special_rotation_models_do_not_implicitly_enable_unreviewed_raid_states(){
-    for id in [11278,11283,200000,201005,203200,205023,206003] {
-        let result=ironbound::special_attacks::evaluate(&member(),&set(34725,None),"Magic",planner::monster(id).unwrap(),0,&Default::default());
-        assert!(result.unwrap_err().contains("not verified"),"{id}");
+fn newer_special_rotation_models_do_not_implicitly_enable_unreviewed_raid_states() {
+    for id in [11278, 11283, 200000, 201005, 203200, 205023, 206003] {
+        let result = ironbound::special_attacks::evaluate(
+            &member(),
+            &set(34725, None),
+            "Magic",
+            planner::monster(id).unwrap(),
+            0,
+            &Default::default(),
+        );
+        assert!(result.unwrap_err().contains("not verified"), "{id}");
     }
 }

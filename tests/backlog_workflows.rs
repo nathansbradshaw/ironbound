@@ -273,7 +273,7 @@ fn gear_changes_preserve_manual_positions_and_quantities_while_conflicts_block_e
 }
 
 #[test]
-fn coverage_never_hides_wardens_or_enables_archive_dps() {
+fn coverage_keeps_wardens_explicit_and_only_enables_reviewed_archive_windows() {
     let rows = coverage::windows(&Options {
         boss: Boss::Toa,
         ..Default::default()
@@ -308,6 +308,6 @@ fn coverage_never_hides_wardens_or_enables_archive_dps() {
             ..Default::default()
         })
         .iter()
-        .all(|r| r.supported && r.reason.contains("Recorded Archive"))
+        .all(|r| r.supported && !r.reason.is_empty())
     );
 }

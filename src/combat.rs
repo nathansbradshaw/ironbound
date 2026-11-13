@@ -1547,6 +1547,9 @@ pub(crate) fn calculate_mode(
         if flat_armour != 0 || crate::encounters::window(monster.id).is_some_and(|w| {
             w.npc_damage.is_some()
                 || w.ocellus_explosions.is_some()
+                || w.raid_scale.is_some()
+                || w.hp_probe.is_some()
+                || w.npc_id==11278
                 || w.huey_pillar
                 || crate::monster_rules::profile(monster.id).is_some_and(|p| {
                     matches!(

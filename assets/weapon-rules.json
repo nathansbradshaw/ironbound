@@ -178,6 +178,7 @@
     {"accuracy":[23,20],"damage":[23,20],"equipment_effect":"slayer_imbued","slayer_task":true,"styles":["Ranged","Magic"]}
   ],
   "weapons": [
+    {"family":"dawnbringer","ids":[22516],"requirements":{}},
     {"adjustments":[{"bonuses":{"str":-22},"context":"outside_toa","offensive":{"stab":-50}}],"family":"partisan","ids":[30891],"kalphite_damage_percent":115,"requirements":{"Attack":80}},
     {"alternate_families":["blue_moon_melee"],"family":"blue_moon","ids":[28988],"requirements":{"Attack":70,"Magic":75},"spell_families":["wind","ancient","grasp"]},
     {"demonbane_percent":5,"effects":["demonbane"],"family":"slash_sword","ids":[29577],"requirements":{"Attack":60}},
@@ -207,7 +208,6 @@
     {"family":"crush","ids":[24417],"requirements":{"Attack":80}},
     {"family":"crystal_bow","ids":[23983],"requirements":{"Agility":50,"Ranged":70}},
     {"family":"crystal_bow","ids":[25865,25867,25884,25886,25888,25890,25892,25894,25896],"requirements":{"Agility":70,"Ranged":80}},
-    {"family":"dawnbringer","ids":[22516],"requirements":{}},
     {"family":"dragon_crossbow","ids":[21012,25916,25918],"multipliers":[{"accuracy":true,"attribute":"dragon","denominator":10,"numerator":13},{"additive_with_task_damage":true,"attribute":"dragon","damage":true,"denominator":4,"numerator":5}],"requirements":{"Ranged":70}},
     {"family":"dragon_crossbow","ids":[21902,28053],"requirements":{"Ranged":64}},
     {"family":"dragon_crossbow","ids":[11785],"requirements":{"Ranged":70}},

@@ -14,7 +14,7 @@ count and task access are not inferred.
 | Fractured Archive | Default route, recorded defences, explicit 500-HP points for large bodies |
 | Expert ToA | Exactly solo level 300, path 0; vulnerable style windows |
 
-There are 191 declared raid/Nex attack states. Chambers also has five-player
+There are 192 declared raid/Nex attack states. Chambers also has five-player
 normal and three-player CM data references; these are not additional bestiary
 ratings. Alternative state buttons retain the selected raid scale. Preset target
 IDs retain their scale when shared; room toggles preserve it too.
@@ -47,6 +47,11 @@ IDs retain their scale when shared; room toggles preserve it too.
   flip. The timed opportunity uses two expected ticks; the other probe retains
   ordinary cooldown. Archive team HP scaling is unverified: edit current HP to
   the observed value for HP-dependent attacks. Do not read 500 as total boss HP.
+  Xarth has separate phase-1 Magic and phase-2 melee route suggestions at 80%
+  Demonbane effectiveness; corpse healing/cast-speed changes are excluded.
+  Ezekiel uses the pinned ordinary formula; reported special-state Magic caps
+  are not inferred from it. Bork stun uses the pinned defence reduction without
+  assuming an additional guaranteed-hit effect.
 - **Expert ToA:** solo-300 HP/rounding and defence-roll scale, existing ToA
   Fang/Shadow behaviour, style-restricted Akkha and reviewed Wardens hit models.
   Legacy ToA's invocation controls retain their existing supported range.
@@ -67,7 +72,7 @@ The public Wiki calculator is pinned at
 [Theatre scaling](https://github.com/weirdgloop/osrs-dps-calc/blob/74958b18f6559cf1bf58f7ac74e7a442a7ac8e2f/src/lib/scaling/TheatreOfBlood.ts),
 [ToA scaling](https://github.com/weirdgloop/osrs-dps-calc/blob/74958b18f6559cf1bf58f7ac74e7a442a7ac8e2f/src/lib/scaling/TombsOfAmascut.ts),
 [NPC transforms and attack speed](https://github.com/weirdgloop/osrs-dps-calc/blob/74958b18f6559cf1bf58f7ac74e7a442a7ac8e2f/src/lib/PlayerVsNPCCalc.ts),
-and [phase states](https://github.com/weirdgloop/osrs-dps-calc/blob/74958b18f6559cf1bf58f7ac74e7a442a7ac8e2f/src/lib/MonsterPhases.ts).
+and [phase states](https://github.com/weirdgloop/osrs-dps-calc/blob/74958b18f6559cf1bf58f7ac74e7a442a7ac8e2f/src/lib/scaling/Phases.ts).
 Wiki encounter context:
 [Nex](https://oldschool.runescape.wiki/w/Nex),
 [Fumus](https://oldschool.runescape.wiki/w/Fumus),

@@ -289,6 +289,12 @@ fn profile(name: &str) -> Option<Profile> {
             0,
             "Ordinary attacks against the Mimic body. Clue access, special attacks, freezing, candy minions and dodging stomps are not scored.",
         ),
+        "Tormented Demons" => (
+            80,
+            &["Melee", "Ranged", "Magic"],
+            0,
+            "Bring two different attack styles for protection switches, protection prayers and prayer restoration. While Guthix Sleeps access is not checked. This is a shielded outgoing gear screen; unshielded attacks, phase uptime, incoming damage and full-fight supplies are not scored.",
+        ),
         "Skotizo" => (
             80,
             &["Melee", "Ranged"],
@@ -552,7 +558,15 @@ fn assess_gear_catalog(snapshot: &Snapshot, preferences: &Options) -> Vec<Assess
             if let Some(choice) = best { choices.push(choice); } else if requires_all(&entry.name) { return Assessment { readiness: Readiness::Struggle, requirements: Requirements::default(), reason: format!("No usable owned {required} setup with supported damage. Check weapons, ammunition and runes."), detail: p.note.into(), wilderness: false, preview: None }; }
         }
         if choices.is_empty() { return Assessment { readiness: Readiness::Struggle, requirements: Requirements::default(), reason: "No usable owned setup with supported damage. Check weapons, ammunition and runes.".into(), detail: p.note.into(), wilderness: false, preview: None }; }
-        if !requires_all(&entry.name) { choices.sort_by(|a,b| b.0.total_cmp(&a.0)); choices.truncate(1); }
+        if !requires_all(&entry.name) {
+            choices.sort_by(|a,b| b.0.total_cmp(&a.0));
+            if entry.name == "Tormented Demons" {
+                if choices.len() < 2 {
+                    return Assessment { readiness: Readiness::Struggle, requirements: Requirements::default(), reason: "Two supported owned attack styles are needed for protection switches.".into(), detail: p.note.into(), wilderness: false, preview: None };
+                }
+                choices.truncate(2);
+            } else { choices.truncate(1); }
+        }
         let mut readiness = Readiness::WellEquipped;
         let hp = member.level("Hitpoints").unwrap();
         let def = member.level("Defence").unwrap();

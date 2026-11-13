@@ -19,6 +19,7 @@ pub enum Kind {
     PhosaniMinion,
     HueyTail,
     TitanElemental,
+    Tormented,
 }
 #[derive(Clone, Copy, Debug, Default, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
@@ -98,6 +99,7 @@ pub fn instant_defeat(id: i32, weapon: i32) -> Option<i32> {
 }
 pub fn guaranteed_accuracy(id: i32, attack_type: &str) -> bool {
     profile(id).is_some_and(|p| p.kind == Kind::Totem && attack_type == "magic")
+        || encounters::window(id).is_some_and(|w| w.tormented_defenceless)
 }
 /// Elemental accuracy bypasses normal rolls, weakness accuracy and reroll gear.
 pub fn elemental_accuracy(id: i32, attack_type: &str, magic_bonus: i32, void: bool) -> Option<f64> {
@@ -159,6 +161,7 @@ pub enum Transform {
     Zulrah,
     Kraken,
     Corporeal,
+    TormentedShield,
     Immune,
     Scaled {
         numerator: u32,
@@ -182,6 +185,7 @@ impl Transform {
             // A positive hit stays at least one; an accuracy miss remains zero.
             Self::Kraken if damage > 0 => vec![((damage / 7).max(1), probability)],
             Self::Corporeal => vec![(damage / 2, probability)],
+            Self::TormentedShield if damage > 0 => vec![((damage * 4 / 5).max(1), probability)],
             Self::Immune => vec![(0, probability)],
             Self::Scaled {
                 numerator,
@@ -257,6 +261,9 @@ pub fn transform_for(
             Transform::Kraken
         }
         Some(Kind::Corporeal) if !corpbane(weapon, attack_type) => Transform::Corporeal,
+        Some(Kind::Tormented) if !tormented_shield_exempt(weapon, attack_type, spell) => {
+            Transform::TormentedShield
+        }
         Some(Kind::Skotizo) => Transform::Skotizo {
             altars: encounters::window(id)
                 .and_then(|w| w.active_altars)
@@ -296,6 +303,33 @@ fn compact(hits: impl IntoIterator<Item = (i32, f64)>) -> Vec<(i32, f64)> {
         }
     }
     result.into_iter().collect()
+}
+/// Fire-shield exceptions are style-specific; holding a demonbane melee weapon
+/// while casting an ordinary spell does not exempt the spell.
+pub fn tormented_shield_exempt(weapon: i32, attack_type: &str, spell: &str) -> bool {
+    let name = planner::gear(weapon).map(|g| g.name.as_str()).unwrap_or("");
+    match attack_type {
+        "magic" => rules::spells()
+            .iter()
+            .any(|s| s.name == spell && s.name.contains("Demonbane")),
+        "light" | "standard" | "heavy" => name == "Scorching bow",
+        "stab" | "slash" | "crush" => [
+            "Silverlight",
+            "Darklight",
+            "Arclight",
+            "Emberlight",
+            "Bone claws",
+            "Burning claws",
+            "Abyssal bludgeon",
+            "Abyssal dagger",
+            "Abyssal whip",
+            "Abyssal tentacle",
+            "Abyssal whip (or)",
+            "Abyssal tentacle (or)",
+        ]
+        .contains(&name),
+        _ => false,
+    }
 }
 pub fn corpbane(weapon: i32, attack_type: &str) -> bool {
     if attack_type == "magic" {

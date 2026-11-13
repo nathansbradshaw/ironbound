@@ -145,8 +145,13 @@ independent references, browser verification, then gameplay verification.
   Guthan healing is partial. Quest/event variants need separate validation.
 - [ ] Zilyana / Graardor / Sarachnis: complete basic attack mixtures, adds,
   movement and specials; retain the existing selected incoming scenarios.
-- [ ] Fragment of Seren, Slagilith and Tormented Demons: their damage limiters,
-  weapon exceptions, protection/shield states and phase-specific effects.
+- [ ] Fragment of Seren and Slagilith: their damage limiters, weapon exceptions
+  and phase-specific effects.
+- [x] Tormented Demon selected outgoing: source 13599 shielded/defenceless
+  comparisons, per-splat 20% reduction and style-specific demonbane/abyssal
+  exceptions. Defenceless accuracy does not remove the shield.
+- [ ] Tormented Demons full fight: unshielded bonus/cooldown, protection switches,
+  other variants, multi-demon timing, firebombs, incoming damage and supplies.
 - [ ] Vampyres, leafy and flying monsters: exact weapon/spell requirements and
   exceptions; a blanket attribute block is only a temporary coverage gate.
 
@@ -265,3 +270,15 @@ build pass again. Preview checks show example Dharok incoming DPS rising from
 retains 0.625 DPS under that prayer with its branch assumptions visible. No
 console warnings/errors. Prayer drain, tunnels, complete chest-trip supplies
 and matched gameplay validation remain open; publication evidence is in the PR.
+
+Tormented Demon follow-up, 13 November 2026: source NPC 13599 now has separate
+shielded and defenceless outgoing comparisons sharing one 600-HP pool. The
+shield applies after equipment and bolts to each hitsplat, including recomputed
+ruby procs; style-specific demonbane and abyssal attacks bypass it. Defenceless
+changes accuracy to 100% while retaining the shield. Nine focused
+regressions cover rounding, multi-hit/chained attacks, Blood Moon cooldown,
+Dharok ordering, spell/weapon exceptions and current-HP/export boundaries. Both
+states are probes without a complete fight workload. The unshielded bonus attack
+is visible but gated; protection switches, other NPC variants, multi-demon
+cooldowns, burn timing, incoming attacks and full-fight supplies stay open. The
+positive-hit minimum follows the pinned calculator and awaits gameplay evidence.

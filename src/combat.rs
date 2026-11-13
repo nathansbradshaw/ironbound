@@ -1365,6 +1365,8 @@ pub fn calculate_configured(
     {
         if crate::encounters::window(monster.id).is_some_and(|w| {
             w.npc_damage.is_some()
+                || crate::monster_rules::profile(monster.id)
+                    .is_some_and(|p| p.kind == crate::monster_rules::Kind::Tormented)
                 || w.huey_pillar
                 || crate::monster_rules::profile(monster.id)
                     .is_some_and(|p| p.kind == crate::monster_rules::Kind::HueyTail)

@@ -1715,6 +1715,8 @@ fn act(action: &str) {
                     s.saved.options.confirmations.insert(id.into(), token);
                 }
             }
+        } else if let Some(value)=action.strip_prefix("simulation-warden:").and_then(|v|v.parse::<u32>().ok()) {
+            s.saved.options.simulation.warden=value.min(1);
         } else if action == "simulate-fight" {
             let plan=s.plan();
             let key=simulation_key(&s,&plan);
@@ -4484,7 +4486,13 @@ fn simulation_panel(s: &State, p: &Plan) -> String {
         } else {
             true
         };
-        if relevant {
+        if relevant && key == "warden" {
+            html.push_str("<div role=\"group\" aria-label=\"P2 Warden\"><span>Fight in P2</span><div class=\"combat-subtype-options\">");
+            for (n, label) in [(0, "Elidinis"), (1, "Tumeken")] {
+                html.push_str(&format!("<button class=\"phase {}\" data-action=\"simulation-warden:{n}\" aria-pressed=\"{}\">{label}</button>",if value==n {"active"}else{""},value==n));
+            }
+            html.push_str("</div></div>");
+        } else if relevant {
             html.push_str(&format!("<label>{}<input id=\"sim-{key}\" type=\"number\" min=\"{min}\" max=\"{max}\" value=\"{value}\"></label>",esc(label)));
         }
     }

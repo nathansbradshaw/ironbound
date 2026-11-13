@@ -345,6 +345,11 @@ fn all_three_build_only_from_real_carried_phase_sets() {
     let toa = planner::plan(&snapshot, &options);
     let m = Model::from_plan(&snapshot, &options, &toa).unwrap();
     assert_eq!(m.encounter, Encounter::Wardens);
+    options.simulation.warden = 1;
+    let other = Model::from_plan(&snapshot, &options, &toa).unwrap();
+    assert_eq!(other.encounter, Encounter::Wardens);
+    assert_eq!(other.settings.warden, 1);
+    assert_eq!(other.attacks[3].hits.accuracy, 1.0);
     for name in ["Vorkath", "Yama"] {
         let entry = ironbound::encounters::catalog()
             .iter()

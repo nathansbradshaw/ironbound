@@ -1,6 +1,6 @@
 # Full-fight and consumption scenarios
 
-Choose **Vorkath**, **Yama**, or **Tombs of Amascut**, then open **Combat → Full-fight & consumption simulation**. Set your execution assumptions and run the scenario. For ToA this covers the complete **Wardens fight**, not the preceding rooms.
+Choose **Vorkath**, **Yama**, or **Tombs of Amascut**, then open **Combat → Full-fight & consumption simulation**. Set your execution assumptions and run the scenario. These are solo scenarios without teammate damage. For ToA this covers the complete **Wardens fight**, not the preceding rooms.
 
 - **First-fight demand:** median and 90th-percentile duration, attacks, runes, projectiles, weapon charges, blowpipe scales, food and prayer doses.
 - **Packed coverage:** how many first fights completed with the starting bag and declared loaded charges. Extra food/potions are demand forecasts; they never appear in your actual bag or export.

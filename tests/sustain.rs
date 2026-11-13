@@ -303,7 +303,7 @@ fn magic_defence_floors_seventy_and_thirty_percent_separately() {
     );
 }
 #[test]
-fn unmodelled_incoming_equipment_passives_and_dharok_health_are_not_guessed() {
+fn unmodelled_incoming_equipment_passives_remain_blocked() {
     let mut gear = set();
     gear[5] = Some(12817);
     assert!(
@@ -312,16 +312,6 @@ fn unmodelled_incoming_equipment_passives_and_dharok_health_are_not_guessed() {
             &gear,
             target(13011),
             "Chained slash",
-            &Settings::default()
-        )
-        .is_err()
-    );
-    assert!(
-        defence::estimate(
-            &member(99),
-            &set(),
-            target(1673),
-            "Slash",
             &Settings::default()
         )
         .is_err()

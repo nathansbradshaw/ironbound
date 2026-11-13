@@ -416,18 +416,7 @@ fn text_input(id: &str) -> String {
         .unwrap_or_default()
 }
 fn image(id: i32) -> String {
-    // Every client downloads the same public icon pack inside Wasm; no owned-item URLs leave the page.
-    static ICONS: std::sync::OnceLock<BTreeMap<i32, String>> = std::sync::OnceLock::new();
-    let icons = ICONS.get_or_init(|| {
-        serde_json::from_str(include_str!("../assets/item-icons-pack.json"))
-            .expect("public icon pack")
-    });
-    match icons.get(&id) {
-        Some(data) => format!(
-            r#"<img src="data:image/png;base64,{data}" alt="" width="32" height="32" loading="lazy">"#
-        ),
-        None => "<span class=\"unknown-item\" aria-hidden=\"true\">?</span>".into(),
-    }
+    crate::tooltip::item_icon(id)
 }
 
 fn button(action: &str, label: &str, class: &str) -> String {
@@ -459,10 +448,10 @@ fn show_item_tooltip(item: &Element) {
     let text = item
         .get_attribute("data-complete-explanation")
         .unwrap_or_else(|| {
-            let suffix = STATE.with(|state| {
+            let (choices, cap) = STATE.with(|state| {
                 let s = state.borrow();
                 if s.shared_setup.is_some() {
-                    return String::new();
+                    return (Vec::new(), None);
                 }
                 let p = s.plan();
                 let action = item.get_attribute("data-action").unwrap_or_default();
@@ -497,58 +486,12 @@ fn show_item_tooltip(item: &Element) {
                 } else {
                     Vec::new()
                 };
-                if choices.is_empty() {
-                    return String::new();
-                }
-                let mut lines = vec!["Owned alternatives · one attack window".to_string()];
-                for choice in choices {
-                    let mut facts = Vec::new();
-                    facts.push(match choice.dps_delta {
-                        Some(delta) if delta.abs() < 0.0005 => "same DPS".into(),
-                        Some(delta) => format!("{delta:+.3} DPS"),
-                        None => "DPS unverified".into(),
-                    });
-                    let defence = signed_defence(&choice.defence_delta);
-                    if !defence.is_empty() {
-                        facts.push(defence);
-                    }
-                    if !choice.defence_delta.is_empty() && choice.prayer_delta.abs() >= 0.005 {
-                        facts.push(format!("{:+.2} prayer/min", choice.prayer_delta));
-                    }
-                    if !choice.fits_budget {
-                        if s.saved
-                            .options
-                            .max_switches
-                            .is_some_and(|cap| choice.max_changes > cap)
-                        {
-                            facts.push(format!("needs {} changes", choice.max_changes));
-                        } else {
-                            facts.push("rebuild / check bag".into());
-                        }
-                    }
-                    lines.push(format!(
-                        "{}\n{}",
-                        planner::item_name(choice.id),
-                        facts.join(" · ")
-                    ));
-                    if let Some(note) = choice.note {
-                        let mut compact = String::new();
-                        for word in note.split_whitespace() {
-                            if compact.len() + word.len() + 1 > 140 {
-                                compact.push('…');
-                                break;
-                            }
-                            if !compact.is_empty() {
-                                compact.push(' ');
-                            }
-                            compact.push_str(word);
-                        }
-                        lines.push(compact);
-                    }
-                }
-                format!("\n\n{}", lines.join("\n"))
+                (choices, s.saved.options.max_switches)
             });
-            let text = format!("{base}{suffix}");
+            let current = item
+                .get_attribute("data-item-id")
+                .and_then(|id| id.parse().ok());
+            let text = crate::tooltip::render(&base, current, &choices, cap);
             let _ = item.set_attribute("data-complete-explanation", &text);
             text
         });
@@ -573,7 +516,8 @@ fn show_item_tooltip(item: &Element) {
         return;
     }
     let _ = tooltip.set_attribute("data-layout", &layout);
-    tooltip.set_text_content(Some(&text));
+    // Only our escaped renderer produces this cached markup.
+    tooltip.set_inner_html(&text);
     let _ = tooltip.remove_attribute("hidden");
     let _ = tooltip.set_attribute("style", "left:0;top:0");
     let bounds = tooltip.get_bounding_client_rect();
@@ -2479,7 +2423,7 @@ fn loadout_panel(s: &State, p: &Plan) -> String {
             slot_index,
         );
         let explanation = format!("{tooltip}\n{reason}");
-        html.push_str(&format!(r#"<button class="equipment-edit {class}" data-action="edit-equipment:{slot_index}" data-explanation="{}" aria-describedby="item-explanation" aria-label="Change {}">{}</button>"#,esc(&explanation),esc(&tooltip),slot(set[slot_index],planner::SLOTS[slot_index],"",None)));
+        html.push_str(&format!(r#"<button class="equipment-edit {class}" data-action="edit-equipment:{slot_index}" data-item-id="{}" data-explanation="{}" aria-describedby="item-explanation" aria-label="Change {}">{}</button>"#,set[slot_index].map(|id| id.to_string()).unwrap_or_default(),esc(&explanation),esc(&tooltip),slot(set[slot_index],planner::SLOTS[slot_index],"",None)));
     }
     html.push_str(
         "</div></div><details class=\"loadout-notes\"><summary>Spell & exclusions</summary>",
@@ -2583,7 +2527,7 @@ fn inventory_panel(s: &State, p: &Plan) -> String {
                 )
             })
             .unwrap_or_else(|| format!("Inventory slot {}: Empty\nChoose an owned item.", i + 1));
-        html.push_str(&format!("<button class=\"inventory-edit\" data-action=\"edit-inventory:{i}\" data-explanation=\"{}\" aria-describedby=\"item-explanation\" aria-label=\"Inventory slot {}\" {}>",esc(&explanation),i+1,if phase.is_some() { "disabled" } else { "" }));
+        html.push_str(&format!("<button class=\"inventory-edit\" data-action=\"edit-inventory:{i}\" data-item-id=\"{}\" data-explanation=\"{}\" aria-describedby=\"item-explanation\" aria-label=\"Inventory slot {}\" {}>",item.map(|p| p.id.to_string()).unwrap_or_default(),esc(&explanation),i+1,if phase.is_some() { "disabled" } else { "" }));
         html.push_str(&slot(
             item.map(|p| p.id),
             &format!(

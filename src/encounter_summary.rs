@@ -133,7 +133,9 @@ impl Accumulator {
 /// Both sides use exactly the same covered workload. Missing damage on either
 /// side excludes that window from both totals and produces a visible omission.
 pub fn compare(comparison: &tradeoffs::Comparison) -> Overview {
-    let (left, right) = (&comparison.left, &comparison.right);
+    budgets(&comparison.left, &comparison.right)
+}
+pub fn budgets(left: &tradeoffs::Budget, right: &tradeoffs::Budget) -> Overview {
     let a: BTreeMap<_, _> = left.windows.iter().map(|w| (key(w), w)).collect();
     let b: BTreeMap<_, _> = right.windows.iter().map(|w| (key(w), w)).collect();
     let keys: BTreeSet<_> = a.keys().chain(b.keys()).cloned().collect();

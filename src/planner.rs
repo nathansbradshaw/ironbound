@@ -884,7 +884,113 @@ fn refine_dps(
     catalog: &[Gear],
     options: &Options,
 ) {
-    let id = match boss {
+    // Refine ordinary armour and each complete Void setup independently. A
+    // one-slot search cannot enter or leave a four-piece set reliably.
+    let seeds = void_sets(set, style, m, owned, options);
+    refine_dps_seed(set, style, boss, m, owned, catalog, options);
+    if seeds.is_empty() {
+        return;
+    }
+    let mut trials = vec![set.clone()];
+    for mut seed in seeds {
+        let mut pinned = options.clone();
+        for slot in [0, 4, 7, 9] {
+            pinned
+                .gear_overrides
+                .insert(format!("{style}:{slot}"), seed[slot].unwrap());
+        }
+        refine_dps_seed(&mut seed, style, boss, m, owned, catalog, &pinned);
+        trials.push(seed);
+    }
+    let Some(target) = refinement_target(style, boss, options).and_then(monster) else {
+        return;
+    };
+    let judge_magic = judge_magic_set(style, boss, m, owned, catalog, options);
+    let chosen = choose_equipment(
+        &trials,
+        style,
+        m,
+        owned,
+        options,
+        target,
+        judge_magic.as_ref(),
+    );
+    *set = trials[chosen].clone();
+}
+
+/// Cosmetic variants share a search branch, but normal/elite pieces remain
+/// distinct. Every complete combination is eligible at every encounter.
+fn void_sets(
+    seed: &[Option<i32>],
+    style: &str,
+    m: &Member,
+    owned: &BTreeMap<i32, u32>,
+    options: &Options,
+) -> Vec<Vec<Option<i32>>> {
+    let suffix = match crate::rules::base_style(style) {
+        "Melee" => "melee",
+        "Ranged" => "ranged",
+        "Magic" => "magic",
+        _ => return Vec::new(),
+    };
+    let Some(rule) = crate::rules::registry()
+        .equipment_sets
+        .iter()
+        .find(|rule| rule.effect == format!("void_{suffix}"))
+    else {
+        return Vec::new();
+    };
+    let mut trials = vec![seed.to_vec()];
+    for piece in &rule.pieces {
+        let pin = options
+            .gear_overrides
+            .get(&format!("{style}:{}", piece.slot));
+        let mut seen = BTreeSet::new();
+        let ids: Vec<_> = piece
+            .ids
+            .iter()
+            .copied()
+            .filter(|id| {
+                pin.is_none_or(|pin| pin == id)
+                    && owned.get(id).copied().unwrap_or(0) > 0
+                    && !options.excluded.contains(id)
+                    && can_use(*id, m)
+                    && gear(*id).is_some_and(|g| g.slot == SLOT_KEYS[piece.slot])
+            })
+            .filter(|id| {
+                crate::combat::stats(*id).is_some_and(|stats| {
+                    let elite = crate::rules::registry().equipment_sets.iter().any(|set| {
+                        set.effect.starts_with("elite_void_")
+                            && set
+                                .pieces
+                                .iter()
+                                .any(|p| p.slot == piece.slot && p.ids.contains(id))
+                    });
+                    seen.insert((
+                        stats.offensive.clone(),
+                        stats.defensive.clone(),
+                        stats.bonuses.clone(),
+                        elite,
+                    ))
+                })
+            })
+            .collect();
+        trials = trials
+            .into_iter()
+            .flat_map(|set| {
+                ids.iter().map(move |id| {
+                    let mut set = set.clone();
+                    set[piece.slot] = Some(*id);
+                    set
+                })
+            })
+            .collect();
+    }
+    trials
+}
+
+fn refinement_target(style: &str, boss: Boss, options: &Options) -> Option<i32> {
+    Some(match boss {
         Boss::Barrows => {
             if style == "Ranged" {
                 1672
@@ -897,106 +1003,171 @@ fn refine_dps(
             "Magic" => 11789,
             _ => 11778,
         },
-        Boss::Custom => match options.targets.iter().find(|t| t.style == style) {
-            Some(t) => t.id,
-            None => return,
-        },
-    };
-    let Some(target) = monster(id) else {
-        return;
-    };
+        Boss::Custom => options.targets.iter().find(|t| t.style == style)?.id,
+    })
+}
+
+fn judge_magic_set(
+    style: &str,
+    boss: Boss,
+    m: &Member,
+    owned: &BTreeMap<i32, u32>,
+    catalog: &[Gear],
+    options: &Options,
+) -> Option<Vec<Option<i32>>> {
     let relevant: Vec<_> = options
         .targets
         .iter()
         .filter(|t| t.style == style)
         .collect();
-    let judge_only =
-        !relevant.is_empty() && relevant.iter().all(|t| crate::yama::is_judge_window(t.id));
-    // Judge melee is a separate attack commitment from the main slash set.
-    // Magic refinement has no reverse dependency, so this comparison is acyclic.
-    let judge_magic = (judge_only && crate::rules::base_style(style) == "Melee")
-        .then(|| style_set("Magic", boss, m, owned, catalog, options));
-    let choose = |trials: &[Vec<Option<i32>>]| {
-        if let Some(magic) = &judge_magic {
-            let best = trials
-                .iter()
-                .enumerate()
-                .filter_map(|(i, set)| {
-                    crate::yama::judge_cycle(m, set, magic, options, owned)
-                        .ok()
-                        .map(|cycle| {
-                            (
-                                i,
-                                cycle.seconds,
-                                crate::guidance::quality(style, set, options),
-                            )
-                        })
-                })
-                .min_by(|a, b| a.1.total_cmp(&b.1).then(a.2.cmp(&b.2)));
-            if let Some((index, _, _)) = best {
-                return index;
-            }
-        }
-        if judge_only && crate::rules::base_style(style) == "Magic" {
-            if let Some((index, _)) = trials
-                .iter()
-                .enumerate()
-                .filter_map(|(i, set)| {
-                    crate::combat::calculate_configured(
+    (!relevant.is_empty()
+        && relevant.iter().all(|t| crate::yama::is_judge_window(t.id))
+        && crate::rules::base_style(style) == "Melee")
+        .then(|| style_set("Magic", boss, m, owned, catalog, options))
+}
+
+fn choose_equipment(
+    trials: &[Vec<Option<i32>>],
+    style: &str,
+    m: &Member,
+    owned: &BTreeMap<i32, u32>,
+    options: &Options,
+    target: &Monster,
+    judge_magic: Option<&Vec<Option<i32>>>,
+) -> usize {
+    if !crate::recommendation::enabled(options) {
+        let metrics: Vec<_> = trials
+            .iter()
+            .map(|set| {
+                let dps = crate::combat::calculate_configured(
+                    m,
+                    set,
+                    style,
+                    target,
+                    crate::rules::spell_name_for_target(
                         m,
                         set,
-                        style,
-                        target,
-                        crate::rules::spell_name_for_target(
-                            m,
-                            set,
-                            owned,
-                            &options.combat,
-                            target,
-                            options.raid_level,
-                        ),
-                        options.raid_level,
+                        owned,
                         &options.combat,
-                    )
-                    .ok()
-                    .map(|r| (i, r.dps))
-                })
-                .max_by(|a, b| a.1.total_cmp(&b.1))
+                        target,
+                        options.raid_level,
+                    ),
+                    options.raid_level,
+                    &options.combat,
+                )
+                .ok()
+                .map(|r| r.dps);
+                crate::ranking::equipment_metrics(set, dps, options.ranking.defence)
+            })
+            .collect();
+        if options.ranking.weights.dps > 0.0 && metrics.iter().all(|row| row.dps.is_none()) {
+            return 0;
+        }
+        let scores = crate::ranking::rank(&metrics, &options.ranking.weights).scores;
+        let mut best = 0;
+        for i in 1..trials.len() {
+            if scores[i].is_some()
+                && (scores[i] > scores[best]
+                    || scores[i] == scores[best]
+                        && equipment_tiebreak(&trials[i], style)
+                            > equipment_tiebreak(&trials[best], style))
             {
-                return index;
+                best = i;
             }
         }
-        crate::recommendation::choose(trials, style, m, options, owned)
+        return best;
+    }
+    if let Some(magic) = judge_magic {
+        if let Some((index, _, _)) = trials
+            .iter()
+            .enumerate()
+            .filter_map(|(i, set)| {
+                crate::yama::judge_cycle(m, set, magic, options, owned)
+                    .ok()
+                    .map(|cycle| {
+                        (
+                            i,
+                            cycle.seconds,
+                            crate::guidance::quality(style, set, options),
+                        )
+                    })
+            })
+            .min_by(|a, b| a.1.total_cmp(&b.1).then(a.2.cmp(&b.2)))
+        {
+            return index;
+        }
+    }
+    let relevant: Vec<_> = options
+        .targets
+        .iter()
+        .filter(|t| t.style == style)
+        .collect();
+    if !relevant.is_empty()
+        && relevant.iter().all(|t| crate::yama::is_judge_window(t.id))
+        && crate::rules::base_style(style) == "Magic"
+    {
+        if let Some((index, _)) = trials
+            .iter()
+            .enumerate()
+            .filter_map(|(i, set)| {
+                crate::combat::calculate_configured(
+                    m,
+                    set,
+                    style,
+                    target,
+                    crate::rules::spell_name_for_target(
+                        m,
+                        set,
+                        owned,
+                        &options.combat,
+                        target,
+                        options.raid_level,
+                    ),
+                    options.raid_level,
+                    &options.combat,
+                )
+                .ok()
+                .map(|r| (i, r.dps))
+            })
+            .max_by(|a, b| a.1.total_cmp(&b.1))
+        {
+            return index;
+        }
+    }
+    crate::recommendation::choose(trials, style, m, options, owned)
+}
+
+fn refine_dps_seed(
+    set: &mut Vec<Option<i32>>,
+    style: &str,
+    boss: Boss,
+    m: &Member,
+    owned: &BTreeMap<i32, u32>,
+    catalog: &[Gear],
+    options: &Options,
+) {
+    let Some(target) = refinement_target(style, boss, options).and_then(monster) else {
+        return;
+    };
+    // Judge melee is a separate attack commitment from the main slash set.
+    // Magic refinement has no reverse dependency, so this comparison is acyclic.
+    let judge_magic = judge_magic_set(style, boss, m, owned, catalog, options);
+    let choose = |trials: &[Vec<Option<i32>>]| {
+        choose_equipment(
+            trials,
+            style,
+            m,
+            owned,
+            options,
+            target,
+            judge_magic.as_ref(),
+        )
     };
     if crate::recommendation::enabled(options) {
         let trials = guided_trials(set, style, m, owned, options);
         let chosen = choose(&trials);
         *set = trials[chosen].clone();
     }
-    let spell = |set: &Vec<Option<i32>>| {
-        crate::rules::spell_name_for_target(
-            m,
-            set,
-            owned,
-            &options.combat,
-            target,
-            options.raid_level,
-        )
-    };
-    let metric = |set: &Vec<Option<i32>>| {
-        let dps = crate::combat::calculate_configured(
-            m,
-            set,
-            style,
-            target,
-            spell(set),
-            options.raid_level,
-            &options.combat,
-        )
-        .ok()
-        .map(|r| r.dps);
-        crate::ranking::equipment_metrics(set, dps, options.ranking.defence)
-    };
     for _ in 0..2 {
         let mut changed = false;
         for slot in [3, 0, 1, 2, 4, 5, 7, 9, 10, 12, 13] {
@@ -1102,36 +1273,9 @@ fn refine_dps(
                     trials.push(trial.clone());
                 }
             }
-            if crate::recommendation::enabled(options) {
-                let chosen = choose(&trials);
-                if trials[chosen] != *set {
-                    *set = trials[chosen].clone();
-                    changed = true;
-                }
-                continue;
-            }
-            let metrics = trials.iter().map(metric).collect::<Vec<_>>();
-            // Preserve the offensive seed when DPS cannot be calculated. A DPS
-            // priority must not silently become a defence/prayer-only objective.
-            if options.ranking.weights.dps > 0.0 && metrics.iter().all(|row| row.dps.is_none()) {
-                continue;
-            }
-            let scores = crate::ranking::rank(&metrics, &options.ranking.weights).scores;
-            let mut best = scores[0];
-            let mut chosen = trials[0].clone();
-            for (trial, score) in trials.into_iter().zip(scores).skip(1) {
-                if score.is_some()
-                    && (score > best
-                        || score == best
-                            && equipment_tiebreak(&trial, style)
-                                > equipment_tiebreak(&chosen, style))
-                {
-                    best = score;
-                    chosen = trial;
-                }
-            }
-            if chosen != *set {
-                *set = chosen;
+            let chosen = choose(&trials);
+            if trials[chosen] != *set {
+                *set = trials[chosen].clone();
                 changed = true;
             }
         }
@@ -1151,9 +1295,6 @@ fn guided_trials(
     let mut guided = set.to_vec();
     crate::guidance::seed(&mut guided, style, member, owned, options);
     let mut trials = vec![set.to_vec(), guided.clone()];
-    trials.extend(crate::guidance::joint_sets(
-        &guided, style, member, owned, options,
-    ));
     for trial in &mut trials {
         align_spell_weapon(trial, style, member, owned, options);
         align_ranged_weapon(trial, style, member, owned, options);

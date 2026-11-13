@@ -11,7 +11,7 @@ use std::collections::BTreeMap;
 
 /// Bump when fight timeline or consumption semantics change. A fitted worksheet
 /// must not silently validate another version of the simulation engine.
-pub const MODEL_REVISION: u32 = 1;
+pub const MODEL_REVISION: u32 = 2;
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(default, deny_unknown_fields)]

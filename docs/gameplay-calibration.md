@@ -1,6 +1,6 @@
 # Compare recorded fights
 
-**Gameplay calibration remains open for Vorkath, normal Yama and Wardens.** No matched, annotated gameplay attempts are checked in. The recorded simulator QA exports and test fixtures are synthetic; they are not calibration samples. Public rules can verify individual mechanics without proving whole-fight time, consumption or survival.
+**Gameplay calibration remains open for Vorkath, normal Yama and Wardens.** Three [public recording sources](public-recordings.md) now have visually verified component observations, including a real Yama result and level-150 Warden body HP. No fully matched fight worksheets are checked in. Simulator QA exports and test fixtures remain synthetic; they are not calibration samples. Component evidence does not prove whole-fight time, consumption or survival.
 
 ## Use the browser
 
@@ -30,7 +30,7 @@ For repeated attempts, split training and holdout **before** fitting. The tool d
 
 No source text above supplies an independently annotated, matched full-fight dataset with both fitting attempts and untouched holdouts. No global timing, incoming-damage, food or kill-count defaults were tuned from those pages. Wiki search excerpts were available during this audit; direct retrieval of several full pages was blocked. The creator's [Vorkath video](https://www.youtube.com/watch?v=0Pf80fdOlv8&t=183s) was inspected around 3:03 and 3:24: those walkthrough frames crop out the inventory/stat HUD, so they cannot establish matched supply consumption. No quantitative tick measurements were taken from it.
 
-Public leads still requiring full annotation include the [release-day solo Yama guide](https://www.youtube.com/watch?v=ux6YsZIXGUk) and [150-invocation solo ToA guide](https://www.youtube.com/watch?v=ViGwWEw2Gu4). Their full recordings were not measured; publication titles are not proof of compatible patch state, exact gear or invocation rules. These links are research leads, not accepted samples. [Theoatrix's Yama explanation](https://www.theoatrix.net/post/osrs-yama-guide-mechanics-strategies-gear) also describes conditional flare specials and Judge self-damage. The current periodic flare interval is an editable scenario proxy; matching its average is insufficient to validate the real conditional cycle.
+The [public-recording follow-up](public-recordings.md) replaces title-only leads with inspected HUDs, declared conditions and specific observations. Its [evidence ledger](public-recordings.json) is not a browser-importable worksheet. The 150-invocation ToA source has Overclocked I/II and Deadly Prayers; its core/body observations can be used separately from incompatible P3/prayer comparisons. The inspected Yama source uses thralls and Judge self-damage. [Theoatrix's Yama explanation](https://www.theoatrix.net/post/osrs-yama-guide-mechanics-strategies-gear) also describes conditional flare specials and Judge self-damage. The current periodic flare interval remains an editable scenario proxy; matching its average is insufficient to validate the real conditional cycle.
 
 ## Worksheet format
 

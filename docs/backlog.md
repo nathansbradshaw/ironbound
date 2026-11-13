@@ -47,6 +47,8 @@ dedicated encounter simulations.
 - [ ] Calibrate all three scenario timelines and incoming damage against actual encounter traces. Spatial pathing, mechanic-changing invocations/contracts and excluded effects are not gameplay-validated by deterministic tests. See [full-fight model assumptions](full-fight-simulation.md).
 - [x] Add local gameplay worksheets and Rust comparisons for all three: exact setup/model matching, provenance/spans, unknown measurements, excluded effects, censored failures, separate training/holdout metrics and measured-input suggestions. [Recording guide and source audit](gameplay-calibration.md).
 - [ ] Annotate matched public recordings for each encounter; collect consecutive attempts including deaths/escapes, fit direct measurements, then evaluate fresh holdouts. Current accepted gameplay samples: Vorkath 0, Yama 0, Wardens 0. Guide text and simulator QA are not matched recordings.
+- [x] Find and visually screen public recordings for all three. The [recording catalog](public-recordings.md) and [component evidence ledger](public-recordings.json) preserve HUD inspection points, a client-reported Yama result, level-150 Warden body HP and explicit compatibility restrictions. These are real component observations; the zero counts above refer to fully matched fight worksheets.
+- [ ] Annotate event boundaries and supply actions from those windows; add or isolate ammo switching, thralls, Judge self-damage, eating delays and invocation effects before full-fight fitting. Preassign untouched holdouts and obtain independent sessions.
 - [ ] Later coverage: Challenge/Hard/Expert scaling, full-wave encounters and other unsupported bosses. Catalog presence alone does not close a mechanics task.
 
 ## 4. Make trip assumptions editable

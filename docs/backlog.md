@@ -42,6 +42,8 @@ dedicated encounter simulations.
 - [x] Normal Yama: carry boss HP through transitions and both Judges; simulate flare cadence, deadlines, regeneration, healing and final-phase workloads using editable execution assumptions.
 - [x] ToA / Wardens: simulate the obelisk, shield rotations, repeated core exposure/transfer/downs, skull sets and enrage healing/Defence reset. Solo Wardens only; earlier raid rooms are excluded.
 - [ ] Calibrate all three scenario timelines and incoming damage against actual encounter traces. Spatial pathing, mechanic-changing invocations/contracts and excluded effects are not gameplay-validated by deterministic tests. See [full-fight model assumptions](full-fight-simulation.md).
+- [x] Add local gameplay worksheets and Rust comparisons for all three: exact setup/model matching, provenance/spans, unknown measurements, excluded effects, censored failures, separate training/holdout metrics and measured-input suggestions. [Recording guide and source audit](gameplay-calibration.md).
+- [ ] Annotate matched public recordings for each encounter; collect consecutive attempts including deaths/escapes, fit direct measurements, then evaluate fresh holdouts. Current accepted gameplay samples: Vorkath 0, Yama 0, Wardens 0. Guide text and simulator QA are not matched recordings.
 - [ ] Later coverage: Challenge/Hard/Expert scaling, full-wave encounters and other unsupported bosses. Catalog presence alone does not close a mechanics task.
 
 ## 4. Make trip assumptions editable

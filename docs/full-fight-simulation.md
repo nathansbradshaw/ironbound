@@ -42,3 +42,5 @@ cargo run --locked --bin simulate_fight -- ironbound-fight-scenario.json
 The seeded sampler is deterministic for a given version and numerical input. First-fight percentiles include completed fights only; completion counts retain deaths and one-hour timeouts. Do not interpret a completed-only median as the expected outcome of a failed attempt. Tick-one attacks and immediate damage are simulation conventions; final projectile flight and death animations are excluded.
 
 Actual encounter traces, incoming attack mixtures, spatial pathing and human RuneLite/gameplay checks remain open validation work.
+
+Use **Compare with recorded gameplay** for local, setup-matched comparisons, separate training/holdout errors and directly measured setting suggestions. See the [recording guide and public-source audit](gameplay-calibration.md). No matched gameplay datasets are checked in; importing or replaying a synthetic report does not calibrate an encounter.

@@ -1,5 +1,5 @@
 //! Reviewed outgoing NPC rules, applied to rolled hits after equipment/bolt effects.
-//! Source: Wiki calculator 74958b1, PlayerVsNPCCalc, BaseCalc and HitDist.
+//! Sources: SOURCES.md (pinned Wiki calculator and encounter mechanics pages).
 use crate::{combat, encounters, planner, rules};
 use serde::Deserialize;
 use std::collections::{BTreeMap, BTreeSet};
@@ -12,6 +12,9 @@ pub enum Kind {
     Kraken,
     Corporeal,
     Respiratory,
+    Skotizo,
+    Altar,
+    Flower,
 }
 #[derive(Clone, Copy, Debug, Default, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
@@ -30,6 +33,8 @@ pub struct Profile {
     #[serde(default)]
     pub melee: Reach,
     pub allowed_styles: Vec<String>,
+    #[serde(default)]
+    pub light_weapons: Vec<i32>,
 }
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -48,6 +53,10 @@ impl Registry {
                 || p.allowed_styles
                     .iter()
                     .any(|s| !["Melee", "Ranged", "Magic"].contains(&s.as_str()))
+                || matches!(p.kind, Kind::Skotizo | Kind::Altar) && p.light_weapons.is_empty()
+                || p.light_weapons
+                    .iter()
+                    .any(|id| planner::gear(*id).is_none())
             {
                 return Err("Invalid or duplicate outgoing NPC profile.".into());
             }
@@ -76,6 +85,12 @@ pub fn hp_scaled(target: &planner::Monster, hp: u32) -> Result<Option<planner::M
     let mut result = target.clone();
     result.skills.extend(curve.levels(hp)?);
     Ok(Some(result))
+}
+pub fn instant_defeat(id: i32, weapon: i32) -> Option<i32> {
+    let p = profile(id)?;
+    (p.kind == Kind::Flower || p.kind == Kind::Altar && p.light_weapons.contains(&weapon))
+        .then(|| planner::monster(id).and_then(|m| m.skills.get("hp").copied()))
+        .flatten()
 }
 pub fn style_limitation(id: i32, style: &str) -> Option<&'static str> {
     let p = profile(id)?;
@@ -120,6 +135,11 @@ pub enum Transform {
     Zulrah,
     Kraken,
     Corporeal,
+    Immune,
+    Skotizo {
+        altars: u8,
+        light: bool,
+    },
 }
 impl Transform {
     pub fn outcomes(self, damage: i32, probability: f64) -> Vec<(i32, f64)> {
@@ -128,17 +148,34 @@ impl Transform {
             // A positive hit stays at least one; an accuracy miss remains zero.
             Self::Kraken if damage > 0 => vec![((damage / 7).max(1), probability)],
             Self::Corporeal => vec![(damage / 2, probability)],
+            Self::Immune => vec![(0, probability)],
+            Self::Skotizo { altars, light } => {
+                let percent = 100 - i32::from(altars.min(4)) * if light { 15 } else { 25 };
+                vec![(
+                    (i64::from(damage) * i64::from(percent) / 100) as i32,
+                    probability,
+                )]
+            }
             _ => vec![(damage, probability)],
         }
     }
 }
 pub fn transform_for(id: i32, weapon: i32, attack_type: &str) -> Transform {
+    if encounters::window(id).is_some_and(|w| w.invulnerable) {
+        return Transform::Immune;
+    }
     match profile(id).map(|p| p.kind) {
         Some(Kind::Zulrah) => Transform::Zulrah,
         Some(Kind::Kraken) if ["light", "standard", "heavy"].contains(&attack_type) => {
             Transform::Kraken
         }
         Some(Kind::Corporeal) if !corpbane(weapon, attack_type) => Transform::Corporeal,
+        Some(Kind::Skotizo) => Transform::Skotizo {
+            altars: encounters::window(id)
+                .and_then(|w| w.active_altars)
+                .unwrap_or(4),
+            light: profile(id).is_some_and(|p| p.light_weapons.contains(&weapon)),
+        },
         _ => Transform::Identity,
     }
 }
@@ -199,10 +236,11 @@ pub fn apply(
     normal_already_transformed: bool,
 ) {
     let Some(p) = profile(id) else { return };
-    let transform = match p.kind {
-        Kind::Zulrah => Transform::Zulrah,
-        Kind::Kraken if ["light", "standard", "heavy"].contains(&attack_type) => Transform::Kraken,
-        _ => Transform::Identity,
+    // Corp exempts ruby procs; all other NPC transforms also apply to ruby.
+    let transform = if p.kind == Kind::Corporeal {
+        Transform::Identity
+    } else {
+        transform_for(id, weapon, attack_type)
     };
     let suffix = usize::from(ruby.is_some());
     let split = distribution.len() - suffix;

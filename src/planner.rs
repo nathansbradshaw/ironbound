@@ -243,6 +243,7 @@ impl Target {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(default)]
 pub struct Options {
+    pub sailing: crate::sailing::Settings,
     pub simulation: crate::simulation::Settings,
     pub confirmations: BTreeMap<String, String>,
     pub recommended: Option<bool>,
@@ -279,6 +280,7 @@ pub struct Options {
 impl Default for Options {
     fn default() -> Self {
         Self {
+            sailing: Default::default(),
             simulation: Default::default(),
             confirmations: BTreeMap::new(),
             recommended: None,
@@ -831,6 +833,27 @@ fn style_set(
         }
     }
     refine_dps(&mut set, style, boss, m, owned, catalog, options);
+    if !options.gear_overrides.contains_key(&format!("{style}:3"))
+        && !options.gear_overrides.contains_key(&format!("{style}:9"))
+        && let Some(p) =
+            refinement_target(style, boss, options).and_then(crate::quest_bosses::target)
+        && let Some(quest_set) = crate::quest_bosses::best_set(
+            p,
+            style,
+            crate::quest_bosses::candidate_sets(
+                p,
+                &[(style, set.clone())],
+                m,
+                owned,
+                options.combat.ammo_shots,
+            ),
+            m,
+            owned,
+            &options.combat,
+        )
+    {
+        set = quest_set;
+    }
     set
 }
 fn align_spell_weapon(
@@ -1351,6 +1374,8 @@ pub fn plan(snapshot: &Snapshot, options: &Options) -> Plan {
     options.damage_tolerance = 0;
     options.prayer_tolerance = 0;
     options.simulation = Default::default();
+    // Boat assumptions do not change the personal equipment packing plan.
+    options.sailing = Default::default();
     let key = serde_json::to_string(&(snapshot, &options)).unwrap_or_default();
     thread_local! {static CACHE:std::cell::RefCell<std::collections::VecDeque<(String,Plan)>>=const{std::cell::RefCell::new(std::collections::VecDeque::new())};}
     if let Some(p) = CACHE.with(|c| {

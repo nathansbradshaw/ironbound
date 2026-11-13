@@ -38,7 +38,7 @@ If browser saving fails, a persistent warning offers a private backup and retry.
 - **Skip Void:** turn off **Use Void armour** beside Gear approach to compare your other gear. This excludes normal/Elite Void and cosmetic variants while keeping your Slayer task settings. Turn it back on to compare Void again; the preference is included in saved setups and setup links.
 - **Check the maths:** [live Wiki comparisons and update guide](docs/combat-validation.md). Run `cargo run --locked --bin validate_combat` to check the pinned reference loadouts.
 - **Model your fight:** Combat → **Boosts, darts & debuffs**. Choose active boosts, loaded blowpipe darts and successful reductions for each target.
-- **Quest bosses:** search Drakan, Seren, Galvek, Sliske or a quest title in the bestiary. Quest variants stay separate from farmable bosses; Sliske's entry covers the four Desert Treasure II wights. Cards identify packing templates and unverified mechanics.
+- **Quest bosses:** search Drakan, Seren, Galvek, Sliske or a quest title. Cards label each quest and rate your owned gear using its ordinary attack rules. Choose **Quest bosses** to see them, **Bosses** for farmable bosses, or **Gear & requirements → Hide quest bosses** to exclude them from any list. [Damage rules and rating limits](docs/quest-bosses.md).
 - **See weaknesses:** Combat breaks ranged defence into Light / Standard / Heavy and magic into Air / Water / Earth / Fire. Compare supported owned spells, hit chance, max hit and DPS; the selected spell shows its base and elemental bonuses.
 - **Try spells manually:** Combat → Magic. Click an element and a spell in the icon grid, or choose **Auto**. Your selection is saved and used for the Magic plan, rune packing and exports. Missing runes are flagged; **Auto** restores automatic choice.
 - **Choose ranged ammunition:** Combat → Ranged → **Light / Standard / Heavy**. The plan chooses a compatible owned weapon and ammo using your shot budget. **Auto** restores automatic choice; missing gear or ammunition is flagged.
@@ -50,6 +50,16 @@ If browser saving fails, a persistent warning offers a private backup and retry.
 - **Plan longer trips:** weigh prayer efficiency against damage and see a prayer-supply estimate.
 - **Track upgrades:** compare owned equipment with reviewed unowned options.
 - **Take it into RuneLite:** export Inventory Setups or Bank Tags, or share a setup link.
+
+## Sailing
+
+1. **Change encounter → Sailing**, then choose a sea creature.
+2. In **Boat setup**, select your installed hull, keel, cargo hold and cannons. Assign recruited crew to jobs.
+3. Enter cargo supplies and firing time. Use **Combat** to compare your personal weapon.
+
+Boat setup shows hull + keel HP, keel damage reduction, cargo capacity, crew cannon raw max hits and an expected ammunition budget. It saves locally with named setups and backups; Sailing setup links carry the boat assumptions. Bank imports do not identify installed parts, recruited crew or cargo.
+
+The 21 sea creatures use current recorded NPC stats. Ordinary melee is unavailable. Personal armour and protection prayers do not protect the boat. Cannon accuracy, player-operated cannon damage, combined DPS, repair consumption, movement and whole-trip survival are not verified. Veiled Kraken ranged DPS remains unavailable because its flat armour needs a separate hit-distribution model.
 
 ## What is still incomplete?
 
@@ -99,6 +109,11 @@ Share links contain the encounter, carried gear, quantities, switches and combat
 <details>
 <summary><strong>Calculation details</strong></summary>
 
+**Zorya / Crimson kisten specials:** equip the weapon in **Gear**, then open
+**Combat → Special attack burst**. Set available energy or held Zorya attacks to
+compare one burst, including misses, target death, overkill and unused buffs.
+Normal DPS/ranking stays separate. [Mechanics and limits](docs/zorya-kisten.md).
+
 [Recent equipment coverage](docs/recent-equipment.md) includes Twinflame, Eye of
 Ayak, Zorya's tome, the dragon hunter wand, Scorching bow and newer melee weapons.
 Charged Dizana quiver bonuses require compatible arrows/bolts. Oathplate, Torva,
@@ -116,6 +131,8 @@ Weapon IDs map to shared families and reusable mechanics. Exact variants stay se
 Defaults use unboosted levels. Selected boosts use peak current levels; wear requirements still use base levels. Supported prayers affect combat and drain. Reviewed outgoing calculations include melee, bows/crossbows, loaded blowpipes, powered staves, all 20 elemental Strike/Bolt/Blast/Wave/Surge spells and Iban Blast, with supported Fang, Keris, bolt and Shadow effects. Elemental damage tiers use base Magic; boosted levels unlock casts and affect accuracy. Only matching elements gain weakness bonuses. Charged Fire/Water/Earth tomes have their supported bonuses and rune supply; check pages manually. ToA assumes solo, path level 0 and invocation levels 0–150. Combat offers explicit Wardens obelisk, unprotected P2 shield, melee core and vulnerable P3 comparisons; the complete Wardens cycle remains unverified.
 
 **Combat → Attack window & supply budget** lets you set current target HP and inspect finite-HP attack expectations, including misses, overkill and changing ruby-bolt procs. Vorkath has an optional acid attack window; normal Yama has a separate 71-HP final flare. These estimates exclude movement, specials, regeneration and supply recovery. Packing budgets and the overview's HP/DPS comparison are separate assumptions, not kills-per-trip predictions.
+
+**Combat → Special attack burst → Compare a timed rotation** adds Zorya/kisten specials, normal fillers and natural energy recovery. Compare an owned Lightbearer with its real ring-stat cost. [Timing, assumptions and remaining limits](docs/energy-rotations.md). This opt-in comparison does not alter normal gear ranking or full-fight survival estimates.
 
 **Combat → Full-fight & consumption simulation** runs complete Vorkath, normal Yama and Wardens scenarios with editable execution assumptions. Compare median/tail demand and the fights covered by your carried supplies; download a replayable report. [Model assumptions and verification](docs/full-fight-simulation.md) explain the scenario inputs, excluded effects and outstanding gameplay calibration.
 

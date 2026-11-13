@@ -183,6 +183,11 @@ fn strong_account() -> account::Snapshot {
 fn all_reviewed_bank_combat_entries_have_a_readiness_guideline() {
     let rows = bestiary::assess_catalog(&strong_account(), &Options::default());
     for (entry, row) in encounters::catalog().iter().zip(&rows) {
+        if entry.category() == "Sailing" {
+            assert_eq!(row.readiness, Readiness::Unknown);
+            assert!(row.reason.contains("boat"));
+            continue;
+        }
         if entry.bank_equipment
             && !entry.targets.is_empty()
             && entry.targets.iter().all(|t| {

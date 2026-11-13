@@ -32,7 +32,7 @@ fn notable_quest_bosses_are_selectable_in_the_bestiary() {
             .iter()
             .find(|e| e.name == name)
             .unwrap_or_else(|| panic!("Missing quest boss: {name}"));
-        assert_eq!(entry.category(), "Bosses", "{name}");
+        assert_eq!(entry.category(), "Quest bosses", "{name}");
         assert!(entry.bank_equipment && !entry.targets.is_empty(), "{name}");
         assert!(entry.targets.iter().all(planner::Target::valid), "{name}");
         assert!(entry.note.contains("Quest boss"), "{name}");
@@ -166,7 +166,7 @@ fn sliske_finale_uses_four_distinct_wights_without_ketlas_clone() {
 }
 
 #[test]
-fn unverified_quest_mechanics_do_not_produce_verified_damage_claims() {
+fn reviewed_quest_bodies_have_damage_without_claiming_complete_fights() {
     for name in [
         "Lowerniel Drakan",
         "Ranis Drakan",
@@ -190,10 +190,14 @@ fn unverified_quest_mechanics_do_not_produce_verified_damage_claims() {
             .iter()
             .find(|e| e.name == name)
             .unwrap();
-        assert_eq!(entry.coverage(), "Packing template · DPS partial", "{name}");
+        assert_eq!(
+            entry.coverage(),
+            "Basic attack estimates · mechanics partial",
+            "{name}"
+        );
         for target in &entry.targets {
             assert!(
-                encounters::limitation(planner::monster(target.id).unwrap()).is_some(),
+                encounters::limitation(planner::monster(target.id).unwrap()).is_none(),
                 "{name}"
             );
         }
@@ -216,7 +220,7 @@ fn reviewed_seren_body_gains_gear_readiness_without_claiming_the_full_quest_figh
         assessment.readiness,
         ironbound::bestiary::Readiness::Unknown
     );
-    assert!(entry.note.contains("near-max-HP special"));
+    assert!(entry.note.contains("near-max-HP"));
     assert!(
         assessment
             .detail

@@ -26,8 +26,19 @@ pub fn notes(set: &[Option<i32>], settings: &Settings) -> Vec<String> {
         if weapon.has(rules::Effect::Ascension) {
             notes.push("Ascension crossbows: one bolt per attack, two ticks on Rapid and three on Accurate. Ascension bolts only; diamond/onyx proc rates are halved, with the Kandarin multiplier applied. Onyx healing and ammunition recovery are excluded.".into());
         }
-        if ["ayak", "zorya"].contains(&weapon.weapon.family.as_str()) {
+        if weapon.weapon.family == "ayak" {
             notes.push("Charged powered weapon: normal attacks only. Verify loaded charges; special attacks, empowered follow-ups and energy rotations are excluded.".into());
+        }
+        if let Some(special) = &weapon.weapon.special {
+            notes.push(format!("Special burst: {}% energy available; one activation costs {}%. Normal gear scores and full-fight simulation exclude specials, recovery and rotations.",settings.special_energy,special.energy));
+            if special.kind == rules::SpecialKind::Zorya {
+                notes.push(format!("Zorya: {} empowered attacks held. A successful opener grants three two-tick attacks at +150% accuracy and +60% damage. Normal attacks remain three ticks. Verify charges; no pre-stacking or reset assumption is inferred.",settings.zorya_empowered_hits));
+            } else {
+                notes.push("Crimson kisten: Brutal Swing rolls accuracy four times against crush defence, then makes one damage hit in the matching 70–110% through 130–170% band. Attack bonus and stance use the selected attack style.".into());
+            }
+            if settings.rotation.enabled {
+                notes.push(format!("Rotation: {} ticks, {} seeded trials, {}. Initial recovery pulse: {}. Fixed equipment restores 10% every {} ticks; full energy pauses recovery. No external restores, incoming damage, phase changes or mid-rotation switches.",settings.rotation.window_ticks,settings.rotation.trials,settings.rotation.policy.label(),if settings.rotation.next_pulse==0 {"fresh interval".into()} else {format!("{} ticks",settings.rotation.next_pulse)},crate::rotation::interval(crate::rotation::lightbearer(set))));
+            }
         }
         if weapon.weapon.family == "dragon_wand" {
             notes.push("Dragon hunter wand: standard and supported Ice casts; dragonbane applies before elemental weakness. Spell rune costs are packed normally; no free runes are inferred.".into());
@@ -42,13 +53,8 @@ pub fn notes(set: &[Option<i32>], settings: &Settings) -> Vec<String> {
     if rules::equipped_effect(set, "bulwark") {
         notes.push(format!("Dinh's Block: {}. Active Block prevents attacks. Only settled ordinary unprotected incoming hits are supported; activation delay and offensive defence scaling are excluded.", if settings.bulwark_block { "active" } else { "inactive" }));
     }
-    if set
-        .get(12)
-        .copied()
-        .flatten()
-        .is_some_and(|id| crate::planner::gear(id).is_some_and(|g| g.name == "Lightbearer"))
-    {
-        notes.push("Lightbearer energy recovery and special-attack rotations are not included in gear scores.".into());
+    if crate::rotation::lightbearer(set) {
+        notes.push("Lightbearer: 10% energy every 25 active ticks in the timed rotation model. It pauses at full energy; normal gear scores and full-fight survival simulations still exclude special rotations.".into());
     }
     if set
         .get(13)

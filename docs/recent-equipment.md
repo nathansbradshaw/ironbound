@@ -13,12 +13,12 @@ special attacks, charges consumed and whole-fight sustain remain separate work.
 | Smoke battlestaff / mystic smoke staff | Standard casting, free air/fire runes, +10% accuracy/damage with correct Salve/task ordering. | Other spellbooks are not enabled. |
 | Dragon hunter wand | Standard and supported Ice casts. Dragon accuracy +75% and damage +40% precede elemental weakness; Slayer rounding is retained. | No free runes, new Ancient secondary effects or unsupported spells are invented. |
 | Eye of Ayak | Charged three-tick powered attacks, floor(Magic/3)-6; requires 83 Magic. | Uncharged variants cannot attack. Special damage/drains still require separate modelling; selected drains remain explicit successful-effect assumptions. |
-| Zorya's tome | Charged three-tick powered attacks, floor(Magic/3)-10 before equipment damage; requires 85 Magic. | Two-handed; no Confliction passive. Special and empowered follow-up rotations remain excluded. |
+| Zorya's tome | Charged three-tick powered attacks, floor(Magic/3)-10 before equipment damage; requires 85 Magic. [Special opener and two-tick empowered burst](zorya-kisten.md), plus [bounded recovery rotations](energy-rotations.md). | Two-handed; no Confliction passive. Multi-weapon and complete encounter rotations remain excluded. |
 | Scorching bow | Compatible arrows through dragon; four-tick Rapid, demon accuracy +30%, damage +30% additive with task damage. | Shackles, binding and special-attack burns remain excluded. |
 | Burning claws | Normal slash/stab attacks and reviewed 5% demonbane. | Special hits, burns and energy are not credited to normal attacks. |
 | Noxious halberd | Normal slash/stab attacks at five ticks; requires 80 Attack. | Venom, special attack and movement/reach benefits remain uncredited. |
 | Arkan blade | Normal slash/stab attacks at four ticks; requires 60 Attack. | Special attack/burn and quest confirmation remain separate. |
-| Crimson kisten | Normal crush/stab attacks at four ticks; requires 60 Attack and 85 Strength. | Its four-accuracy-roll special is not a normal attack and remains open. |
+| Crimson kisten | Normal crush/stab attacks at four ticks; requires 60 Attack and 85 Strength. [Brutal Swing](zorya-kisten.md) uses the four-roll accuracy mixture and one damage hit; [bounded recovery rotations](energy-rotations.md). | Multi-weapon rotations and unreviewed special-window interactions remain open. |
 | Glacial temotli / sulphur blades / earthbound tecpatl | Two independently accurate damage halves, per-splat NPC armour/reductions and actual crush/slash/stab styles. Requires 55 Attack. | Multi-target positioning and encounter specials remain separate. |
 
 ## Armour and accessories
@@ -41,8 +41,10 @@ special attacks, charges consumed and whole-fight sustain remain separate work.
   Thrust damage selection, size bonuses, all three stances, Ascension bolts and
   Seeking arrows. Charged Thrust with Inquisitor or encounter minimum-hit bounds
   remains gated pending verified ordering; multi-target gameplay remains open.
-- Zorya's empowered follow-ups, Crimson kisten's four-roll special, other specs,
-  energy recovery/Lightbearer and charge consumption remain in the equipment backlog.
+- [Zorya's empowered follow-ups and Crimson kisten's special](zorya-kisten.md)
+  now have bounded burst and [energy recovery/Lightbearer rotation](energy-rotations.md)
+  comparisons. Other specs, charge consumption and complete encounter rotations
+  remain in the equipment backlog.
 - Elemental fragments/amulets, sunfire rune minimum hits, remaining Ancient
   secondary effects, defensive interactions and dynamic Soulreaper stacks remain open.
 - Quest/access checks and actual gameplay calibration remain distinct from item

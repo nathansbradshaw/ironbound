@@ -8,7 +8,8 @@ use crate::{
     rules,
 };
 use std::{collections::BTreeMap, sync::OnceLock};
-pub const FILTERS: [&str; 11] = [
+pub const FILTERS: [&str; 12] = [
+    "Quest bosses",
     "For you",
     "Well equipped",
     "Doable",
@@ -21,7 +22,16 @@ pub const FILTERS: [&str; 11] = [
     "Groups",
     "All",
 ];
-pub const CATEGORY_FILTERS: [&str; 6] = ["For you", "Bosses", "Raids", "Groups", "All", "Popular"];
+pub const CATEGORY_FILTERS: [&str; 8] = [
+    "For you",
+    "Bosses",
+    "Quest bosses",
+    "Raids",
+    "Groups",
+    "Sailing",
+    "All",
+    "Popular",
+];
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum GearFilter {
@@ -192,6 +202,29 @@ struct Profile {
     note: &'static str,
 }
 fn profile(name: &str) -> Option<Profile> {
+    if let Some(quest) = crate::quest_bosses::profile(name) {
+        let styles: &'static [&'static str] = match quest
+            .styles
+            .iter()
+            .map(String::as_str)
+            .collect::<Vec<_>>()
+            .as_slice()
+        {
+            ["Melee"] => &["Melee"],
+            ["Magic"] => &["Magic"],
+            ["Ranged"] => &["Ranged"],
+            ["Melee", "Ranged"] | ["Ranged", "Melee"] => &["Melee", "Ranged"],
+            ["Ranged", "Magic"] => &["Ranged", "Magic"],
+            _ => &["Melee", "Ranged", "Magic"],
+        };
+        return Some(Profile {
+            level: quest.level,
+            prayer: 43,
+            styles,
+            slayer: 0,
+            note: &quest.note,
+        });
+    }
     let (level, styles, slayer, note): (_, &[&str], _, _) = match name {
         "Nex" => (90, &["Ranged"], 0, "Group ranged gear baseline across vulnerable body phases and activated mages. This does not assess solo viability, team damage share, curses, siphon, incoming damage or complete supplies."),
         "Chambers of Xeric" | "Chambers of Xeric (3-player)" => (90, &["Melee", "Ranged", "Magic", "Pickaxe"], 0, "Declared party reference at maximum Combat 126 / HP 99 and average Mining 99. Your Mining and owned pickaxe determine Guardian damage. Room timing, resets, healing, incoming attacks and whole-raid supplies are not scored."),
@@ -598,6 +631,7 @@ fn assess_gear_catalog(snapshot: &Snapshot, preferences: &Options) -> Vec<Assess
         })
         .collect();
     crate::encounters::catalog().iter().map(|entry| {
+        if entry.category() == "Sailing" { return unknown("Configure your boat and crew. Weapon gear alone does not establish sea-combat readiness."); }
         if !entry.bank_equipment { return unknown("This encounter needs its own equipment or skilling readiness model."); }
         if entry.targets.is_empty() { return unknown(if crate::encounters::mechanics().unverified_modes.contains(&entry.name) { "This mode needs its own scaling and readiness model; the base-mode rating does not apply." } else { "A verified target mapping is needed before gear readiness can be rated." }); }
         let guideline = profile(&entry.name);
@@ -622,6 +656,19 @@ fn assess_gear_catalog(snapshot: &Snapshot, preferences: &Options) -> Vec<Assess
                     entry_sets.push((*style,alternative));
                 }
             }
+        }
+        if let Some(quest) = crate::quest_bosses::profile(&entry.name) {
+            let missing_weapon = !quest.weapons.is_empty() && !quest.weapons.iter().any(|id|
+                owned.get(id).is_some_and(|q| *q > 0) && planner::can_use(*id, &member));
+            if missing_weapon || quest.ids.contains(&3456) && !owned.get(&1580).is_some_and(|q| *q > 0) {
+                let required = if missing_weapon {
+                    quest.weapons.iter().map(|id| planner::item_name(*id)).collect::<Vec<_>>().join(" or ")
+                } else { "ice gloves".into() };
+                return Assessment { readiness: Readiness::Struggle, requirements: Requirements::default(),
+                    reason: format!("Needs owned, level-usable {required} for this quest baseline."),
+                    detail: p.note.into(), wilderness: false, preview: None };
+            }
+            entry_sets = crate::quest_bosses::candidate_sets(quest, &sets, &member, &owned, options.combat.ammo_shots);
         }
         if matches!(entry.name.as_str(), "Turoths" | "Kurasks") {
             for (style,set) in &sets {
@@ -804,6 +851,15 @@ pub fn card(entry: &Entry, index: usize, a: &Assessment) -> String {
     } else {
         "Recorded target · base stats"
     };
+    let quest_tag = entry
+        .quest()
+        .map(|quest| {
+            format!(
+                "<span class=\"quest-tag\">Quest boss · {}</span>",
+                esc(quest)
+            )
+        })
+        .unwrap_or_default();
     let location = match crate::wilderness::exposure(&entry.name) {
         crate::wilderness::Exposure::Combat => "<span class=\"wild-tag\">Wilderness</span>",
         crate::wilderness::Exposure::Route => "<span class=\"wild-tag\">Wilderness route</span>",
@@ -835,7 +891,7 @@ pub fn card(entry: &Entry, index: usize, a: &Assessment) -> String {
         html.push_str("</ul><p>All other equipment slots are empty. Food, runes, charged contents and other supplies need a separate risk check.</p></div>");html
     }).unwrap_or_default();
     format!(
-        r#"<article class="bestiary-card"><button class="encounter-choice bestiary-open" data-action="choose-encounter:{index}" {} aria-label="Plan {}"><span class="boss-portrait">{}</span><span class="boss-entry"><span class="boss-entry-heading"><strong>{}</strong><span class="boss-readiness readiness-{}">Gear: {}</span></span>{location}<span class="boss-reason">{}</span></span><span class="boss-open-arrow" aria-hidden="true">→</span></button>{requirement_summary}<details class="bestiary-notes"><summary>Details & readiness</summary>{requirement_details}<div class="boss-entry"><span class="boss-stats">{stats}</span><small>{context}</small></div>{kit}<p>{}</p><p>{}</p><small>{}</small></details></article>"#,
+        r#"<article class="bestiary-card"><button class="encounter-choice bestiary-open" data-action="choose-encounter:{index}" {} aria-label="Plan {}"><span class="boss-portrait">{}</span><span class="boss-entry"><span class="boss-entry-heading"><strong>{}</strong><span class="boss-readiness readiness-{}">Gear: {}</span></span>{quest_tag}{location}<span class="boss-reason">{}</span></span><span class="boss-open-arrow" aria-hidden="true">→</span></button>{requirement_summary}<details class="bestiary-notes"><summary>Details & readiness</summary>{requirement_details}<div class="boss-entry"><span class="boss-stats">{stats}</span><small>{context}</small></div>{kit}<p>{}</p><p>{}</p><small>{}</small></details></article>"#,
         if entry.targets.is_empty() || a.wilderness && a.preview.is_none() {
             "disabled"
         } else {

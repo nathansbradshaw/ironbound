@@ -107,10 +107,16 @@ rotations remain open; catalog stats do not imply unverified effects are support
 - [x] Distinguish manually confirmed successful reductions from the probability,
   damage, energy and time needed to land them.
 - [ ] Inventory special weapons separately from normal-attack support.
-- [ ] Add one independently verified special distribution at a time, starting
-  with weapons whose normal attacks are already supported.
-- [ ] Energy costs/recovery, Lightbearer, timing, switches and rotations before
-  recommending special gear or claiming whole-fight DPS.
+- [x] Add [Zorya and Crimson kisten special distributions](zorya-kisten.md):
+  one paid activation or explicitly held empowerment, exact hit/death state,
+  four-roll kisten mixture, separate cooldown and energy budgets.
+- [ ] Remaining special distributions and unreviewed encounter interactions.
+- [x] Natural recovery and Lightbearer's tick clock, full-energy pauses and
+  equip/removal timing; compare the actual cost of replacing an owned ring.
+- [x] [Bounded fixed-equipment rotations](energy-rotations.md) for reviewed Zorya
+  and kisten specials, normal fillers, held buffs, energy, death and uncertainty.
+- [ ] Other energy restores, multi-weapon switches, travel, phase downtime and
+  gameplay calibration before claiming whole-fight special DPS or gear rankings.
 
 ## Reference and verification
 

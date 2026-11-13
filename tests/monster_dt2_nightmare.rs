@@ -94,9 +94,11 @@ fn leviathan_melee_quest_and_enrage_do_not_borrow_normal_ranged_rules() {
             .is_err()
         );
     }
-    for id in [12215, 100132] {
+    for id in [100132] {
         assert!(encounters::limitation(planner::monster(id).unwrap()).is_some());
     }
+    assert!(encounters::limitation(planner::monster(12215).unwrap()).is_none());
+    assert_eq!(planner::monster(12215).unwrap().skills["hp"], 720);
     assert_eq!(
         combat::target_hp_bounds(planner::monster(12214).unwrap(), 0).unwrap(),
         (181, 900)
@@ -216,7 +218,8 @@ fn whisperer_enrage_uses_140_hp_and_separate_debuff_assumptions() {
         combat::target_hp_bounds(planner::monster(100137).unwrap(), 0).unwrap(),
         (1, 140)
     );
-    assert!(encounters::limitation(planner::monster(12206).unwrap()).is_some());
+    assert!(encounters::limitation(planner::monster(12206).unwrap()).is_none());
+    assert_eq!(planner::monster(12206).unwrap().skills["hp"], 660);
 }
 
 #[test]

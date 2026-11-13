@@ -99,6 +99,11 @@ Share links contain the encounter, carried gear, quantities, switches and combat
 <details>
 <summary><strong>Calculation details</strong></summary>
 
+**Zorya / Crimson kisten specials:** equip the weapon in **Gear**, then open
+**Combat → Special attack burst**. Set available energy or held Zorya attacks to
+compare one burst, including misses, target death, overkill and unused buffs.
+Normal DPS/ranking stays separate. [Mechanics and limits](docs/zorya-kisten.md).
+
 [Recent equipment coverage](docs/recent-equipment.md) includes Twinflame, Eye of
 Ayak, Zorya's tome, the dragon hunter wand, Scorching bow and newer melee weapons.
 Charged Dizana quiver bonuses require compatible arrows/bolts. Oathplate, Torva,

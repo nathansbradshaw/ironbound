@@ -29,6 +29,8 @@ pub struct Settings {
     pub soulreaper_stacks: u32,
     pub bulwark_block: bool,
     pub obligator_style: String,
+    pub special_energy: u32,
+    pub zorya_empowered_hits: u32,
 }
 impl Default for Settings {
     fn default() -> Self {
@@ -56,6 +58,8 @@ impl Default for Settings {
             soulreaper_stacks: 0,
             bulwark_block: false,
             obligator_style: "Thrust accurate".into(),
+            special_energy: 50,
+            zorya_empowered_hits: 0,
         }
     }
 }
@@ -69,6 +73,8 @@ impl Settings {
                 .is_none_or(|hp| (1..=255).contains(&hp))
             && (1..=10_000).contains(&self.spell_casts)
             && self.soulreaper_stacks <= 5
+            && self.special_energy <= 100
+            && self.zorya_empowered_hits <= 3
             && self.spell_selection.valid()
             && (1..=10_000).contains(&self.ammo_shots)
             && self.target_hp.len() <= crate::rules::MAX_TARGETS

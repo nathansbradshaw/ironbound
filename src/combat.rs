@@ -726,6 +726,13 @@ pub fn calculate_configured(
         attack = attack * (200 + weight) / 200;
         max_hit = (i64::from(max_hit) * (200 + weight) / 200) as i32;
     }
+    if style == "Ranged" {
+        if let Some([num, den]) =
+            crate::encounters::window(monster.id).and_then(|w| w.ranged_accuracy_factor)
+        {
+            attack = attack * i64::from(num) / i64::from(den);
+        }
+    }
     let always_max = always_max || crate::monster_rules::guaranteed_max(monster.id, attack_type);
     let mut hit = accuracy(attack, defence);
     let brimstone = style == "Magic" && rules::equipped_effect(set, "brimstone_accuracy");
@@ -756,6 +763,14 @@ pub fn calculate_configured(
     }
     if crate::monster_rules::guaranteed_accuracy(monster.id, attack_type) {
         hit = 1.0;
+    }
+    if let Some(accuracy) = crate::monster_rules::elemental_accuracy(
+        monster.id,
+        attack_type,
+        b.offensive.get("magic").copied().unwrap_or(0),
+        void || rules::set_effect(set, "elite_void_magic"),
+    ) {
+        hit = accuracy;
     }
     let mut min_hit = if fang { max_hit * 3 / 20 } else { 0 };
     if fang {
@@ -803,9 +818,11 @@ pub fn calculate_configured(
         || rule.has(Effect::Scythe)
         || frostweaver
         || style == "Ranged" && rules::set_effect(set, "karil_damned");
+    let npc_transform =
+        crate::monster_rules::transform_for(monster.id, weapon, attack_type, &b, spell);
     let hit_effects = crate::effects::SetHitEffects {
         npc_transform: if per_splat_npc {
-            crate::monster_rules::transform_for(monster.id, weapon, attack_type)
+            npc_transform
         } else {
             Default::default()
         },
@@ -880,7 +897,7 @@ pub fn calculate_configured(
             );
             let mut part: Vec<_> = splats.into_iter().map(|(d, p)| (d, p * hit)).collect();
             if hit < 1.0 {
-                part.push((0, 1.0 - hit));
+                part.extend(hit_effects.npc_transform.outcomes(0, 1.0 - hit));
             }
             parts.push(part);
         }
@@ -953,7 +970,7 @@ pub fn calculate_configured(
             max_hit += ceiling;
             let mut part: Vec<_> = outcomes.into_iter().map(|(d, p)| (d, p * hit)).collect();
             if hit < 1.0 {
-                part.push((0, 1.0 - hit));
+                part.extend(hit_effects.npc_transform.outcomes(0, 1.0 - hit));
             }
             parts.push(part);
         }
@@ -965,7 +982,7 @@ pub fn calculate_configured(
             // Misses on the first splat suppress the entire second hit. Keep
             // accurate zero-damage first hits eligible for the second roll.
             distribution.clear();
-            distribution.push((0, 1.0 - hit));
+            distribution.extend(hit_effects.npc_transform.outcomes(0, 1.0 - hit));
             let first_max = distribution_max / 2;
             let (_, _, first) = conditional_hit(
                 if always_max { first_max } else { 0 },
@@ -1167,8 +1184,7 @@ pub fn calculate_configured(
     }
     crate::monster_rules::apply(
         monster.id,
-        weapon,
-        attack_type,
+        npc_transform,
         &mut distribution,
         &mut hp_dependent,
         per_splat_npc,
@@ -1223,7 +1239,11 @@ pub fn calculate_configured(
         && !crate::encounters::window(monster.id).is_some_and(|w| w.invulnerable)
     {
         if crate::encounters::window(monster.id).is_some_and(|w| {
-            w.npc_damage.is_some() || w.resource != crate::encounters::Resource::Hitpoints
+            w.npc_damage.is_some()
+                || w.huey_pillar
+                || crate::monster_rules::profile(monster.id)
+                    .is_some_and(|p| p.kind == crate::monster_rules::Kind::HueyTail)
+                || w.resource != crate::encounters::Resource::Hitpoints
         }) {
             return Err("Eclipse burn timing and pulse reductions against this special state or non-HP counter are unverified.".into());
         }
@@ -1244,7 +1264,7 @@ pub fn calculate_configured(
         0.0
     };
     let burn = if burn_dps > 0.0 {
-        let transform = crate::monster_rules::transform_for(monster.id, weapon, attack_type);
+        let transform = npc_transform;
         let divisor = if damage_model == crate::encounters::DamageModel::HalfDamage {
             2
         } else {
@@ -1311,7 +1331,10 @@ fn conditional_hit(
     set_effects: &crate::effects::SetHitEffects,
 ) -> (f64, i32, Vec<(i32, f64)>) {
     if max <= 0 {
-        return (0.0, 0, vec![(0, 1.0)]);
+        let outcomes = set_effects.npc_transform.outcomes(0, 1.0);
+        let mean = outcomes.iter().map(|(d, p)| f64::from(*d) * p).sum();
+        let max = outcomes.iter().map(|(d, _)| *d).max().unwrap_or(0);
+        return (mean, max, outcomes);
     }
     let mut hits: Vec<_> = (min..=max)
         .map(|damage| (damage, 1.0 / (max - min + 1) as f64))

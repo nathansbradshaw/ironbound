@@ -1,5 +1,8 @@
 {
   "profiles": [
+    {"ids":[14009,14011,14017,12596,14147],"kind":"standard","allowed_styles":["Melee","Ranged","Magic"]},
+    {"ids":[14014],"kind":"huey_tail","allowed_styles":["Melee","Ranged","Magic"]},
+    {"ids":[14150,14151],"kind":"titan_elemental","allowed_styles":["Melee","Ranged","Magic"]},
     {"ids": [12214], "kind": "standard", "melee": "none", "allowed_styles": ["Ranged","Magic"]},
     {"ids": [12204,9416,9425], "kind": "standard", "allowed_styles": ["Melee","Ranged","Magic"]},
     {"ids": [9435], "kind": "totem", "allowed_styles": ["Melee","Ranged","Magic"]},

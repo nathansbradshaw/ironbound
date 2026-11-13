@@ -259,9 +259,28 @@ fn nightmare_screens_require_both_melee_and_magic_and_keep_encounter_scope() {
 fn tribrid_and_yama_ratings_require_every_mandatory_style() {
     let account = strong_account();
     for (style, bosses) in [
-        ("Ranged", vec!["Dagannoth Kings", "Tombs of Amascut"]),
-        ("Magic", vec!["Dagannoth Kings", "Tombs of Amascut", "Yama"]),
-        ("Melee", vec!["Dagannoth Kings", "Tombs of Amascut", "Yama"]),
+        (
+            "Ranged",
+            vec!["Dagannoth Kings", "Tombs of Amascut", "The Royal Titans"],
+        ),
+        (
+            "Magic",
+            vec![
+                "Dagannoth Kings",
+                "Tombs of Amascut",
+                "Yama",
+                "The Royal Titans",
+            ],
+        ),
+        (
+            "Melee",
+            vec![
+                "Dagannoth Kings",
+                "Tombs of Amascut",
+                "Yama",
+                "The Royal Titans",
+            ],
+        ),
     ] {
         let mut options = Options::default();
         for id in account.available(false).keys() {
@@ -358,7 +377,6 @@ fn aliases_agree_and_unreviewed_modes_explain_the_blocker() {
     );
     assert_eq!(row("Lunar Chests").reason, row("Moons of Peril").reason);
     for name in [
-        "The Royal Titans",
         "Nex",
         "Theatre of Blood",
         "The Fractured Archive",
@@ -529,4 +547,18 @@ fn weak_or_unknown_gear_and_entry_locks_can_coexist() {
     assert!(
         unknown.matches_filter("Not assessed") && unknown.matches_filter("Requirements missing")
     );
+}
+
+#[test]
+fn huey_and_titans_have_scoped_gear_screens_separate_from_access() {
+    let account = strong_account();
+    for name in ["The Hueycoatl", "The Royal Titans"] {
+        let row = result(name, &account, &Options::default());
+        assert_ne!(row.readiness, Readiness::Unknown);
+        assert_eq!(
+            row.requirements.status,
+            bestiary::RequirementStatus::Unverified
+        );
+        assert!(row.detail.contains("incoming") && row.detail.contains("not scored"));
+    }
 }

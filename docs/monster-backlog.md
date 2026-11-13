@@ -89,10 +89,17 @@ independent references, browser verification, then gameplay verification.
   reductions, exact Arclight/Emberlight exceptions and active altar finishers.
 - [ ] Skotizo full fight: random activation/cooldown sequence, travel, adds,
   attack mixtures, incoming damage and full supplies.
-- [ ] Hueycoatl: body/tail damage limits, crush/earth rules, pillar bonus and team
-  scaling; verify these independently of generic elemental weakness.
-- [ ] Royal Titans: titan resistances, elemental-add accuracy, barriers, duo
-  scaling/timing and incoming attacks.
+- [x] Hueycoatl outgoing: base-stat body/head probes, per-splat tail 4/9 caps,
+  strict crush bonus priority, crush miss minima, earth spells and explicit
+  pillar alternatives. Protected head deals zero; broken tail remains gated.
+- [ ] Hueycoatl full fight: team scaling/contribution, body segment counts and
+  regeneration, actual head/tail thresholds, pillar activation/uptime, slams,
+  travel and incoming attacks. Delayed burn against tail/pillars is gated.
+- [x] Royal Titans outgoing: both titan resistances, separate withdrawn ranged
+  accuracy windows, melee reach gates and elemental Magic accuracy including
+  normal/elite Void. Gear screening requires melee, ranged and Magic.
+- [ ] Royal Titans full fight: barriers, add counts, solo/duo contribution,
+  charge duration, transitions, movement and incoming attack sequences.
 - [ ] Doom of Mokhaiotl: delve scaling, shield/demonbane rules, special phases,
   movement and incoming damage.
 - [ ] Shellbane Gryphon, Mad Angel and Maggot King: each needs its own sourced

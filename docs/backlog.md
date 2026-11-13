@@ -40,6 +40,10 @@ dedicated encounter simulations.
   shield/charge counters, totem effects, protected bodies and Phosani crush adds.
   Remaining enrage, team, proc, incoming and full-fight gaps stay explicit.
 
+- [x] Fifth monster batch: Hueycoatl body/head/tail and pillar comparisons,
+  strict crush/earth caps and miss minima; Royal Titans close/withdrawn windows,
+  elemental accuracy and three-style gear screening. Full fights remain tracked.
+
 - [x] Show which selected attack windows have supported outgoing calculations and which are packing only.
 - [x] Explain remaining mechanics beside the encounter and in preparation/export notes. Count Wardens explicitly rather than omitting it from the supported fraction.
 - [x] Vorkath: expose current-HP ruby bolts and an acid damage window with per-outcome rounding; verify finite-HP attack budgets with decreasing ruby procs.

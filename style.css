@@ -879,3 +879,24 @@ button.ranged-type:focus-visible{outline:3px solid #ffe087;outline-offset:2px}
 .flow-controls>label.void-preference { grid-column: 1/-1; display: flex; flex-direction: row; align-items: center; justify-content: flex-start; flex-wrap: wrap; text-align: left; gap: 6px; margin: 0; }
 .flow-controls .void-preference input[type=checkbox] { display: inline-block; width: 18px; height: 18px; min-height: 18px; margin: 0; padding: 0; box-shadow: none; accent-color: #c9a144; }
 .void-preference small { flex-basis: 100%; padding-left: 24px; color: #ddd1b8; font: 16px/1.2 Scape,monospace; }
+
+/* Boss journal: original game portraits set into the existing parchment. */
+#encounter-results{max-height:620px;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;padding:12px 2px;border:0;align-items:start}
+.bestiary-card{min-width:0;border:1px solid #917344;background:#d9c59966;box-shadow:inset 0 0 0 2px #eadbb644,0 2px 3px #49341b22}
+.bestiary-card .bestiary-open{gap:12px;align-items:center;min-height:154px;padding:14px 12px;border-bottom:0}
+.bestiary-card .boss-portrait{display:flex;flex:0 0 86px!important;align-items:center;justify-content:center;height:100px;background:radial-gradient(ellipse,#82684130,transparent 70%)}
+.boss-portrait img{display:block;width:86px;height:96px;object-fit:contain;filter:drop-shadow(2px 4px 2px #39251555)}
+.bestiary-card .boss-entry{flex:1;min-width:0;color:#41280f}
+.boss-entry-heading{display:flex;align-items:flex-start;flex-wrap:wrap;gap:6px;margin-bottom:8px}
+.bestiary-card .boss-entry-heading strong{font:23px Scape,monospace;line-height:1.1;color:#4b240d}
+.boss-readiness{display:inline-block;font:12px Arial,sans-serif;font-weight:bold;padding:3px 6px;border:1px solid currentColor;border-radius:2px;white-space:nowrap}
+.readiness-ready{color:#285420;background:#d2dfb3}.readiness-doable{color:#674508;background:#edda9c}.readiness-struggle{color:#822b20;background:#e7b9a0}.readiness-unknown{color:#5d5343;background:#d4c8af}
+.boss-stats{display:flex;flex-wrap:wrap;gap:4px 12px;font-size:12px;line-height:1.5;color:#533b20}
+.bestiary-card .boss-entry small{display:block;font-size:11px;color:#71532f;margin:2px 0 8px}
+.boss-reason{display:block;font-size:12px;line-height:1.5;color:#493019;overflow-wrap:anywhere}
+.bestiary-card .boss-open-arrow{flex:0 0 auto;color:#765127}.bestiary-card .encounter-choice:disabled{opacity:.8;cursor:default}
+.bestiary-notes{margin:0!important;padding:8px 12px!important;border:0!important;border-top:1px dotted #987b4f!important;font-size:12px;color:#51391d}
+.bestiary-notes summary{font:15px Scape,monospace!important;color:#69451f!important;cursor:pointer}.bestiary-notes p{font-size:12px;line-height:1.55;margin:8px 0}.bestiary-notes small{font-size:11px}
+.encounter-browser .bestiary-disclaimer{font-size:12px;line-height:1.5;max-width:80ch}.portrait-missing{font:44px Scape,monospace;color:#80623b}
+@media(max-width:1000px){#encounter-results{grid-template-columns:1fr}}
+@media(max-width:480px){.bestiary-card .boss-portrait{flex-basis:60px!important;width:60px}.boss-portrait img{width:60px;height:78px}.bestiary-card .bestiary-open{padding:10px 8px;gap:8px}.bestiary-card .boss-entry-heading strong{font-size:21px}.boss-stats{gap:3px 7px}.bestiary-card .boss-open-arrow{display:none}}

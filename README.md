@@ -149,3 +149,5 @@ Never commit private banks, account snapshots or screenshots. `.local/`, `target
 ## Credits
 
 [Data sources and attribution](SOURCES.md). Game artwork © Jagex. Independent fan project, not affiliated with Jagex or RuneLite. App logic, calculations and tools are Rust/WebAssembly.
+
+**Boss bestiary:** open **Boss bestiary** below your encounter name. **For you** puts well-equipped fights first; filter by **Well equipped**, **Doable** or **A struggle** to find your next goal. Cards include real boss artwork, recorded target stats and the owned setup behind the rating. Expand **Readiness & encounter notes** for guidelines and limitations. Ratings screen gear and levels; unreviewed fights remain **Not assessed**, and a good rating does not verify access or predict a kill.

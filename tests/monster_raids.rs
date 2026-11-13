@@ -508,7 +508,7 @@ fn phase_choices_keep_the_selected_scale_and_do_not_hide_nex_special_states() {
         .unwrap();
     let choices =
         encounters::comparison_targets(&nex.targets.iter().map(|t| t.id).collect::<Vec<_>>());
-    for id in [11278, 200005, 200006, 200007, 200010] {
+    for id in [11278, 11294, 200005, 200006, 200007, 200010] {
         assert!(choices.contains(&id));
     }
     let cox = encounters::groups()
@@ -529,6 +529,14 @@ fn phase_choices_keep_the_selected_scale_and_do_not_hide_nex_special_states() {
     }));
     let toa = encounters::comparison_targets(&[11789]);
     assert!(!toa.iter().any(|id| *id >= 206000));
+    let theatre = encounters::groups()
+        .iter()
+        .find(|g| g.name == "Theatre of Blood (5-player)")
+        .unwrap();
+    let choices =
+        encounters::comparison_targets(&theatre.targets.iter().map(|t| t.id).collect::<Vec<_>>());
+    assert!(choices.contains(&203202) && choices.contains(&203203));
+    assert!(!choices.contains(&203200));
 }
 #[test]
 fn raid_probes_do_not_invent_incoming_or_whole_fight_workloads() {
@@ -618,7 +626,7 @@ fn every_declared_raid_state_has_a_working_default_attack() {
         .iter()
         .filter(|w| w.raid_scale.is_some() || w.hp_probe.is_some() || w.npc_id == 11278)
         .collect();
-    assert_eq!(states.len(), 192);
+    assert_eq!(states.len(), 194);
     for w in states {
         let style = w
             .default_style

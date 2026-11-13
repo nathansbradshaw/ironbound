@@ -205,7 +205,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         b.probe(protected,500,500,"Mage before activation: no outgoing HP damage, including bolt effects. This does not predict the activation sequence or incoming attacks.");
     }
     b.profile(11294, "standard", "any", &all);
-    let reaver = b.window(11294, 11294, "Blood Reaver · Nex chamber", "Ranged", None);
+    let mut reaver = b.window(11294, 11294, "Blood Reaver · Nex chamber", "Ranged", None);
+    reaver["comparison_alternative"] = json!(true);
+    reaver["comparison_sources"] = json!([11278]);
     b.probe(reaver,150,150,"One chamber reaver at recorded stats. Spawn counts, remaining-HP transfer to Nex, healing the player and incoming damage are not simulated.");
     groups.push(group("Nex",nex,"Group ranged gear baseline: five vulnerable body HP points and four activated mages. Curses, siphon and protected states are separate comparisons. This does not assess solo viability, team damage share, movement, full incoming attacks or whole-trip supplies."));
 
@@ -411,13 +413,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         };
         groups.push(group(name,targets,"Bank-owned tribrid gear baseline at the declared 3-player minimum (solo/duo also use 3-player HP) or 5-player reference. Nylocas colours, Verzik phase-1 limiters and vulnerable bodies are reviewed. Raid-loaned Dawnbringer is omitted from gear readiness and has separate normal/single-special probes. Exposure, heals, waves, special energy, timing, incoming damage and whole-trip supplies are not simulated."));
     }
-    for (source, offset) in [(8369, 203200), (10847, 204200)] {
+    for (source, offset, party) in [(8369, 203200, 3), (8369, 203202, 5), (10847, 204200, 3)] {
         for special in [false, true] {
             let mut w = b.window(
                 offset + i32::from(special),
                 source,
                 &format!(
-                    "Verzik phase 1 · Dawnbringer {} · 3-player",
+                    "Verzik phase 1 · Dawnbringer {} · {party}-player",
                     if special {
                         "single special"
                     } else {
@@ -427,7 +429,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 "Magic",
                 None,
             );
-            w["raid_scale"] = json!({"kind":"tob","party_size":3});
+            w["raid_scale"] = json!({"kind":"tob","party_size":party});
             w["comparison_weapon"] = json!(22516);
             w["comparison_alternative"] = json!(true);
             w["readiness_exempt"] = json!(true);

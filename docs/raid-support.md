@@ -3,6 +3,9 @@
 Outgoing damage and bank gear readiness are available for these references.
 Gear ratings remain separate from known Slayer requirements. Quest, key, kill
 count and task access are not inferred.
+Raid screens compare usable owned specialist weapons and compatible ammunition
+in the style's baseline armour, including ruby bolts and elemental casting
+weapons. Exclusions and the declared shot/cast budgets still apply.
 
 | Encounter | Readiness reference |
 | --- | --- |
@@ -14,7 +17,7 @@ count and task access are not inferred.
 | Fractured Archive | Default route, recorded defences, explicit 500-HP points for large bodies |
 | Expert ToA | Exactly solo level 300, path 0; vulnerable style windows |
 
-There are 192 declared raid/Nex attack states. Chambers also has five-player
+There are 194 declared raid/Nex attack states. Chambers also has five-player
 normal and three-player CM data references; these are not additional bestiary
 ratings. Alternative state buttons retain the selected raid scale. Preset target
 IDs retain their scale when shared; room toggles preserve it too.

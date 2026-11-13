@@ -202,6 +202,7 @@ impl Target {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(default)]
 pub struct Options {
+    pub confirmations: BTreeMap<String, String>,
     pub recommended: Option<bool>,
     pub ranking: crate::ranking::Preferences,
     pub combat: crate::defence::Settings,
@@ -227,6 +228,7 @@ pub struct Options {
 impl Default for Options {
     fn default() -> Self {
         Self {
+            confirmations: BTreeMap::new(),
             recommended: None,
             ranking: Default::default(),
             combat: Default::default(),
@@ -975,7 +977,7 @@ fn refine_dps(
                         m,
                         &trial,
                         owned,
-                        crate::rules::DEFAULT_CASTS,
+                        options.combat.spell_casts,
                         &options.combat,
                     ) {
                         continue;
@@ -1092,7 +1094,10 @@ fn equipment_tiebreak(set: &[Option<i32>], style: &str) -> (i32, i32, i32) {
 }
 
 pub fn plan(snapshot: &Snapshot, options: &Options) -> Plan {
-    let key = serde_json::to_string(&(snapshot, options)).unwrap_or_default();
+    // Manual confirmations never influence gear selection or packing.
+    let mut options = options.clone();
+    options.confirmations.clear();
+    let key = serde_json::to_string(&(snapshot, &options)).unwrap_or_default();
     thread_local! {static CACHE:std::cell::RefCell<std::collections::VecDeque<(String,Plan)>>=const{std::cell::RefCell::new(std::collections::VecDeque::new())};}
     if let Some(p) = CACHE.with(|c| {
         c.borrow()
@@ -1102,7 +1107,7 @@ pub fn plan(snapshot: &Snapshot, options: &Options) -> Plan {
     }) {
         return p;
     }
-    let result = plan_uncached(snapshot, options);
+    let result = plan_uncached(snapshot, &options);
     CACHE.with(|c| {
         let mut c = c.borrow_mut();
         if c.len() >= 8 {
@@ -1557,7 +1562,7 @@ fn plan_uncached(snapshot: &Snapshot, options: &Options) -> Plan {
                 m,
                 set,
                 &owned,
-                crate::rules::DEFAULT_CASTS,
+                options.combat.spell_casts,
                 &options.combat,
             ) {
                 let level = crate::rules::spells()
@@ -1569,11 +1574,11 @@ fn plan_uncached(snapshot: &Snapshot, options: &Options) -> Plan {
                     level
                         .map(|l| format!("{l} Magic"))
                         .unwrap_or("A usable charged staff".into()),
-                    crate::rules::DEFAULT_CASTS
+                    options.combat.spell_casts
                 ));
             }
             for (id, quantity) in
-                crate::rules::rune_supplies_for_set(spell, crate::rules::DEFAULT_CASTS, set)
+                crate::rules::rune_supplies_for_set(spell, options.combat.spell_casts, set)
             {
                 spell_runes
                     .entry(id)

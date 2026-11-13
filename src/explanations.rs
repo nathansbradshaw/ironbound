@@ -93,7 +93,7 @@ fn damage(
             &member,
             set,
             &owned,
-            rules::DEFAULT_CASTS,
+            o.combat.spell_casts,
             &o.combat,
         )
     {

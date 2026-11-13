@@ -17,7 +17,7 @@ Your account stays on that browser. Import it again when using a different devic
 
 **Saved setups** keeps named configurations on this device. Save a learning setup, change your gear, then load it again; ownership and levels are rechecked against your current bank. Private backups include the library. Public links exclude setup names and personal confirmations.
 
-**Gear → Adjust supplies → Spell casts for trip** sets your rune budget (default 150). Selection and packing use the same total cast count; rune stacks cover the worst-case mix of selected attack spells. Food and restore counts remain editable. Ammunition still assumes 100 projectiles; charges and actual trip length need your check.
+**Gear → Adjust supplies** sets your spell budget (default 150 casts) and ammunition per weapon (default 100 projectiles). Selection, packing, phase previews and exports use those counts. Rune stacks cover the worst-case mix of selected attack spells. Food and restore counts remain editable; charges and actual trip length need your check.
 
 **Preparation** shows encounter calculation coverage and lets you confirm access, unlocks, charges and supplies. These are your confirmations, not data inferred from the bank. Account or plan changes require checking again. Gear and switch edits keep manual inventory choices; packing conflicts block export until resolved. **Reset inventory edits** restores automatic packing.
 
@@ -69,7 +69,7 @@ Weapon IDs map to shared families and reusable mechanics. Exact variants stay se
 
 Defaults use unboosted levels. Selected boosts use peak current levels; wear requirements still use base levels. Supported prayers affect combat and drain. Reviewed outgoing calculations include melee, bows/crossbows, loaded blowpipes, powered staves, all 20 elemental Strike/Bolt/Blast/Wave/Surge spells and Iban Blast, with supported Fang, Keris, bolt and Shadow effects. Elemental damage tiers use base Magic; boosted levels unlock casts and affect accuracy. Only matching elements gain weakness bonuses. Charged Fire/Water/Earth tomes have their supported bonuses and rune supply; check pages manually. ToA assumes solo, path level 0 and invocation levels 0–150; Wardens remain unsupported.
 
-Blowpipes preload 100 owned compatible darts, or you can explicitly confirm contents already loaded. These occupy no bag or worn ammo slot. Check charges and trip supply yourself. Boost decay, potion timing, venom and special-attack damage are outside these estimates.
+Blowpipes preload your chosen ammunition budget from owned compatible darts, or you can explicitly confirm at least that many darts are already loaded. Changing the budget requires confirming the contents again. These occupy no bag or worn ammo slot. Projectile recovery, charges and actual consumption need your check. Boost decay, potion timing, venom and special-attack damage are outside these estimates.
 
 Incoming values describe an explicitly selected attack scenario, not a full-fight average. Unknown prayer interactions, special attacks, chip damage and defensive passives remain unverified. Automatic defence priority uses your selected defence bonuses; incoming scenarios remain separate estimates.
 
@@ -92,6 +92,15 @@ Requires Rust, the `wasm32-unknown-unknown` target and wasm-bindgen-cli **0.2.12
 cargo test --locked -j 2
 cargo run --locked --bin site -- build
 ```
+
+When another checkout is building into the same Cargo cache, use the reusable verification profiles to keep package outputs separate:
+
+```sh
+cargo test --locked --profile verify-dev -j 2
+cargo run --locked --profile verify-dev --bin site -- build verify-release
+```
+
+Both profiles use the existing target root; no per-check target directory is needed. Keep the same chosen profile through verification and release packaging.
 
 Output: `dist/`. To preview locally, check port ownership first, then:
 

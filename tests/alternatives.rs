@@ -45,6 +45,7 @@ fn options(style: &str, target: i32) -> Options {
 }
 fn plan(o: &Options, set: Vec<Option<i32>>) -> Plan {
     Plan {
+        ammo_shots: o.combat.ammo_shots,
         loaded_ammo: None,
         optimization: None,
         equipment: set.clone(),
@@ -420,4 +421,43 @@ fn unknown_equipment_stats_do_not_manufacture_prayer_savings() {
     set[0] = Some(9_999_999);
     let p = plan(&o, set);
     assert!(alternatives::equipment(&s, &o, &p, None, 0, 2).is_empty());
+}
+
+#[test]
+fn carried_alternative_keeps_its_own_phase_style_for_direct_equipping() {
+    let s = bank(&[(4151, 1), (11905, 1), (1127, 1), (4091, 1), (10462, 1)]);
+    let mut o = options("Slash", 1673);
+    o.targets.push(Target {
+        id: 1672,
+        style: "Magic".into(),
+    });
+    let mut p = plan(&o, melee());
+    let mut magic = vec![None; 14];
+    magic[3] = Some(11905);
+    magic[4] = Some(4091);
+    p.phases.push(Phase {
+        name: o.targets[1].name(),
+        style: "Magic".into(),
+        equipment: magic,
+        note: String::new(),
+    });
+    let rows = alternatives::packed(
+        &s,
+        &o,
+        &p,
+        &Packed {
+            id: 4091,
+            quantity: 1,
+            purpose: "Magic switch".into(),
+        },
+        2,
+    );
+    assert!(!rows.is_empty());
+    for row in &rows {
+        assert_eq!(row.style, "Magic");
+        assert_eq!(row.slot, 4);
+    }
+    let html = ironbound::tooltip::render("Magic switch", Some(4091), &rows, None);
+    assert!(html.contains("data-action=\"pick-gear:Magic:4:"));
+    assert!(!html.contains("pick-gear:Slash:"));
 }

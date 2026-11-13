@@ -1,4 +1,4 @@
-use crate::planner::{Options, Plan};
+use crate::planner::{self, Options, Plan};
 use serde_json::{Value, json};
 
 fn encounter_name(options: &Options) -> &str {
@@ -59,7 +59,7 @@ pub fn inventory_setup(plan: &Plan, options: &Options, _account: &str) -> Result
         .iter()
         .enumerate()
         .map(|(slot, id)| {
-            id.map(|id| item(id, if slot == 13 { 100 } else { 1 }))
+            id.map(|id| item(id, planner::equipped_quantity(slot, id, plan.ammo_shots)))
                 .unwrap_or(Value::Null)
         })
         .collect();
@@ -105,7 +105,7 @@ pub fn inventory_setup(plan: &Plan, options: &Options, _account: &str) -> Result
     if let Some(ammo) = &plan.loaded_ammo {
         notes.push_str(&format!(" Loaded weapon: {} × {} inside the blowpipe; verify contents and charges. Not worn ammo or inventory.",crate::planner::item_name(ammo.id),ammo.quantity));
     }
-    notes.push_str(&format!(" Spell budget: {} casts total across selected attack spells; rune stacks cover the worst-case mix. This is not a duration or kill-count prediction. Ammunition uses 100-projectile packing assumptions; remaining charges need manual verification. {} User confirmations stay private and must be repeated by the recipient.", options.combat.spell_casts, crate::coverage::export_note(options)));
+    notes.push_str(&format!(" Spell budget: {} casts total across selected attack spells; rune stacks cover the worst-case mix. Ammunition budget: {} projectiles per ranged weapon. These are packing counts, not a duration or kill-count prediction; recovered projectiles and remaining charges need manual verification. {} User confirmations stay private and must be repeated by the recipient.", options.combat.spell_casts, plan.ammo_shots, crate::coverage::export_note(options)));
     let buffs = [
         &options.combat.boosts.melee,
         &options.combat.boosts.ranged,

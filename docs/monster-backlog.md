@@ -148,3 +148,18 @@ reviewed outgoing windows. Merge/publication evidence follows in the PR.
 Gameplay, physical RuneLite import, player movement and full-fight supply
 validation remain open. A checked outgoing item does not close its full-fight
 follow-up.
+
+Second batch, 13 November 2026: 11 additional outgoing states (seven Hydra,
+three Muspah, one normal Vardorvis) and selected incoming scenarios for both KQ
+forms and all three Kings. Thirteen focused regressions independently check
+rounding, bolt procs, Scythe splats, phase bounds, interpolation, drain ordering,
+finite-HP miss loops/overkill, source-ID Slayer assignments and incoming protection.
+The integrated build retains Moon follow-up reductions and rejects delayed burn
+in finite-HP and fight-timeline models that cannot account for it.
+
+Browser checks on the merged preview: Hydra before-chemical ruby maximum 25,
+electric-state HP 551–825 and lower-bound clamping; matching Slayer assignment
+across chemical states; Vardorvis accuracy and finite-HP budget changing at
+700 versus 350 HP; KQ magic accuracy 100% and zero protected HP damage; Muspah
+three of four supported outgoing windows, the prayer shield still unavailable,
+and a 127-HP final allocation. No browser console errors were observed.

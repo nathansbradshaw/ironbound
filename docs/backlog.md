@@ -27,6 +27,11 @@ dedicated encounter simulations.
   awake Duke and Sire vents/body. Hit caps, reductions, reach/immunity,
   per-hitsplat armour interactions and changing-HP ruby rules have independent
   regressions; full-fight follow-ups remain open in the detailed backlog.
+- [x] Second monster batch: Hydra chemical states and four stage HP bounds,
+  Muspah unshielded comparisons and Defence floor, HP-dependent normal Vardorvis
+  with a changing-stat attack budget, plus selected KQ and Dagannoth King incoming
+  attacks. Synthetic comparisons preserve source NPC Slayer assignments. The
+  Muspah prayer shield and full-fight follow-ups remain open.
 
 - [x] Show which selected attack windows have supported outgoing calculations and which are packing only.
 - [x] Explain remaining mechanics beside the encounter and in preparation/export notes. Count Wardens explicitly rather than omitting it from the supported fraction.

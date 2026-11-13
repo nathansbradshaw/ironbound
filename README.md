@@ -29,9 +29,11 @@ If browser saving fails, a persistent warning offers a private backup and retry.
 - **Yama:** packs melee/magic switches, spell runes, poison control and boosts. Combat shows Purging staff/Demonbane damage, Void Flare maximum hits and the alternating Judge cycle. Toggle **Mark of Darkness active** to match your play. Normal fight only; movement, specials and contract mechanics are outside the estimate.
 - **Plan a trip:** boss and raid templates, or your own group of monsters. Select your CoX rooms or choose each Fractured Archive fork.
 - **Compare switch limits:** choose any two caps in **Compare switches**. The encounter overview shows effective DPS, attack time, prayer used and drain alongside bag space. Expand phase details only when needed; apply either plan.
-- **Pack fewer switches:** automatically suggests the smallest bag within 3% of the fastest tested attack time and prayer use, with known incoming damage guarded. Apply it or compare against the fastest. Your switch ceiling stays respected; partial coverage is labelled.
+- **Pack fewer switches:** adjust **Tradeoff tolerance** from 0–10% (default 3%) to trade performance for bag space. Suggestions update automatically; the setting saves locally and travels with setup links. Your switch ceiling stays respected, known incoming damage stays guarded, and partial coverage is labelled.
 - **Compare gear:** outgoing DPS, supported incoming damage, defence and prayer drain.
+- **Compare armour sets:** Void, crystal bow/Bowfa, Barrows and Obsidian combinations compete as full loadouts. Set Dharok's current Hitpoints in **Combat → Boosts, darts & debuffs**; blank means full health. [Supported bonuses and limits](docs/armour-sets.md).
 - **Slayer task:** choose **On task / Off task** beside the encounter controls for each eligible target. Recommendations and comparisons include helmet/mask bonuses; Combat explains whether your gear receives them. Ranged/Magic require an imbued helmet or mask, and Salve bonuses do not stack with Slayer.
+- **Skip Void:** turn off **Use Void armour** beside Gear approach to compare your other gear. This excludes normal/Elite Void and cosmetic variants while keeping your Slayer task settings. Turn it back on to compare Void again; the preference is included in saved setups and setup links.
 - **Check the maths:** [live Wiki comparisons and update guide](docs/combat-validation.md). Run `cargo run --locked --bin validate_combat` to check the pinned reference loadouts.
 - **Model your fight:** Combat → **Boosts, darts & debuffs**. Choose active boosts, loaded blowpipe darts and successful reductions for each target.
 - **See weaknesses:** Combat breaks ranged defence into Light / Standard / Heavy and magic into Air / Water / Earth / Fire. Compare supported owned spells, hit chance, max hit and DPS; the selected spell shows its base and elemental bonuses.
@@ -75,7 +77,9 @@ Defaults use unboosted levels. Selected boosts use peak current levels; wear req
 
 Blowpipes preload your chosen ammunition budget from owned compatible darts, or you can explicitly confirm at least that many darts are already loaded. Changing the budget requires confirming the contents again. These occupy no bag or worn ammo slot. Projectile recovery, charges and actual consumption need your check. Boost decay, potion timing, venom and special-attack damage are outside these estimates.
 
-Incoming values describe an explicitly selected attack scenario, not a full-fight average. Unknown prayer interactions, special attacks, chip damage and defensive passives remain unverified. Automatic defence priority uses your selected defence bonuses; incoming scenarios remain separate estimates.
+Scythe uses target-size hits. Soulreaper uses **Boosts, darts & debuffs → Soulreaper held stacks**. Initial Moon support includes Dual macuahuitl, expected Blood Moon timing, Atlatl Strength-based damage and Blue Moon elemental casts. Full Eclipse burns and Blue Moon follow-ups remain unavailable. [Equipment coverage and remaining work](docs/equipment-backlog.md).
+
+Incoming values describe an explicitly selected attack scenario, not a full-fight average. Elysian, full Justiciar, settled Dinh's Block and Rondache reductions cover ordinary unprotected hits. Their interactions with chains, boss healing, prayer chip and specials remain unavailable. **Dinh's Block active** prevents attacks. Automatic defence priority uses your selected defence bonuses; incoming scenarios remain separate estimates.
 
 Prayer duration assumes full starting prayer, continuous use and carried ordinary prayer/restore doses. It excludes flicking, regeneration, restoration modifiers and encounter-imposed drains. It is not a whole-trip or kills-per-trip prediction.
 

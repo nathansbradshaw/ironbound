@@ -20,6 +20,8 @@ pub const CONFIRMATIONS: [(&str, &str); 4] = [
 pub fn token(snapshot: &Snapshot, options: &Options) -> String {
     let mut options = options.clone();
     options.confirmations.clear();
+    // An unapplied recommendation preference does not change trip preparation.
+    options.switch_tolerance = crate::efficient::DEFAULT_TOLERANCE_PERCENT;
     let plan = crate::planner::plan(snapshot, &options);
     let phases: Vec<_> = plan
         .phases

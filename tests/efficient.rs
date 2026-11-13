@@ -47,6 +47,29 @@ fn a_fast_but_fragile_benchmark_cannot_erase_the_full_budget_defensive_gain() {
 }
 
 #[test]
+fn higher_tolerances_choose_fewer_switches_without_moving_the_benchmark() {
+    let rows = vec![
+        candidate(1, 2, 17, 108.0, 100.0),
+        candidate(2, 3, 18, 104.0, 100.0),
+        candidate(8, 8, 23, 100.0, 100.0),
+    ];
+    for (tolerance, expected) in [(0, 2), (3, 2), (5, 1), (10, 0)] {
+        let result = efficient::choose(rows.clone(), tolerance, 11);
+        assert_eq!(result.compact, Some(expected));
+        assert_eq!(result.best, Some(2));
+    }
+    let mut previous = usize::MAX;
+    for tolerance in 0..=10 {
+        let result = efficient::choose(rows.clone(), tolerance, 11);
+        let slots = result.candidates[result.compact.unwrap()]
+            .budget
+            .max_inventory_space;
+        assert!(slots <= previous);
+        previous = slots;
+    }
+}
+
+#[test]
 fn prayer_cost_is_guarded_alongside_attack_time() {
     let result = efficient::choose(
         vec![
@@ -143,6 +166,7 @@ fn cache_reuses_caps_but_invalidates_actual_combat_bank_and_supply_changes() {
     let mut o = Options::default();
     let key = efficient::cache_key(&s, &o);
     o.max_switches = Some(2);
+    o.switch_tolerance = 10;
     o.inventory_overrides.insert(0, 385);
     o.inventory_quantities.insert(0, 4);
     assert_eq!(efficient::cache_key(&s, &o), key);

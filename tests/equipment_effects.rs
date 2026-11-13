@@ -132,6 +132,72 @@ fn scythe_applies_armour_to_each_splat_and_rejects_missing_size_and_uncharged_va
 }
 
 #[test]
+fn multi_hit_acid_rounds_each_splat_and_scythe_guaranteed_windows_keep_one_attack() {
+    let acid = planner::monster(100020).unwrap();
+    for (weapon, style, raw_max, split) in [
+        (22325, "Slash", 23, vec![23, 11, 5]),
+        (28997, "Crush", 24, vec![12, 12]),
+    ] {
+        let r = calc(&set(&[(3, weapon)]), style, acid, &Settings::default());
+        assert_eq!(r.max_hit, split.iter().map(|n| n / 2).sum::<i32>());
+        let p = combat::accuracy(r.attack_roll, r.defence_roll);
+        let mean =
+            |max: i32| (0..=max).map(|n| (n.max(1) / 2) as f64).sum::<f64>() / f64::from(max + 1);
+        let expected = if raw_max == 23 {
+            p * split.iter().map(|n| mean(*n)).sum::<f64>()
+        } else {
+            p * (mean(12) + p * mean(12))
+        };
+        close(r.dps, expected / (r.expected_attack_ticks * 0.6));
+        valid_distribution(&r);
+    }
+    let judge = calc(
+        &set(&[(3, 22325)]),
+        "Slash",
+        planner::monster(100013).unwrap(),
+        &Settings::default(),
+    );
+    close(judge.accuracy, 1.0);
+    assert_eq!(judge.guaranteed_hits, Some(vec![(judge.max_hit, 1.0)]));
+    close(judge.dps, judge.max_hit as f64 / 3.0);
+}
+
+#[test]
+fn moon_owned_search_packs_atlatl_darts_and_discovers_complete_blood_set() {
+    let snapshot = account::Snapshot {
+        members: vec![Member {
+            name: "Synthetic equipment".into(),
+            bank: Some(vec![
+                29000, 1, 28991, 100, 28997, 1, 29028, 1, 29022, 1, 29025, 1,
+            ]),
+            ..member()
+        }],
+        selected: "Synthetic equipment".into(),
+        source: "Synthetic".into(),
+        fetched_at: String::new(),
+    };
+    let mut o = Options {
+        boss: planner::Boss::Custom,
+        targets: vec![planner::Target {
+            id: 26,
+            style: "Ranged".into(),
+        }],
+        recommended: Some(false),
+        food: 0,
+        prayer_potions: 0,
+        ..Default::default()
+    };
+    o.combat.ammo_shots = 37;
+    let p = planner::plan(&snapshot, &o);
+    assert_eq!(p.equipment[3], Some(29000));
+    assert_eq!(p.equipment[13], Some(28991));
+    assert_eq!(planner::equipped_quantity(13, 28991, p.ammo_shots), 37);
+    o.targets[0].style = "Crush".into();
+    let chosen = planner::equipment_for_style(&snapshot, &o, "Crush");
+    assert!(rules::set_effect(&chosen, "blood_moon"));
+}
+
+#[test]
 fn soulreaper_stacks_add_to_strength_after_prayer_and_round_before_stance() {
     let s = set(&[(3, 28338)]);
     assert_eq!(

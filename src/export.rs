@@ -106,6 +106,9 @@ pub fn inventory_setup(plan: &Plan, options: &Options, _account: &str) -> Result
         " Ranged ammunition type: {}.",
         options.combat.ranged_type.label()
     ));
+    if options.exclude_void {
+        notes.push_str(" Void armour excluded by preference.");
+    }
     if let Some(ammo) = &plan.loaded_ammo {
         notes.push_str(&format!(" Loaded weapon: {} × {} inside the blowpipe; verify contents and charges. Not worn ammo or inventory.",crate::planner::item_name(ammo.id),ammo.quantity));
     }
@@ -116,6 +119,16 @@ pub fn inventory_setup(plan: &Plan, options: &Options, _account: &str) -> Result
                 .map(|m| m.name.clone())
                 .unwrap_or_else(|| id.to_string())
         ));
+    }
+    if std::iter::once(&plan.equipment)
+        .chain(plan.phases.iter().map(|p| &p.equipment))
+        .any(|set| {
+            ["dharok", "guthan", "verac", "torag", "karil", "ahrim"]
+                .iter()
+                .any(|effect| crate::rules::set_effect(set, effect))
+        })
+    {
+        notes.push_str(&format!(" Dharok's current Hitpoints assumption: {}. Guthan's healing potential excludes overheal and is not credited as damage reduction; recoil and NPC stat-drain effects are not included.", options.combat.current_hitpoints.map(|hp|hp.to_string()).unwrap_or_else(||"full health".into())));
     }
     notes.push_str(&format!(" Spell budget: {} casts total across selected attack spells; rune stacks cover the worst-case mix. Ammunition budget: {} projectiles per ranged weapon. These are packing counts, not a duration or kill-count prediction; recovered projectiles and remaining charges need manual verification. {} User confirmations stay private and must be repeated by the recipient.", options.combat.spell_casts, plan.ammo_shots, crate::coverage::export_note(options)));
     let equipment_notes: std::collections::BTreeSet<_> = std::iter::once(&plan.equipment)

@@ -56,6 +56,90 @@ const RANGED: &[i32] = &[
 ];
 
 #[test]
+fn disabling_void_replans_on_task_and_reenabling_restores_the_comparison() {
+    for ids in [
+        RANGED.to_vec(),
+        vec![
+            21012, 21905, 26475, 27003, 26471, 26467, 3749, 2497, 2491, 7462,
+        ],
+    ] {
+        let s = bank(&ids);
+        for recommended in [true, false] {
+            let mut o = options(1672, "Ranged", recommended);
+            o.combat.slayer_targets.insert(1672);
+            let before = planner::equipment_for_style(&s, &o, "Ranged");
+            assert!(rules::set_effect(&before, "elite_void_ranged"));
+            o.exclude_void = true;
+            let after = planner::equipment_for_style(&s, &o, "Ranged");
+            assert!(after.iter().flatten().all(|id| !rules::void_piece(*id)));
+            assert_eq!(after[3], before[3]);
+            assert!(o.combat.slayer_targets.contains(&1672));
+            // A stale manually pinned Void helmet cannot bring the set back.
+            o.gear_overrides
+                .insert("Ranged:0".into(), before[0].unwrap());
+            let pinned = planner::equipment_for_style(&s, &o, "Ranged");
+            assert!(pinned.iter().flatten().all(|id| !rules::void_piece(*id)));
+            o.gear_overrides.clear();
+            o.exclude_void = false;
+            assert_eq!(planner::equipment_for_style(&s, &o, "Ranged"), before);
+        }
+    }
+}
+
+#[test]
+fn void_preference_survives_saved_options_and_public_links_and_defaults_to_allowed() {
+    let s = bank(RANGED);
+    let mut o = options(1672, "Ranged", true);
+    o.exclude_void = true;
+    o.combat.slayer_targets.insert(1672);
+    let restored: Options = serde_json::from_str(&serde_json::to_string(&o).unwrap()).unwrap();
+    assert!(restored.exclude_void);
+    assert!(restored.combat.slayer_targets.contains(&1672));
+    let plan = planner::plan(&s, &o);
+    let public = ironbound::share::Setup::from_plan(&plan, &o);
+    let restored = ironbound::share::Setup::parse(&public.fragment().unwrap()).unwrap();
+    assert!(restored.options().exclude_void);
+    assert!(restored.options().combat.slayer_targets.contains(&1672));
+    let mut legacy = serde_json::to_value(public).unwrap();
+    legacy.as_object_mut().unwrap().remove("exclude_void");
+    assert!(
+        !serde_json::from_value::<ironbound::share::Setup>(legacy)
+            .unwrap()
+            .options()
+            .exclude_void
+    );
+    let mut legacy = serde_json::to_value(o).unwrap();
+    legacy.as_object_mut().unwrap().remove("exclude_void");
+    assert!(
+        !serde_json::from_value::<Options>(legacy)
+            .unwrap()
+            .exclude_void
+    );
+}
+
+#[test]
+fn disabling_void_keeps_an_eligible_owned_slayer_helmet_in_the_search() {
+    let mut ids = RANGED.to_vec();
+    ids.extend([11865, 2503]);
+    let s = bank(&ids);
+    let mut o = options(1672, "Ranged", true);
+    o.combat.slayer_targets.insert(1672);
+    o.exclude_void = true;
+    let set = planner::equipment_for_style(&s, &o, "Ranged");
+    assert_eq!(set[0], Some(11865));
+    assert!(
+        ironbound::effects::target_bonus(
+            &set,
+            "Ranged",
+            planner::monster(1672).unwrap(),
+            &o.combat
+        )
+        .unwrap()
+        .slayer_task
+    );
+}
+
+#[test]
 fn ahrim_regression_finds_the_complete_set_in_both_ranking_modes() {
     let s = bank(RANGED);
     for recommended in [true, false] {

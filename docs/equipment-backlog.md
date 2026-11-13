@@ -1,92 +1,114 @@
 # Equipment mechanics backlog
 
-Requested 13 November 2026. Catalog presence and ordinary item bonuses do not
-establish support for a weapon, passive, set effect, special attack or trip model.
-Keep implementation, independent formula checks, browser checks and gameplay
-evidence separate. Unsupported mechanics must remain explicit.
+Requested 13 November 2026. Catalog presence and ordinary stats do not establish
+support for a passive, set effect, special attack or trip model. Formula,
+browser, live-calculator and gameplay evidence remain separate.
 
-## 1. Incorrectly blocked Berserker ring variants
+## 1. Incorrectly blocked Berserker rings
 
-- [ ] Remove the unsupported-passive gate from Berserker ring (i) IDs 25264 and 26770.
-- [ ] Verify equal stats and outgoing results with the other imbued variants.
+- [x] Remove the unsupported-passive gate for imbued IDs 25264 and 26770.
+- [x] Verify equal stats and outgoing results with the other imbued variant.
 
 ## 2. Barrows and Amulet of the damned
 
-Already owned by the active `codex/armour-set-comparisons` workstream; preserve its
-checkout and integrate its merged results rather than duplicating changes.
+Integrated from [PR #36](https://github.com/nathansbradshaw/ironbound/pull/36).
+See [armour coverage](armour-sets.md) for exact support and limitations.
 
-- [ ] Verify weapon support, exact active variants and complete-set discovery.
-- [ ] Verify Dharok health scaling, Verac bypass, Torag twin hits, Karil/Ahrim
+- [x] Verify weapons, active variants and complete-set discovery.
+- [x] Verify Dharok health scaling, Verac bypass, Torag twin hits, Karil/Ahrim
   amulet effects, Guthan healing potential and amulet prayer bonuses.
-- [ ] Keep unsupported incoming effects, PvP drains, overhealing and reflect
-  timing explicit. Do not claim a complete sustain simulation.
+- [x] Keep unsupported incoming effects, PvP drains, overhealing and reflect
+  timing explicit. Potential healing is not a complete sustain simulation.
+- [ ] Model Torag's amulet Defence bonus, reflected damage and dynamic NPC drains.
 
 ## 3. Obsidian and Berserker necklace
 
-Owned by `codex/armour-set-comparisons`.
-
-- [ ] Jointly discover weapon, armour and necklace; check additive/multiplicative
-  ordering, partial sets, exact variants and ownership/switch constraints.
+- [x] Integrate PR #36's joint weapon/armour/necklace discovery and verified
+  ordering, partial sets, variants, ownership and switch constraints.
 
 ## 4. Inquisitor armour and mace
 
-Owned by `codex/armour-set-comparisons`.
-
-- [ ] Verify current piece contributions, crush-only application, full-set
-  behaviour and mace support against a pinned independent reference.
+- [x] Integrate PR #36's current piece contributions, crush-only application,
+  set search and mace support against the pinned independent reference.
 
 ## 5. Moon equipment
 
-- [ ] Add Dual macuahuitl, Eclipse atlatl and Blue Moon spear attack rules,
-  requirements, ammunition and damage-stat selection.
-- [ ] Verify macuahuitl dependent hit rolls and per-splat armour.
-- [ ] Model Blood Moon attack timing, Eclipse burns and Blue Moon spell/melee
-  follow-ups only with independent fixtures; ordinary armour stats do not cover
-  these effects. Gate incomplete set combinations.
-- [ ] Compare complete owned sets and carry their real ammunition/rune needs.
+- [x] Add Dual macuahuitl normal melee, Eclipse atlatl normal ranged and Blue
+  Moon spear elemental casts, with requirements, ammo and damage-stat selection.
+- [x] Verify macuahuitl dependent hit rolls and per-splat armour/acid rounding.
+- [x] Model Blood Moon's expected attack timing and jointly discover owned sets.
+- [x] Pack the chosen Atlatl dart budget; retain exact active armour variants.
+- [x] Gate full Eclipse sets while their burn effect is incomplete.
+- [ ] Eclipse burn stacks, damage-over-time timing and finite-HP transitions.
+- [ ] Blue Moon melee, binding spells and spell/melee follow-up attacks.
+- [ ] Macuahuitl guaranteed-hit and special-phase transforms; specials remain open.
 
-## 6. Scythe, Soulreaper and other unsupported weapons
+## 6. Scythe, Soulreaper and other weapons
 
-- [ ] Scythe: exact active variants, target-size hit count, independent accuracy,
-  per-hit damage floors and armour; verify finite-HP calculations.
-- [ ] Soulreaper: explicit bounded stacks, boost/prayer ordering and sustained
-  normal attacks. Keep stack build-up, self-damage, healing and specials separate.
-- [ ] Audit remaining catalog weapons by family; add reviewed rules without
-  accidentally enabling uncharged, broken, cosmetic or incompatible variants.
+- [x] Scythe: charged variants, target-size hit count, independent accuracy,
+  per-hit damage floors/armour, acid rounding and finite-HP distributions.
+- [x] Soulreaper: explicit bounded held stacks, prayer ordering and sustained
+  normal attacks. Stack build-up/loss, self-damage, healing and specials are excluded.
+- [ ] Independently verify Soulreaper boost combinations and dynamic stacks.
+- [ ] Audit remaining catalog weapons by family. Never accidentally enable
+  uncharged, broken, cosmetic or incompatible variants.
 
 ## 7. Defensive passives
 
-- [ ] Elysian: proc probability, per-hit reduction/floors and expected damage.
-- [ ] Full Justiciar: style-specific defence contribution and per-hit rounding.
-- [ ] Dinh's: explicit Block assumption and its attack lockout; defence-based
-  offensive scaling remains a separate weapon task.
-- [ ] Rondache: flat reduction and its equipment penalty ordering.
-- [ ] Spectral prayer drain, reflect, healing and encounter-specific chip/special
-  interactions need explicit scenarios; do not turn basic-hit results into
-  full-fight survival or trip-length claims.
+- [x] Elysian: proc probability and per-hit floors for ordinary unprotected hits.
+- [x] Full Justiciar: style-specific defence and per-hit reduction in that scope.
+- [x] Dinh's: explicit settled Block assumption, reduction and attack lockout.
+- [x] Rondache: flat reduction; equipment penalties remain in defensive stats.
+- [ ] Extend these passives to chained hits, prayer chip, boss healing and
+  specials only after independently verifying their ordering.
+- [ ] Dinh's activation delay and defence-based offensive scaling.
+- [ ] Spectral prayer drain, reflected damage and healing need explicit
+  scenarios. Basic-hit estimates are not whole-fight survival or trip length.
 
 ## 8. Enchanted bolts
 
-- [ ] Add opal, pearl, dragonstone and onyx damage distributions, diary/Zaryte
-  modifiers, attribute immunities, misses and per-hit armour ordering.
-- [ ] Track jade stun, topaz stat drains, sapphire prayer effects and emerald
-  poison separately; direct-hit DPS cannot establish those encounter effects.
-- [ ] Preserve ruby changing-HP and diamond regression coverage; onyx healing,
-  ruby self-damage and actual ammunition consumption remain separate tasks.
+- [x] Opal, pearl, dragonstone and onyx ordinary-hit distributions, diary/Zaryte
+  modifiers, attribute immunities, misses and accurate-zero ordering.
+- [x] Preserve ruby changing-HP and diamond regression coverage.
+- [ ] Verify the new effects' flat-armour and guaranteed/special-phase transforms;
+  these combinations remain gated.
+- [ ] Jade stun, topaz drains, sapphire prayer effects and emerald poison.
+- [ ] Onyx healing, ruby self-damage and actual ammunition consumption.
 
 ## 9. Specials, energy and rotations
 
-- [ ] Inventory supported and unsupported special weapons separately from
-  normal-attack support. Add explicit coverage/preparation notes.
-- [ ] Add one independently verified special-attack distribution at a time,
-  starting with already supported normal-attack weapons.
-- [ ] Model energy costs/recovery, Lightbearer, timing, switching and rotations
-  before recommending special-attack gear or claiming whole-fight DPS.
-- [ ] Retain the distinction between a manually confirmed successful reduction
-  and the probability, damage, energy and time needed to land that reduction.
+- [x] Add normal-attack-only coverage and exported preparation notes, including
+  held Soulreaper stacks, Block lockout, onyx healing and Lightbearer limits.
+- [x] Distinguish manually confirmed successful reductions from the probability,
+  damage, energy and time needed to land them.
+- [ ] Inventory special weapons separately from normal-attack support.
+- [ ] Add one independently verified special distribution at a time, starting
+  with weapons whose normal attacks are already supported.
+- [ ] Energy costs/recovery, Lightbearer, timing, switches and rotations before
+  recommending special gear or claiming whole-fight DPS.
+
+## Reference and verification
+
+Pinned upstream calculator revision
+[`74958b1`](https://github.com/weirdgloop/osrs-dps-calc/tree/74958b18f6559cf1bf58f7ac74e7a442a7ac8e2f):
+[outgoing stages](https://github.com/weirdgloop/osrs-dps-calc/blob/74958b18f6559cf1bf58f7ac74e7a442a7ac8e2f/src/lib/PlayerVsNPCCalc.ts),
+[bolts](https://github.com/weirdgloop/osrs-dps-calc/blob/74958b18f6559cf1bf58f7ac74e7a442a7ac8e2f/src/lib/dists/bolts.ts),
+[incoming stages](https://github.com/weirdgloop/osrs-dps-calc/blob/74958b18f6559cf1bf58f7ac74e7a442a7ac8e2f/src/lib/NPCVsPlayerCalc.ts)
+and [NPC sizes](https://github.com/weirdgloop/osrs-dps-calc/blob/74958b18f6559cf1bf58f7ac74e7a442a7ac8e2f/cdn/json/monsters.json).
+Rust implements the arithmetic independently. These are formula regressions,
+not additional live-calculator captures or gameplay verification.
+
+`cargo run --locked --bin equipment_data -- /path/to/monsters.json` refreshes
+2,835 unambiguous factual sizes. Missing/conflicting sizes are withheld; attack
+windows resolve to source NPCs. Never assume every target takes three Scythe hits.
+
+`tests/equipment_effects.rs` covers rings, variants, target sizes, misses, finite
+HP, multi-hit floors, Soulreaper prayer ordering, Moon attacks/timing, owned
+search/ammunition, bolt immunities/diary/Zaryte, incoming floors, unsupported
+scenarios and saved/shared settings. Existing armour and reference tests also apply.
 
 ## Release evidence
 
-Pending the first equipment follow-up. Every release must pass relevant Rust
-regressions, the independent comparator, Wasm build and browser checks; verify
-remote main and the published source revision. Gameplay remains separate.
+First follow-up: verification in progress. Release requires the integrated Rust
+suite, independent comparator, Wasm build and browser checks, followed by remote
+main and published source verification. Gameplay remains open.

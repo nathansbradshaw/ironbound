@@ -5,12 +5,20 @@ use crate::{
     tradeoffs::Budget,
 };
 
-pub const TOLERANCE_PERCENT: u32 = 3;
+pub const DEFAULT_TOLERANCE_PERCENT: u32 = 3;
+pub const MAX_TOLERANCE_PERCENT: u32 = 10;
+pub fn default_tolerance() -> u32 {
+    DEFAULT_TOLERANCE_PERCENT
+}
+pub fn is_default_tolerance(value: &u32) -> bool {
+    *value == DEFAULT_TOLERANCE_PERCENT
+}
 pub fn cache_key(snapshot: &crate::account::Snapshot, options: &crate::planner::Options) -> String {
     let mut options = options.clone();
     // Trials set their own ceiling and repack both bags. Applying a lower cap
     // must not move the benchmark or restart the identical twelve searches.
     options.max_switches = None;
+    options.switch_tolerance = DEFAULT_TOLERANCE_PERCENT;
     options.inventory_overrides.clear();
     options.inventory_quantities.clear();
     serde_json::to_string(&(snapshot, options)).unwrap_or_default()
@@ -60,7 +68,7 @@ pub struct Suggestion {
 fn within(value: f64, reference: f64, tolerance: u32) -> bool {
     value.is_finite()
         && reference.is_finite()
-        && value <= reference * (1.0 + tolerance.min(10) as f64 / 100.0) + 1e-8
+        && value <= reference * (1.0 + tolerance.min(MAX_TOLERANCE_PERCENT) as f64 / 100.0) + 1e-8
 }
 /// Do not buy fewer switches by losing protection in a known attack scenario.
 /// Even when another unknown phase prevents an incoming encounter total, retain

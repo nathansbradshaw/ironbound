@@ -375,6 +375,7 @@ pub struct Entry {
 impl Entry {
     pub fn guide_url(&self) -> String {
         let page = match self.name.as_str() {
+            "Tormented Demons" => "Tormented_Demon",
             "Sliske's wights" => "Desert_Treasure_II",
             name => name.strip_suffix(" (Quest)").unwrap_or(name),
         };

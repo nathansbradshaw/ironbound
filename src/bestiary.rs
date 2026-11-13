@@ -634,6 +634,17 @@ pub fn card(entry: &Entry, index: usize, a: &Assessment) -> String {
     let requirement_class = a.requirements.status.class();
     let requirement_status = a.requirements.status.label();
     let requirement_reason = esc(&a.requirements.reason);
+    let (requirement_summary, requirement_details) = match a.requirements.status {
+        RequirementStatus::Missing | RequirementStatus::LevelMet => (
+            format!(
+                r#"<div class="boss-requirements" aria-label="Entry requirements"><span class="requirement-badge requirement-{requirement_class}">{requirement_status}</span><p>{requirement_reason}</p></div>"#
+            ),
+            String::new(),
+        ),
+        RequirementStatus::Unverified | RequirementStatus::NoLevelGate => {
+            (String::new(), format!("<p>{requirement_reason}</p>"))
+        }
+    };
     let kit=a.preview.as_ref().map(|p| {
         let mut html=String::from("<div class=\"wilderness-kit\"><strong>Exact screened kit</strong><ul>");
         for (slot,id) in p.equipment.iter().enumerate() {
@@ -646,7 +657,7 @@ pub fn card(entry: &Entry, index: usize, a: &Assessment) -> String {
         html.push_str("</ul><p>All other equipment slots are empty. Food, runes, charged contents and other supplies need a separate risk check.</p></div>");html
     }).unwrap_or_default();
     format!(
-        r#"<article class="bestiary-card"><button class="encounter-choice bestiary-open" data-action="choose-encounter:{index}" {} aria-label="Plan {}"><span class="boss-portrait">{}</span><span class="boss-entry"><span class="boss-entry-heading"><strong>{}</strong><span class="boss-readiness readiness-{}">Gear: {}</span></span>{location}<span class="boss-reason">{}</span></span><span class="boss-open-arrow" aria-hidden="true">→</span></button><div class="boss-requirements" aria-label="Entry requirements"><span class="requirement-badge requirement-{requirement_class}">{requirement_status}</span><p>{requirement_reason}</p></div><details class="bestiary-notes"><summary>Details & readiness</summary><div class="boss-entry"><span class="boss-stats">{stats}</span><small>{context}</small></div>{kit}<p>{}</p><p>{}</p><small>{}</small></details></article>"#,
+        r#"<article class="bestiary-card"><button class="encounter-choice bestiary-open" data-action="choose-encounter:{index}" {} aria-label="Plan {}"><span class="boss-portrait">{}</span><span class="boss-entry"><span class="boss-entry-heading"><strong>{}</strong><span class="boss-readiness readiness-{}">Gear: {}</span></span>{location}<span class="boss-reason">{}</span></span><span class="boss-open-arrow" aria-hidden="true">→</span></button>{requirement_summary}<details class="bestiary-notes"><summary>Details & readiness</summary>{requirement_details}<div class="boss-entry"><span class="boss-stats">{stats}</span><small>{context}</small></div>{kit}<p>{}</p><p>{}</p><small>{}</small></details></article>"#,
         if entry.targets.is_empty() || a.wilderness && a.preview.is_none() {
             "disabled"
         } else {

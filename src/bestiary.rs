@@ -22,7 +22,7 @@ pub const FILTERS: [&str; 12] = [
     "Groups",
     "All",
 ];
-pub const CATEGORY_FILTERS: [&str; 7] = ["For you", "Bosses", "Quest bosses", "Raids", "Groups", "All", "Popular"];
+pub const CATEGORY_FILTERS: [&str; 8] = ["For you", "Bosses", "Quest bosses", "Raids", "Groups", "Sailing", "All", "Popular"];
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum GearFilter {
@@ -592,6 +592,7 @@ fn assess_gear_catalog(snapshot: &Snapshot, preferences: &Options) -> Vec<Assess
         })
         .collect();
     crate::encounters::catalog().iter().map(|entry| {
+        if entry.category() == "Sailing" { return unknown("Configure your boat and crew. Weapon gear alone does not establish sea-combat readiness."); }
         if !entry.bank_equipment { return unknown("This encounter needs its own equipment or skilling readiness model."); }
         if entry.targets.is_empty() { return unknown(if crate::encounters::mechanics().unverified_modes.contains(&entry.name) { "This mode needs its own scaling and readiness model; the base-mode rating does not apply." } else { "A verified target mapping is needed before gear readiness can be rated." }); }
         let guideline = profile(&entry.name);

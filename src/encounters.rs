@@ -377,6 +377,7 @@ impl Entry {
         crate::quest_bosses::profile(&self.name).map(|p| p.quest.as_str())
     }
     pub fn guide_url(&self) -> String {
+        if self.category() == "Sailing" { return format!("https://oldschool.runescape.wiki/w/{}", self.name.replace(' ', "_")); }
         let page = match self.name.as_str() {
             "Tormented Demons" => "Tormented_Demon",
             "Sliske's wights" => "Desert_Treasure_II",
@@ -402,6 +403,7 @@ impl Entry {
     }
     pub fn category(&self) -> &'static str {
         if self.quest().is_some() { return "Quest bosses"; }
+        if self.targets.iter().any(|t| crate::sailing::is_sea(t.id)) { return "Sailing"; }
         let data = browser_catalog();
         if data.raids.iter().any(|raid| self.name.starts_with(raid)) {
             "Raids"
@@ -412,6 +414,7 @@ impl Entry {
         }
     }
     pub fn coverage(&self) -> &'static str {
+        if self.category() == "Sailing" { return "Boat setup · weapon DPS partial · cannon accuracy unverified"; }
         if !self.bank_equipment {
             "Encounter equipment / skilling model needed"
         } else if self.targets.is_empty() {
@@ -463,6 +466,7 @@ pub fn catalog() -> &'static [Entry] {
             let note=if !bank_equipment {"Uses encounter-specific equipment or skilling mechanics; bank combat-gear optimization is not applicable yet.".into()} else if unverified_mode {"This mode needs dedicated raid scaling. Use the base-mode packing template; mode-specific optimization is not supported yet.".into()} else if let Some(g)=group {g.note.clone()} else if targets.is_empty(){"Listed in the boss catalog, but a verified combat target mapping is still missing. Use monster search when the target becomes available.".into()} else {"One recorded attack window, not a complete phase list. Editable starting styles use recorded defences; check immunities and add other forms through monster search. Basic attack estimates do not imply a fully simulated fight.".into()};
             entries.push(Entry{name,targets,note,bank_equipment});
         }
+        entries.extend(crate::sailing::entries());
         entries.sort_by(|a,b|a.name.cmp(&b.name));entries
     })
 }

@@ -16,6 +16,8 @@ pub struct Switch {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Setup {
+    #[serde(default, skip_serializing_if = "crate::sailing::is_default")]
+    pub sailing: crate::sailing::Settings,
     #[serde(default)]
     pub exclude_void: bool,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -59,6 +61,11 @@ pub struct Constraints {
 impl Setup {
     pub fn from_plan(p: &Plan, o: &Options) -> Self {
         Self {
+            sailing: if crate::sailing::active(o) {
+                o.sailing.clone()
+            } else {
+                Default::default()
+            },
             exclude_void: o.exclude_void,
             wilderness: o.wilderness.clone(),
             switch_tolerance: o.switch_tolerance,
@@ -109,6 +116,9 @@ impl Setup {
     }
     pub fn validate(&self) -> Result<(), String> {
         let fail = || "This shared setup is invalid or unsupported.".to_string();
+        if !self.sailing.valid() {
+            return Err(fail());
+        }
         if self.constraints.as_ref().is_some_and(|c| {
             c.max_switches > 11
                 || c.switch_slots > 20
@@ -318,6 +328,7 @@ impl Setup {
     }
     pub fn options(&self) -> Options {
         Options {
+            sailing: self.sailing.clone(),
             exclude_void: self.exclude_void,
             wilderness: self.wilderness.clone(),
             switch_tolerance: self.switch_tolerance,

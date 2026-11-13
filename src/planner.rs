@@ -235,6 +235,7 @@ impl Target {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(default)]
 pub struct Options {
+    pub sailing: crate::sailing::Settings,
     pub simulation: crate::simulation::Settings,
     pub confirmations: BTreeMap<String, String>,
     pub recommended: Option<bool>,
@@ -271,6 +272,7 @@ pub struct Options {
 impl Default for Options {
     fn default() -> Self {
         Self {
+            sailing: Default::default(),
             simulation: Default::default(),
             confirmations: BTreeMap::new(),
             recommended: None,
@@ -1351,6 +1353,8 @@ pub fn plan(snapshot: &Snapshot, options: &Options) -> Plan {
     options.damage_tolerance = 0;
     options.prayer_tolerance = 0;
     options.simulation = Default::default();
+    // Boat assumptions do not change the personal equipment packing plan.
+    options.sailing = Default::default();
     let key = serde_json::to_string(&(snapshot, &options)).unwrap_or_default();
     thread_local! {static CACHE:std::cell::RefCell<std::collections::VecDeque<(String,Plan)>>=const{std::cell::RefCell::new(std::collections::VecDeque::new())};}
     if let Some(p) = CACHE.with(|c| {

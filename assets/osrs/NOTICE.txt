@@ -29,3 +29,7 @@ SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
 CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
 OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+
+Sailing boat hulls and crewmate sprites: OSRS Wiki image files, retrieved
+13 November 2026. Copyright Jagex Ltd.; community media from
+https://oldschool.runescape.wiki/ . Used for this unofficial fan planner.

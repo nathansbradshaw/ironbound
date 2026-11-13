@@ -29,6 +29,7 @@ fn comparison_caps_query() -> Option<[usize; 2]> {
 }
 struct State {
     saved: Saved,
+    sailing_slot: String,
     save_status: Cell<SaveStatus>,
     unreadable_save: Option<String>,
     setups_open: bool,
@@ -156,6 +157,7 @@ impl State {
         }
         Self {
             save_status: Cell::new(save_status),
+            sailing_slot: "hull".into(),
             unreadable_save,
             setups_open: false,
             demo_return: None,
@@ -380,6 +382,9 @@ thread_local! {
 }
 
 fn live_number(id: &str) -> bool {
+    if let Some(key) = id.strip_prefix("sailing-") {
+        return ["visible","balls","kits","reserved","minutes","uptime"].contains(&key);
+    }
     if id.starts_with("risk-") {
         return true;
     }
@@ -411,6 +416,9 @@ fn live_number(id: &str) -> bool {
 fn apply_number(s: &mut State, id: &str, value: &str) -> bool {
     if s.shared_setup.is_some() && !id.starts_with("skill-") {
         return false;
+    }
+    if let Some(key) = id.strip_prefix("sailing-") {
+        return s.saved.options.sailing.update(key,value);
     }
     if let Some(key) = id.strip_prefix("risk-") {
         if let Some((field, item)) = key
@@ -1210,6 +1218,11 @@ pub fn start() -> Result<(), JsValue> {
             return;
         };
         let id = el.id();
+        if let Some(key) = id.strip_prefix("sailing-") {
+            let value = el.dyn_ref::<HtmlSelectElement>().map(|e| e.value()).or_else(|| el.dyn_ref::<HtmlInputElement>().map(|e| if e.type_()=="checkbox" { e.checked().to_string() } else { e.value() })).unwrap_or_default();
+            let changed=STATE.with(|state| {let mut s=state.borrow_mut(); if s.shared_setup.is_some() {return false;} let changed=s.saved.options.sailing.update(key,&value); if changed {s.persist();} changed });
+            if changed {render();} return;
+        }
         if id.starts_with("rank-") || id.starts_with("plan-rank-") {
             let value = el
                 .dyn_ref::<HtmlInputElement>()
@@ -1639,6 +1652,17 @@ fn focus_inventory(slot: usize) {
     }
 }
 fn act(action: &str) {
+    if let Some(slot)=action.strip_prefix("sailing-slot:") {
+        if crate::sailing_view::valid_slot(slot) {
+            STATE.with(|state| state.borrow_mut().sailing_slot=slot.into());
+            render();
+            if let Ok(Some(picker))=document().query_selector(".ship-picker") {picker.scroll_into_view();}
+        } return;
+    }
+    if let Some((key,value))=action.strip_prefix("sailing:").and_then(|v|v.split_once(':')) {
+        STATE.with(|state| {let mut s=state.borrow_mut();if s.shared_setup.is_none() && s.saved.options.sailing.update(key,value) {s.persist();}});render();return;
+    }
+
     if action.starts_with("risk-") {
         STATE.with(|state| {
             let mut s = state.borrow_mut();
@@ -2055,7 +2079,7 @@ fn act(action: &str) {
             s.edit_equipment = None;
             s.edit_inventory = None;
         } else if let Some(view) = action.strip_prefix("view:") {
-            if ["loadout", "combat", "prepare"].contains(&view) {
+            if ["loadout", "combat", "prepare", "boat"].contains(&view) {
                 s.view = view.into();
                 s.edit_equipment = None;
             }
@@ -2203,7 +2227,7 @@ fn act(action: &str) {
                     s.edit_style = None;
                     s.compare_target = None;
                     s.edit_equipment = None;
-                    s.view = "loadout".into();
+                    s.view = if entry.category()=="Sailing" {"boat"} else {"loadout"}.into();
                     s.building_group = false;
                     s.raid_rooms_open = false;
                     s.bestiary_open = false;
@@ -2947,17 +2971,19 @@ fn render_with_edit(edit: Option<&str>) {
         html.push_str(&wilderness_banner(&s));
         html.push_str(&death_risk_panel(&s, &plan));
         if s.shared_setup.is_some(){html.push_str(&format!("<p class=\"notice\">Viewing a shared setup. Your saved bank is unchanged. {}</p>",button("use-bank","Rebuild using my items","text-button")));}
-        if s.shared_setup.is_none(){html.push_str(&switch_controls(&s,&plan));}
+        if s.shared_setup.is_none() && s.view!="boat" {html.push_str(&switch_controls(&s,&plan));}
         html.push_str("<nav class=\"planner-tabs\" aria-label=\"Planner sections\">");
+        if crate::sailing::active(options) {html.push_str(&format!("<button class=\"workspace-tab {}\" data-action=\"view:boat\" aria-pressed=\"{}\">Boat setup</button>",if s.view=="boat" {"active"}else{""},s.view=="boat"));}
         for (view,label) in [("loadout","Gear"),("combat","Combat"),("prepare","Preparation")] {let disabled=if view=="combat"&&s.shared_setup.is_some(){"disabled title=\"Rebuild using your items to calculate combat stats\""}else{""};html.push_str(&format!("<button class=\"workspace-tab {}\" data-action=\"view:{view}\" aria-pressed=\"{}\" {disabled}>{label}{}</button>",if s.view==view{"active"}else{""},s.view==view,if view=="prepare"&&!plan.missing.is_empty(){format!(" <span class=\"issue-count\">{}</span>",plan.missing.len())}else{String::new()}));}
         html.push_str("</nav><section class=\"workspace-view\">");
         match s.view.as_str(){
+            "boat" if crate::sailing::active(options)=>{html.push_str(&sailing_panel(&s));},
             "combat"=>{html.push_str("<div class=\"analysis-layout\">");html.push_str(&combat_panel(&s,&plan));html.push_str(&simulation_panel(&s,&plan));html.push_str(&switch_panel(&s,&plan));html.push_str("</div>");},
             "prepare"=>{html.push_str("<div class=\"prepare-layout\">");html.push_str(&checks_panel(&s,&plan));if s.shared_setup.is_none(){html.push_str(&manual_checks(&s));html.push_str(&coverage_panel(&s.saved.options));}if !plan.missing.is_empty(){html.push_str("<section class=\"panel\"><div class=\"panel-heading\"><h2>Missing trip items</h2></div><ul class=\"missing-list\">");for missing in &plan.missing{html.push_str(&format!("<li>{}</li>",esc(missing)));}html.push_str("</ul></section>");}if s.shared_setup.is_none(){html.push_str(&next_goal(&s));}html.push_str("</div>");},
             _=>{html.push_str(&phase_navigation(&s,&plan));html.push_str("<div class=\"loadout-layout\">");html.push_str(&loadout_panel(&s,&plan));html.push_str(&inventory_panel(&s,&plan));html.push_str("</div>");}
         }
-        html.push_str("</section><div class=\"plan-actions\">");html.push_str(&export_panel(&s,&plan));html.push_str("</div>");
-        if s.shared_setup.is_none(){html.push_str("<div class=\"plan-tools\">");html.push_str(&efficient_panel(&s,&plan));html.push_str(&budget_comparison(&s));html.push_str(&named_setups(&s));html.push_str("</div>");}
+        html.push_str("</section><div class=\"plan-actions\">");if s.view=="boat" {html.push_str(&button("share","Copy boat setup link","button ghost"));} else {html.push_str(&export_panel(&s,&plan));}html.push_str("</div>");
+        if s.shared_setup.is_none(){html.push_str("<div class=\"plan-tools\">");if s.view!="boat" {html.push_str(&efficient_panel(&s,&plan));html.push_str(&budget_comparison(&s));}html.push_str(&named_setups(&s));html.push_str("</div>");}
         if s.view=="loadout" && s.shared_setup.is_none(){html.push_str("<details class=\"secondary-section\"><summary>All owned gear</summary>");html.push_str(&tier_table(&s));html.push_str("</details>");}
     }
     html.push_str("</div><footer><span>Ironbound — an unofficial OSRS fan site.</span><a href=\"https://oldschool.runescape.wiki/\" target=\"_blank\" rel=\"noreferrer\">OSRS Wiki ↗</a><a href=\"./assets/osrs/NOTICE.txt\" target=\"_blank\" rel=\"noreferrer\">Asset credits</a><span>Starter catalog · 9 Nov 2026</span></footer></main></div>");
@@ -3479,7 +3505,7 @@ fn next_goal(s: &State) -> String {
 fn account_page(s: &State) -> String {
     let m = s.saved.snapshot.selected();
     let mut html = format!(
-        r#"<div class="page-heading"><div><h1>Your bank</h1><p>Saved on this device.</p></div></div><div class="account-grid"><section class="panel account-form"><h2>1. Import bank</h2><p>Export from RuneLite Bank Memory. Paste the table or choose a file.</p><label>Bank table or private backup<textarea id="import-data" rows="6" placeholder="Item id    Item name    Item quantity"></textarea></label>{}<label>Choose bank file<input id="import-file" type="file" accept=".txt,.tsv,.json,text/plain,application/json"></label><p>Backups include your bank. Keep them private.</p></section><section class="panel account-form"><h2>2. Combat levels</h2><label>RuneScape name (optional)<input id="player-name" maxlength="12" value="{}" autocomplete="off"></label><button class="button ghost" data-action="load-levels" {}>Look up public levels</button><p>Uses Wise Old Man’s public levels. Or enter them below.</p><small>Skill snapshot: {}</small><div class="skills-grid">"#,
+        r#"<div class="page-heading"><div><h1>Your bank</h1><p>Saved on this device.</p></div></div><div class="account-grid"><section class="panel account-form"><h2>1. Import bank</h2><p>Export from RuneLite Bank Memory. Paste the table or choose a file.</p><label>Bank table or private backup<textarea id="import-data" rows="6" placeholder="Item id    Item name    Item quantity"></textarea></label>{}<label>Choose bank file<input id="import-file" type="file" accept=".txt,.tsv,.json,text/plain,application/json"></label><p>Backups include your bank. Keep them private.</p></section><section class="panel account-form"><h2>2. Levels</h2><label>RuneScape name (optional)<input id="player-name" maxlength="12" value="{}" autocomplete="off"></label><button class="button ghost" data-action="load-levels" {}>Look up public levels</button><p>Uses Wise Old Man’s public levels. Or enter them below.</p><small>Skill snapshot: {}</small><div class="skills-grid">"#,
         button("import", "Import bank", "button gold full"),
         esc(if s.saved.snapshot.source == "Demo" {
             ""
@@ -3504,6 +3530,7 @@ fn account_page(s: &State) -> String {
         "Prayer",
         "Hitpoints",
         "Mining",
+        "Sailing",
     ] {
         let i = SKILLS.iter().position(|s| *s == skill).unwrap();
         html.push_str(&format!(r#"<label>{skill}<input id="skill-{i}" type="number" min="1" max="99" value="{}" placeholder="?"></label>"#,m.and_then(|m|m.level(skill)).map(|l|l.to_string()).unwrap_or_default()));
@@ -4025,6 +4052,11 @@ fn sustain_panel(
 ) -> String {
     let settings = &s.saved.options.combat;
     let mut html = String::from("<section class=\"sustain-panel\"><h3>Damage taken & prayer</h3>");
+    if crate::sailing::is_sea(target.id) {
+        html.push_str(&prayer_book(s, member));
+        html.push_str(&format!("<p>Sea attacks damage your boat. Your selected keel reduces this creature’s max hit to {}. Personal armour and protection prayers do not protect the hull.</p>{}</section>",crate::sailing::reduced_max(&s.saved.options.sailing,target).map(|n|n.to_string()).unwrap_or_else(||"unavailable".into()),button("view:boat","Boat setup","phase")));
+        return html;
+    }
     html.push_str(&prayer_book(s, member));
     let choices = crate::defence::attacks(target);
     if !choices.is_empty() {
@@ -4881,6 +4913,7 @@ fn combat_panel(s: &State, p: &Plan) -> String {
     );
     let results_index = html.len();
     let mut headline = String::new();
+    if crate::sailing::active(&s.saved.options) { html.push_str("<p class=\"notice\">Personal weapon comparison only. Cannon and crew damage are not included. The player cannot use a weapon while operating a cannon or steering.</p>"); }
     html.push_str(&combat_style_controls(s, &set, style));
     html.push_str(r#"<div class="target-choices" role="group" aria-label="Against"><h4>Against</h4><div class="combat-subtype-options">"#);
     let mut priority_ids = std::collections::BTreeSet::new();
@@ -6680,4 +6713,8 @@ fn death_risk_panel(s: &State, plan: &Plan) -> String {
         &s.saved.death_risk
     };
     crate::death_risk::render(plan, settings, s.risk_open, s.shared_setup.is_none())
+}
+
+fn sailing_panel(s: &State) -> String {
+    crate::sailing_view::render(&s.saved.options.sailing,s.saved.snapshot.selected(),&s.saved.options.targets,&s.sailing_slot,s.shared_setup.is_some())
 }

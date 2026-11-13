@@ -119,6 +119,7 @@ pub fn guaranteed_max(id: i32, attack_type: &str) -> bool {
 }
 pub fn style_limitation(id: i32, style: &str) -> Option<&'static str> {
     let style = rules::base_style(style);
+    if crate::sailing::is_sea(id) && style == "Melee" { return Some("Sea creatures cannot be reached with ordinary melee attacks from a boat. Choose ranged or magic. Salamander scorch is not modelled."); }
     if encounters::hit_rule(id).is_some_and(|r| !r.allowed_styles.iter().any(|s| s == style)) {
         return Some(
             "Outgoing mechanics are not verified for this style in the selected attack window.",

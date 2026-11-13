@@ -95,6 +95,7 @@ fn archive_forks_replace_rooms_and_preserve_all_final_phases() {
         switch_tolerance: ironbound::efficient::DEFAULT_TOLERANCE_PERCENT,
         damage_tolerance: 0,
         prayer_tolerance: 0,
+        simulation: Default::default(),
         recommended: None,
         ranking: Default::default(),
         combat: Default::default(),

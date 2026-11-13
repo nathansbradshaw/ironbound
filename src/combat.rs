@@ -77,7 +77,7 @@ fn bonuses_in_context(set: &[Option<i32>], toa: bool) -> Bonuses {
     }
     result
 }
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub struct ResultStats {
     /// Marginal per-attack damage, including misses and reviewed bolt effects.
     pub hit_distribution: Vec<(i32, f64)>,
@@ -100,7 +100,7 @@ pub struct ResultStats {
     /// Guaranteed-hit windows retain proc probabilities for exact alternating cycles.
     pub guaranteed_hits: Option<Vec<(i32, f64)>>,
 }
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, serde::Serialize, serde::Deserialize)]
 pub struct HpDependentHit {
     pub chance: f64,
     pub percent: i32,
@@ -117,7 +117,7 @@ impl HpDependentHit {
         self.transform.outcomes(raw, self.chance)
     }
 }
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub struct ElementalStats {
     pub element: String,
     pub base_max: i32,

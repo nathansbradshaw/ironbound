@@ -137,12 +137,35 @@ fn sharing_only_contains_an_explicit_public_allowlist() {
             "inventory",
             "raid_level",
             "ranking",
+            "simulation",
             "switches",
             "targets",
             "version"
         ]
     );
     let raw = value.to_string();
+    let mut scenario_keys = ironbound::simulation::Settings::default()
+        .fields()
+        .into_iter()
+        .map(|v| v.0)
+        .collect::<Vec<_>>();
+    scenario_keys.sort();
+    assert_eq!(
+        value["simulation"]
+            .as_object()
+            .unwrap()
+            .keys()
+            .map(String::as_str)
+            .collect::<Vec<_>>(),
+        scenario_keys
+    );
+    assert!(
+        value["simulation"]
+            .as_object()
+            .unwrap()
+            .values()
+            .all(|v| v.is_u64())
+    );
     for private in [
         "bank",
         "skills",

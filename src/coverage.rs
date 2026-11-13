@@ -35,7 +35,7 @@ pub fn windows(options: &Options) -> Vec<Window> {
                 rows.push(Window { name: target.name.clone(), style: style.into(), supported: reason.is_none(), reason: reason.unwrap_or("Reviewed outgoing attack window; timing, incoming specials and full-phase workloads remain partial.").into() });
             }
         }
-        rows.push(Window { name: "Wardens".into(), style: "Full encounter".into(), supported: false, reason: "Full-cycle timing is unverified. Use the explicit outgoing windows above; prayer rotations, core exposure/transfer, skulls and enrage are not simulated.".into() });
+        rows.push(Window { name: "Wardens".into(), style: "Full encounter".into(), supported: false, reason: "Whole-fight scenarios are available separately in Combat. Timing and incoming execution assumptions still need gameplay calibration; outgoing windows alone do not establish a validated full-fight prediction.".into() });
     }
     rows
 }

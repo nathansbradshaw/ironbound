@@ -202,6 +202,7 @@ impl Target {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(default)]
 pub struct Options {
+    pub simulation: crate::simulation::Settings,
     pub confirmations: BTreeMap<String, String>,
     pub recommended: Option<bool>,
     pub ranking: crate::ranking::Preferences,
@@ -237,6 +238,7 @@ pub struct Options {
 impl Default for Options {
     fn default() -> Self {
         Self {
+            simulation: Default::default(),
             confirmations: BTreeMap::new(),
             recommended: None,
             ranking: Default::default(),
@@ -1307,6 +1309,7 @@ pub fn plan(snapshot: &Snapshot, options: &Options) -> Plan {
     options.switch_tolerance = crate::efficient::DEFAULT_TOLERANCE_PERCENT;
     options.damage_tolerance = 0;
     options.prayer_tolerance = 0;
+    options.simulation = Default::default();
     let key = serde_json::to_string(&(snapshot, &options)).unwrap_or_default();
     thread_local! {static CACHE:std::cell::RefCell<std::collections::VecDeque<(String,Plan)>>=const{std::cell::RefCell::new(std::collections::VecDeque::new())};}
     if let Some(p) = CACHE.with(|c| {

@@ -56,10 +56,6 @@ function __wbg_get_imports() {
             const ret = arg0.appendChild(arg1);
             return ret;
         }, arguments); },
-        __wbg_bottom_364a8da495eed98e: function(arg0) {
-            const ret = arg0.bottom;
-            return ret;
-        },
         __wbg_checked_e5cdc0e72e42fdfd: function(arg0) {
             const ret = arg0.checked;
             return ret;
@@ -435,6 +431,9 @@ function __wbg_get_imports() {
         __wbg_revokeObjectURL_709bc205d98c34ba: function() { return handleError(function (arg0, arg1) {
             URL.revokeObjectURL(getStringFromWasm0(arg0, arg1));
         }, arguments); },
+        __wbg_scrollTo_ebc3153048c8e24e: function(arg0, arg1, arg2) {
+            arg0.scrollTo(arg1, arg2);
+        },
         __wbg_search_e85b52d847b83659: function() { return handleError(function (arg0, arg1) {
             const ret = arg1.search;
             const ptr1 = passStringToWasm0(ret, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);

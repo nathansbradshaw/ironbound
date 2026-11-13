@@ -1317,6 +1317,7 @@ pub fn start() -> Result<(), JsValue> {
             "kandarin-diary",
             "soulreaper-stacks",
             "bulwark-block",
+            "obligator-style",
             "allow-void",
             "safety",
             "prayer-weight",
@@ -1457,6 +1458,16 @@ pub fn start() -> Result<(), JsValue> {
                     s.saved.options.combat.bulwark_block = el
                         .dyn_ref::<HtmlInputElement>()
                         .is_some_and(|e| e.checked());
+                }
+                "obligator-style" => {
+                    if let Ok(sel) = el.dyn_into::<HtmlSelectElement>() {
+                        let value = sel.value();
+                        if ["Thrust accurate", "Thrust aggressive", "Smash"]
+                            .contains(&value.as_str())
+                        {
+                            s.saved.options.combat.obligator_style = value;
+                        }
+                    }
                 }
                 "allow-void" => {
                     s.saved.options.exclude_void = !el
@@ -4105,6 +4116,23 @@ fn combat_assumptions(
         html.push_str("</select></label><p class=\"small-note\">Enable Blue Moon's automatic melee in game and stay in melee range to count Frostweaver strikes. Off counts spell damage only.</p>");
     }
     let owned = s.saved.snapshot.available(s.saved.options.shared);
+    if owned
+        .keys()
+        .any(|id| crate::rules::weapon(*id).is_some_and(|r| r.has(crate::rules::Effect::Obligator)))
+    {
+        html.push_str("<label>Obligator attack<select id=\"obligator-style\">");
+        for value in ["Thrust accurate", "Thrust aggressive", "Smash"] {
+            html.push_str(&format!(
+                "<option {}>{value}</option>",
+                if settings.obligator_style == value {
+                    "selected"
+                } else {
+                    ""
+                }
+            ));
+        }
+        html.push_str("</select></label><p class=\"small-note\">Charged Thrust keeps the best of 2–4 damage rolls and gains size damage. Smash is a three-tick single hit without either passive. Inquisitor and encounter minimum-hit ordering for charged Thrust remain unverified.</p>");
+    }
     if owned.keys().any(|id| {
         crate::rules::weapon(*id).is_some_and(|r| r.has(crate::rules::Effect::Soulreaper))
     }) {

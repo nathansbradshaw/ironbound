@@ -37,11 +37,10 @@ special attacks, charges consumed and whole-fight sustain remain separate work.
 
 ## Still open
 
-- Obligator's size bonus and damage rerolls need independently pinned ordering
-  against Inquisitor, minimum hits and NPC limiters. The reference itself flags
-  ordering uncertainty; generic mace damage must not substitute for its passive.
-- Ascension crossbows, ascension-bolt variants and Seeking arrows require their
-  actual ammunition/proc/minimum-hit model, not a generic crossbow alias.
+- [Obligator and ammunition follow-up](obligator-ascension.md) adds charged
+  Thrust damage selection, size bonuses, all three stances, Ascension bolts and
+  Seeking arrows. Charged Thrust with Inquisitor or encounter minimum-hit bounds
+  remains gated pending verified ordering; multi-target gameplay remains open.
 - Zorya's empowered follow-ups, Crimson kisten's four-roll special, other specs,
   energy recovery/Lightbearer and charge consumption remain in the equipment backlog.
 - Elemental fragments/amulets, sunfire rune minimum hits, remaining Ancient

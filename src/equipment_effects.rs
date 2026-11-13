@@ -20,6 +20,12 @@ pub fn notes(set: &[Option<i32>], settings: &Settings) -> Vec<String> {
         if weapon.has(rules::Effect::Twinflame) {
             notes.push("Twinflame: six-tick standard casts, 10% standard-spell accuracy/damage and a correlated 40% second hit for elemental Bolt/Blast/Wave spells. Strike, Surge and binding spells receive no second hit. Guaranteed-hit/P2 extra-hit transforms remain unavailable.".into());
         }
+        if weapon.has(rules::Effect::Obligator) {
+            notes.push(format!("Obligator: {}. Charged Thrust uses one accuracy roll, then keeps the best of 2–4 damage rolls; size 2/3+ adds 20%/40% to max hit. Uncharged and Smash receive no passive. Inquisitor/minimum-hit ordering, multiple targets and charge consumption remain unverified.", settings.obligator_style));
+        }
+        if weapon.has(rules::Effect::Ascension) {
+            notes.push("Ascension crossbows: one bolt per attack, two ticks on Rapid and three on Accurate. Ascension bolts only; diamond/onyx proc rates are halved, with the Kandarin multiplier applied. Onyx healing and ammunition recovery are excluded.".into());
+        }
         if ["ayak", "zorya"].contains(&weapon.weapon.family.as_str()) {
             notes.push("Charged powered weapon: normal attacks only. Verify loaded charges; special attacks, empowered follow-ups and energy rotations are excluded.".into());
         }
@@ -51,6 +57,14 @@ pub fn notes(set: &[Option<i32>], settings: &Settings) -> Vec<String> {
         .is_some_and(|id| rules::ammunition(id) == rules::AmmoEffect::Onyx)
     {
         notes.push("Onyx: direct proc damage only; healing and sustain are not simulated.".into());
+    }
+    if set
+        .get(13)
+        .copied()
+        .flatten()
+        .is_some_and(|id| rules::ammunition(id) == rules::AmmoEffect::Seeking)
+    {
+        notes.push("Seeking arrows: successful damage rolls below three are raised to three before NPC reductions. Misses remain misses; no damage reroll or uniform minimum-hit distribution is implied.".into());
     }
     notes
 }

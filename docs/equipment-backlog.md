@@ -71,8 +71,10 @@ Recent-equipment follow-up: [reviewed weapons, armour and remaining gaps](recent
 Added normal attacks for Twinflame/smoke staves, dragon hunter wand, Eye of Ayak,
 Zorya's tome, Scorching bow, Burning claws, Noxious halberd, Arkan blade, Crimson
 kisten and all three Nagua weapons. Charged-quiver bonuses and recent armour wear
-requirements are explicit. Obligator, Ascension ammunition and special rotations
-remain tracked separately; catalog stats do not imply those effects are supported.
+requirements are explicit. [Obligator and Ascension ammunition](obligator-ascension.md)
+now have reviewed normal attacks, stance selection, proc distributions and Seeking
+arrow clamps. Charged Thrust with Inquisitor/encounter minimum hits and special
+rotations remain open; catalog stats do not imply unverified effects are supported.
 
 ## 7. Defensive passives
 

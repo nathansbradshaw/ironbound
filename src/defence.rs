@@ -28,6 +28,7 @@ pub struct Settings {
     pub slayer_targets: std::collections::BTreeSet<i32>,
     pub soulreaper_stacks: u32,
     pub bulwark_block: bool,
+    pub obligator_style: String,
 }
 impl Default for Settings {
     fn default() -> Self {
@@ -54,12 +55,15 @@ impl Default for Settings {
             slayer_targets: Default::default(),
             soulreaper_stacks: 0,
             bulwark_block: false,
+            obligator_style: "Thrust accurate".into(),
         }
     }
 }
 impl Settings {
     pub fn valid(&self) -> bool {
         ["Off", "Stab", "Slash", "Crush"].contains(&self.blue_moon_melee.as_str())
+            && ["Thrust accurate", "Thrust aggressive", "Smash"]
+                .contains(&self.obligator_style.as_str())
             && self
                 .current_hitpoints
                 .is_none_or(|hp| (1..=255).contains(&hp))

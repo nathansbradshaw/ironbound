@@ -12,6 +12,8 @@ pub struct SetHitEffects {
     pub extra_half: bool,
     pub extra_two_fifths: bool,
     pub final_divisor: i32,
+    pub damage_rolls: u32,
+    pub accurate_min: i32,
 }
 impl Default for SetHitEffects {
     fn default() -> Self {
@@ -22,8 +24,28 @@ impl Default for SetHitEffects {
             extra_half: false,
             extra_two_fifths: false,
             final_divisor: 1,
+            damage_rolls: 1,
+            accurate_min: 1,
         }
     }
+}
+/// Highest of independent inclusive uniform rolls, conditional on one successful
+/// accuracy roll. CDF differences retain exact integer endpoints without rolling
+/// accuracy again or convolving an exponential number of damage combinations.
+pub fn best_of_uniform(min: i32, max: i32, rolls: u32) -> Vec<(i32, f64)> {
+    let count = f64::from(max - min + 1);
+    if rolls == 1 {
+        // Preserve the established probability representation for ordinary
+        // attacks and saved calibration inputs.
+        return (min..=max).map(|damage| (damage, 1.0 / count)).collect();
+    }
+    (min..=max)
+        .map(|damage| {
+            let upper = f64::from(damage - min + 1) / count;
+            let lower = f64::from(damage - min) / count;
+            (damage, upper.powi(rolls as i32) - lower.powi(rolls as i32))
+        })
+        .collect()
 }
 /// Per-roll floors, not a multiplier of max hit or average damage. Retain
 /// Karil's second splat so accurate zeros and flat armour apply separately.

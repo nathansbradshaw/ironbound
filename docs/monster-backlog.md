@@ -67,8 +67,15 @@ independent references, browser verification, then gameplay verification.
   sleepwalkers, parasite and incoming damage; normal and solo models stay distinct.
 - [ ] Nex: phase-specific HP, immunities, blood healing, minions, team scaling
   and attack mixtures. Existing Smoke/Ice incoming scenario is only partial.
-- [ ] Hespori: flower invulnerability, roots and incoming damage.
-- [ ] Skotizo: altar reductions, Arclight interactions, adds and incoming damage.
+- [x] Hespori outgoing: flowers-cleared and flowers-alive body comparisons,
+  fire weakness, guaranteed Farming Guild flower finishers and 12-flower attack
+  budget. Quest flower rules stay separate and blocked.
+- [ ] Hespori full fight: exact flower thresholds/overshoot, travel, roots,
+  poison, incoming attacks and full supplies; quest variant needs its own model.
+- [x] Skotizo outgoing: zero through four active altars, per-hitsplat/bolt
+  reductions, exact Arclight/Emberlight exceptions and active altar finishers.
+- [ ] Skotizo full fight: random activation/cooldown sequence, travel, adds,
+  attack mixtures, incoming damage and full supplies.
 - [ ] Hueycoatl: body/tail damage limits, crush/earth rules, pillar bonus and team
   scaling; verify these independently of generic elemental weakness.
 - [ ] Royal Titans: titan resistances, elemental-add accuracy, barriers, duo
@@ -167,3 +174,17 @@ and a 127-HP final allocation. No browser console errors were observed.
 Integrated with the merged armour, fight-simulator and wilderness work: 504 Rust
 tests pass, alongside all 24 standalone reference cases and the release Wasm
 build. Deployment verification is recorded in the release PR.
+
+Third batch, 13 November 2026: nine reviewed outgoing states for Skotizo,
+its active altar, Hespori and Farming Guild flowers, plus an explicit quest-flower
+gate. Eleven new regressions check the 15%/25% altar reductions, per-splat and
+bolt ordering, named sword exceptions, flower invulnerability, one-hit finishers,
+burn exclusion, 12-flower workloads and unchanged default boss HP allocations.
+All 515 integrated Rust tests, 24 standalone reference cases and the release
+Wasm build pass, with the latest OSRS skin retained.
+
+Browser preview: ordinary Skotizo damage drops to zero with four active altars;
+the altar is a separate comparison. Hespori's living flowers block direct body
+damage; its flower target guarantees a 10-damage hit and shows exactly 12 attack
+commitments (28.8 seconds for the example four-tick weapon). No console errors.
+This excludes travel, flower thresholds, activation sequences and incoming attacks.

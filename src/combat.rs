@@ -1186,6 +1186,20 @@ pub fn calculate_configured(
             proc.divisor = damage_divisor;
         }
     }
+    let instant_defeat = crate::monster_rules::instant_defeat(monster.id, weapon);
+    if let Some(damage) = instant_defeat {
+        if blood_proc > 0.0 {
+            return Err(
+                "Blood Moon timing when an NPC is defeated by its first hitsplat is unverified."
+                    .into(),
+            );
+        }
+        distribution = vec![(damage, 1.0)];
+        hits = distribution.clone();
+        hp_dependent = None;
+        max_hit = damage;
+        hit = 1.0;
+    }
     let expected = distribution
         .iter()
         .map(|(damage, p)| *damage as f64 * p)
@@ -1194,6 +1208,8 @@ pub fn calculate_configured(
     let burn_dps = if style == "Ranged"
         && rules::set_effect(set, "eclipse_moon")
         && !crate::moon::burn_immune(monster.id)
+        && instant_defeat.is_none()
+        && !crate::encounters::window(monster.id).is_some_and(|w| w.invulnerable)
     {
         if damage_model != crate::encounters::DamageModel::Standard {
             return Err(
@@ -1228,7 +1244,7 @@ pub fn calculate_configured(
             String::new()
         },
         elemental,
-        guaranteed_hits: always_max.then_some(hits),
+        guaranteed_hits: (always_max || instant_defeat.is_some()).then_some(hits),
     })
 }
 /// Shared single-hit distribution: composable procs, accurate-zero handling, then NPC armour.

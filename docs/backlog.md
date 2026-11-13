@@ -32,6 +32,9 @@ dedicated encounter simulations.
   with a changing-stat attack budget, plus selected KQ and Dagannoth King incoming
   attacks. Synthetic comparisons preserve source NPC Slayer assignments. The
   Muspah prayer shield and full-fight follow-ups remain open.
+- [x] Third monster batch: Skotizo altar counts and Arclight/Emberlight finishers;
+  Hespori flower protection, Farming Guild flower finishers and 12-flower attack
+  budget. Related NPC buttons do not add targets to the default boss workload.
 
 - [x] Show which selected attack windows have supported outgoing calculations and which are packing only.
 - [x] Explain remaining mechanics beside the encounter and in preparation/export notes. Count Wardens explicitly rather than omitting it from the supported fraction.

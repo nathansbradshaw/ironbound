@@ -89,6 +89,13 @@ pub struct Window {
     /// Expose this alternative state beside its source NPC in Combat.
     #[serde(default)]
     pub comparison_alternative: bool,
+    /// Related NPC comparisons, without adding them to the default HP workload.
+    #[serde(default)]
+    pub comparison_sources: Vec<i32>,
+    #[serde(default)]
+    pub active_altars: Option<u8>,
+    #[serde(default)]
+    pub invulnerable: bool,
     #[serde(default)]
     pub min_hp: Option<u32>,
     #[serde(default)]

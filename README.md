@@ -24,6 +24,7 @@ Your account stays on that browser. Import it again when using a different devic
 - **Compare gear:** outgoing DPS, supported incoming damage, defence and prayer drain.
 - **Check the maths:** [live Wiki comparisons and update guide](docs/combat-validation.md). Run `cargo run --locked --bin validate_combat` to check the pinned reference loadouts.
 - **Model your fight:** Combat → **Boosts, darts & debuffs**. Choose active boosts, loaded blowpipe darts and successful reductions for each target.
+- **See weaknesses:** Combat breaks ranged defence into Light / Standard / Heavy and magic into Air / Water / Earth / Fire. Compare supported owned spells, hit chance, max hit and DPS; the selected spell shows its base and elemental bonuses.
 - **Choose your switch limit:** this is a maximum. See how many changes the plan actually uses. Equal combat scores prefer lower prayer use, then fewer packed items. Numeric controls update while typing or using their arrows.
 - **Why this item?** Hover or keyboard-focus worn gear and carried items for phase roles, verified damage/prayer benefits, or supply purpose.
 - **Pack your inventory:** click any slot, search owned items by type, and keep your chosen positions when exporting.
@@ -53,7 +54,7 @@ Share links contain the encounter, carried gear, quantities, switches and combat
 
 Weapon IDs map to shared families and reusable mechanics. Exact variants stay separate: owning a basic Keris partisan does not unlock any upgrade. Families supply attack types, stances, ammunition, requirements, rune recipes and effects to both the planner and calculator.
 
-Defaults use unboosted levels. Selected boosts use peak current levels; wear requirements still use base levels. Supported prayers affect combat and drain. Reviewed outgoing calculations include melee, bows/crossbows, loaded blowpipes, powered staves, Wind spells and Iban Blast, with supported Fang, Keris, bolt and Shadow effects. ToA assumes solo, path level 0 and invocation levels 0–150; Wardens remain unsupported.
+Defaults use unboosted levels. Selected boosts use peak current levels; wear requirements still use base levels. Supported prayers affect combat and drain. Reviewed outgoing calculations include melee, bows/crossbows, loaded blowpipes, powered staves, all 20 elemental Strike/Bolt/Blast/Wave/Surge spells and Iban Blast, with supported Fang, Keris, bolt and Shadow effects. Elemental damage tiers use base Magic; boosted levels unlock casts and affect accuracy. Only matching elements gain weakness bonuses. Charged Fire/Water/Earth tomes have their supported bonuses and rune supply; check pages manually. ToA assumes solo, path level 0 and invocation levels 0–150; Wardens remain unsupported.
 
 Blowpipes preload 100 owned compatible darts, or you can explicitly confirm contents already loaded. These occupy no bag or worn ammo slot. Check charges and trip supply yourself. Boost decay, potion timing, venom and special-attack damage are outside these estimates.
 

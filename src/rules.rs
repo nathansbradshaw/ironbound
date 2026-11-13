@@ -16,7 +16,8 @@ pub fn base_style(style: &str) -> &str {
 #[serde(rename_all = "snake_case")]
 pub enum Formula {
     Standard,
-    Wind,
+    #[serde(alias = "wind")]
+    Elemental,
     Fixed,
     Powered,
     Spell,
@@ -142,6 +143,8 @@ pub struct Weapon {
     pub ids: Vec<i32>,
     pub family: String,
     #[serde(default)]
+    pub supplied_runes: Vec<i32>,
+    #[serde(default)]
     pub effects: Vec<Effect>,
     pub requirements: BTreeMap<String, u32>,
     #[serde(default)]
@@ -197,7 +200,16 @@ pub struct Ammunition {
     pub proc_chance: f64,
 }
 #[derive(Debug, Deserialize)]
+pub struct ElementalFocus {
+    pub ids: Vec<i32>,
+    pub element: String,
+    pub rune: i32,
+    pub damage_percent: i64,
+    pub accuracy_percent: i64,
+}
+#[derive(Debug, Deserialize)]
 pub struct Registry {
+    pub elemental_focuses: Vec<ElementalFocus>,
     #[serde(default)]
     pub target_bonuses: Vec<crate::effects::TargetBonus>,
     pub families: BTreeMap<String, Family>,
@@ -212,6 +224,17 @@ pub struct Registry {
 }
 impl Registry {
     pub fn validate(&self) -> Result<(), String> {
+        let mut focuses = std::collections::BTreeSet::new();
+        if self.elemental_focuses.iter().any(|f| {
+            f.ids.is_empty()
+                || f.ids.iter().any(|id| *id <= 0 || !focuses.insert(*id))
+                || !["air", "water", "earth", "fire"].contains(&f.element.as_str())
+                || f.rune <= 0
+                || !(0..=100).contains(&f.damage_percent)
+                || !(0..=100).contains(&f.accuracy_percent)
+        }) {
+            return Err("Invalid elemental focus".into());
+        }
         if self.target_bonuses.iter().any(|b| {
             !b.valid()
                 || !self
@@ -225,6 +248,10 @@ impl Registry {
         for (name, family) in &self.families {
             if !["Melee", "Ranged", "Magic"].contains(&family.style.as_str())
                 || family.attack_types.is_empty()
+                || (family.style == "Ranged"
+                    && (family.attack_types.len() != 1
+                        || !["light", "standard", "heavy"]
+                            .contains(&family.attack_types[0].as_str())))
                 || family.denominator <= 0
                 || family.ticks.is_some_and(|n| n <= 0)
                 || (!family.internal_ammo.is_empty()
@@ -496,7 +523,8 @@ pub fn weapon_ids(style: &str, allow_spells: bool) -> Vec<i32> {
         .filter(|id| {
             weapon(*id).is_some_and(|r| {
                 r.permits(style)
-                    && (allow_spells || !matches!(r.family.formula, Formula::Wind | Formula::Fixed))
+                    && (allow_spells
+                        || !matches!(r.family.formula, Formula::Elemental | Formula::Fixed))
             })
         })
         .collect()
@@ -565,6 +593,8 @@ pub struct SpellRecipe {
     pub level: u32,
     pub runes: BTreeMap<i32, u32>,
     pub tiers: Vec<(u32, i64)>,
+    #[serde(default)]
+    pub element: Option<String>,
 }
 pub fn spells() -> &'static [SpellRecipe] {
     static DATA: std::sync::OnceLock<Vec<SpellRecipe>> = std::sync::OnceLock::new();
@@ -578,7 +608,11 @@ pub fn spells() -> &'static [SpellRecipe] {
                 names.insert(spell.name.clone())
                     && registry().families.contains_key(&spell.family)
                     && spell.level > 0
-                    && !spell.tiers.is_empty(),
+                    && !spell.tiers.is_empty()
+                    && spell
+                        .element
+                        .as_deref()
+                        .is_none_or(|e| ["air", "water", "earth", "fire"].contains(&e)),
                 "valid spell recipe"
             );
             assert!(
@@ -635,17 +669,99 @@ fn spell_name_at_level(
     }
     recipes
         .iter()
-        .find(|s| magic.is_some_and(|level| level >= s.level) && has_runes(s, owned, DEFAULT_CASTS))
+        .find(|s| {
+            magic.is_some_and(|level| level >= s.level) && has_runes(s, set, owned, DEFAULT_CASTS)
+        })
         .or_else(|| recipes.last())
         .map(|s| s.name.as_str())
         .unwrap_or("")
 }
-fn has_runes(spell: &SpellRecipe, owned: &BTreeMap<i32, u32>, casts: u32) -> bool {
-    spell.runes.iter().all(|(id, quantity)| {
-        quantity
-            .checked_mul(casts)
-            .is_some_and(|need| owned.get(id).copied().unwrap_or(0) >= need)
-    })
+fn has_runes(
+    spell: &SpellRecipe,
+    set: &[Option<i32>],
+    owned: &BTreeMap<i32, u32>,
+    casts: u32,
+) -> bool {
+    rune_supplies_for_set(&spell.name, casts, set)
+        .iter()
+        .all(|(id, quantity)| owned.get(id).copied().unwrap_or(0) >= *quantity)
+}
+/// Staff-provided runes and charged tomes do not consume inventory rune stacks.
+pub fn rune_supplies_for_set(spell: &str, casts: u32, set: &[Option<i32>]) -> Vec<(i32, u32)> {
+    let supplied = set
+        .get(3)
+        .copied()
+        .flatten()
+        .and_then(weapon)
+        .map(|r| r.weapon.supplied_runes.as_slice())
+        .unwrap_or(&[]);
+    let tome = elemental_focus(set).map(|f| f.rune);
+    rune_supplies(spell, casts)
+        .into_iter()
+        .filter(|(id, _)| !supplied.contains(id) && tome != Some(*id))
+        .collect()
+}
+pub fn elemental_focus(set: &[Option<i32>]) -> Option<&'static ElementalFocus> {
+    let id = set.get(5).copied().flatten()?;
+    registry()
+        .elemental_focuses
+        .iter()
+        .find(|focus| focus.ids.contains(&id))
+}
+/// Compare one strongest affordable spell per element using the combat engine.
+/// Non-elemental families retain their reviewed recipe preference.
+pub fn spell_name_for_target(
+    member: &Member,
+    set: &[Option<i32>],
+    owned: &BTreeMap<i32, u32>,
+    settings: &crate::defence::Settings,
+    target: &crate::planner::Monster,
+    invocation: u32,
+) -> &'static str {
+    let fallback = spell_name_configured(member, set, owned, settings);
+    let Some(rule) = set.get(3).copied().flatten().and_then(weapon) else {
+        return fallback;
+    };
+    if rule.family.formula != Formula::Elemental {
+        return fallback;
+    }
+    elemental_candidates(member, set, owned, settings)
+        .into_iter()
+        .enumerate()
+        .filter_map(|(index, s)| {
+            crate::combat::calculate_configured(
+                member, set, "Magic", target, &s.name, invocation, settings,
+            )
+            .ok()
+            .map(|r| (s.name.as_str(), r.dps, index))
+        })
+        .max_by(|a, b| a.1.total_cmp(&b.1).then_with(|| b.2.cmp(&a.2)))
+        .map(|(name, _, _)| name)
+        .unwrap_or(fallback)
+}
+pub fn elemental_candidates(
+    member: &Member,
+    set: &[Option<i32>],
+    owned: &BTreeMap<i32, u32>,
+    settings: &crate::defence::Settings,
+) -> Vec<&'static SpellRecipe> {
+    let Some(rule) = set.get(3).copied().flatten().and_then(weapon) else {
+        return vec![];
+    };
+    if rule.family.formula != Formula::Elemental {
+        return vec![];
+    }
+    let magic = crate::modifiers::level(member, "Magic", &settings.boosts).unwrap_or(0);
+    let mut elements = std::collections::BTreeSet::new();
+    spells()
+        .iter()
+        .filter(|s| {
+            s.family == rule.weapon.family
+                && magic >= s.level
+                && has_runes(s, set, owned, DEFAULT_CASTS)
+        })
+        .filter(|s| elements.insert(s.element.as_deref()))
+        .collect()
 }
 pub fn rune_supplies(spell: &str, casts: u32) -> Vec<(i32, u32)> {
     spells()
@@ -717,13 +833,15 @@ fn casting_at_level(
         return magic.is_some();
     }
     let name = spell_name_at_level(set, owned, magic);
-    spells()
-        .iter()
-        .find(|s| s.name == name)
-        .is_some_and(|s| magic.is_some_and(|level| level >= s.level) && has_runes(s, owned, casts))
+    spells().iter().find(|s| s.name == name).is_some_and(|s| {
+        magic.is_some_and(|level| level >= s.level) && has_runes(s, set, owned, casts)
+    })
 }
 pub fn spell_max_hit(name: &str, magic: u32) -> Option<i64> {
     spells().iter().find(|s| s.name == name).and_then(|s| {
+        if magic < s.level {
+            return None;
+        }
         s.tiers
             .iter()
             .rev()

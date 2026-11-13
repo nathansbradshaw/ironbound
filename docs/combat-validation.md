@@ -41,6 +41,16 @@ Ranging potion was also active in the trident/whip rows; it does not affect thei
 
 Ten additional golden loadouts come from the upstream `BasicRolls.test.ts` and `GeneratedTests.test.ts`, pinned to [`cc149e9`](https://github.com/weirdgloop/osrs-dps-calc/tree/cc149e9f428ecd239a793eb822784f23d1aa84b2/src/tests/calc): whip, Bowfa, trident, max-melee lance and Shadow with Salve or a task helmet. These include reference effective levels above 99 to represent boosted inputs; they do not imply those are base account levels.
 
+## Elemental and ranged breakout (13 November 2026)
+
+`cargo test --locked --test elemental_ranged` checks all 20 elemental spells at their unlock boundaries, tier caps, boosted casting versus base-level damage, matching and nonmatching weaknesses, task/gear rounding, charged versus empty tomes, separate ranged defence rolls (including negative bonuses and missing data), affordable spell selection and mixed-target rune packing. The Combat panel displays separate Light/Standard/Heavy rows or Air/Water/Earth/Fire rows, with the chosen spell's calculation stages. Ranged bonuses reflect selected reductions; spell comparisons use the selected raid level and combat assumptions.
+
+The independent arithmetic follows [Jagex's Project Rebalance rules](https://secure.runescape.com/m=news/project-rebalance-combat-changes?oldschool=1) and the pinned calculator revision [`74958b1`](https://github.com/weirdgloop/osrs-dps-calc/tree/74958b18f6559cf1bf58f7ac74e7a442a7ac8e2f): [base spell tiers](https://github.com/weirdgloop/osrs-dps-calc/blob/74958b18f6559cf1bf58f7ac74e7a442a7ac8e2f/src/types/SpellMax.ts), [ordered attack/damage stages](https://github.com/weirdgloop/osrs-dps-calc/blob/74958b18f6559cf1bf58f7ac74e7a442a7ac8e2f/src/lib/PlayerVsNPCCalc.ts) and [base spell definitions](https://github.com/weirdgloop/osrs-dps-calc/blob/74958b18f6559cf1bf58f7ac74e7a442a7ac8e2f/cdn/json/spells.json). Rune costs follow the [standard spellbook](https://oldschool.runescape.wiki/w/Standard_spellbook). These new checks are formula regressions, not additional live-calculator captures or gameplay verification. The 24 existing independent loadouts remain unchanged.
+
+For example, 99 Magic with an air staff gives a Wave base max of 20 and an accuracy base roll of 7,992. A matching 50% weakness adds 10 damage and 3,996 accuracy. Occult plus an eligible task helmet instead gives `floor(floor(20 × 1.05) × 1.15) + floor(20 × 0.50) = 34` max hit. The weakness does not multiply the gear/task damage. Matching charged tomes multiply damage after weakness; the Water tome's accuracy modifier precedes the additive weakness roll, as in the pinned reference.
+
+Supported elemental staves declare free runes in weapon data. Recipes contain the full cost, and both affordability checks and packing subtract staff/tome rune supply. Target-aware selection compares the strongest affordable spell per element; equal DPS preserves recipe preference. Combination runes, additional autocasting weapons, elemental amulets, sunfire runes, minimum-hit effects and full charge/page accounting remain outside this extension.
+
 ## Updating after a game change
 
 1. Reproduce the change with identical stats, gear, target version, stance, prayers and options in the reference calculator. Its defaults can differ: the Wiki currently enables the Kandarin diary bonus.

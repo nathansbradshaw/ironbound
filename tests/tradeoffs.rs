@@ -226,6 +226,28 @@ fn toa_composite_akkha_uses_the_actual_carried_set_for_each_style() {
     }
 }
 #[test]
+fn independent_caps_support_reverse_and_equal_comparisons() {
+    let snapshot = bank();
+    let o = options();
+    let forward = tradeoffs::compare(&snapshot, &o, 3, 7);
+    let reverse = tradeoffs::compare(&snapshot, &o, 7, 3);
+    assert_eq!((forward.left.cap, forward.right.cap), (3, 7));
+    assert_eq!((reverse.left.cap, reverse.right.cap), (7, 3));
+    for (a, b) in [(&forward.left, &reverse.right), (&forward.right, &reverse.left)] {
+        assert_eq!(a.plan.equipment, b.plan.equipment);
+        assert_eq!(a.carried_gear, b.carried_gear);
+        assert_eq!(a.max_pair, b.max_pair);
+        assert_eq!(a.feasible, b.feasible);
+    }
+    assert_eq!(forward.added_gear, reverse.removed_gear);
+    assert_eq!(forward.removed_gear, reverse.added_gear);
+    let same = tradeoffs::compare(&snapshot, &o, 6, 6);
+    assert_eq!(same.left.plan.equipment, same.right.plan.equipment);
+    assert_eq!(same.left.carried_gear, same.right.carried_gear);
+    assert!(same.added_gear.is_empty() && same.removed_gear.is_empty());
+}
+
+#[test]
 fn switch_caps_are_bounded_without_mutating_the_requested_options() {
     let o = options();
     let c = tradeoffs::compare(&bank(), &o, 4, 99);

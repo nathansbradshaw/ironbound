@@ -2164,6 +2164,8 @@ fn update_markup(root: &Element, html: &str, keep: Option<&str>) {
 }
 
 fn render() {
+    // A full render already includes the latest inputs; cancel older delayed renders.
+    LIVE_EDIT.with(|generation| generation.set(generation.get().wrapping_add(1)));
     render_with_edit(None);
 }
 
@@ -3693,7 +3695,7 @@ fn budget_comparison(s: &State) -> String {
     ] {
         html.push_str(&format!("<label>{label}<input id=\"budget-cap-{id}\" type=\"number\" min=\"0\" max=\"11\" value=\"{cap}\"></label>"));
     }
-    html.push_str("</div><p class=\"small-note\">Same account, prayers and supply counts. Each cap repacks the bag.</p><div class=\"budget-sides\">");
+    html.push_str("</div><p class=\"small-note\">Choose any two caps, 0–11. Same account, prayers and supplies; each cap repacks the bag.</p><div class=\"budget-sides\">");
     for (key, side) in [("left", &comparison.left), ("right", &comparison.right)] {
         html.push_str(&format!("<div class=\"budget-side\"><h3>{}-item cap</h3><dl><div><dt>Switch pieces</dt><dd>{}</dd></div><div><dt>Largest switch</dt><dd>{}</dd></div><div><dt>Peak bag</dt><dd>{}/28</dd></div></dl><button data-action=\"budget-apply:{key}\" class=\"phase\" {}>Use {}</button>",side.cap,side.carried_gear,side.max_pair,side.max_inventory_space,if side.feasible{""}else{"disabled"},side.cap));
         if !side.feasible {
@@ -3819,6 +3821,16 @@ fn budget_comparison(s: &State) -> String {
             budget_stat("Outgoing DPS", ad, bd, 3, false, true),
             budget_stat("Prayer / minute", ap, bp, 2, true, false)
         ));
+        if ad.is_none() || bd.is_none() {
+            for reason in a
+                .iter()
+                .chain(b.iter())
+                .filter_map(|m| m.dps_reason.as_deref())
+                .collect::<std::collections::BTreeSet<_>>()
+            {
+                html.push_str(&format!("<p class=\"small-note\">{}</p>", esc(reason)));
+            }
+        }
         let attacks = a
             .iter()
             .chain(b.iter())
@@ -3950,6 +3962,7 @@ fn budget_comparison(s: &State) -> String {
 
 fn switch_panel(s: &State, p: &Plan) -> String {
     if s.shared_setup.is_some()
+        || s.budget_comparison_open
         || p.optimization.is_none()
             && s.saved.options.max_switches.is_none()
             && encounter_targets(s).len() <= 1
@@ -3957,7 +3970,7 @@ fn switch_panel(s: &State, p: &Plan) -> String {
         return String::new();
     }
     let mut html = String::from(
-        "<section class=\"panel switch-panel\"><div class=\"panel-heading\"><h2>Switch comparison</h2></div><div class=\"combat-body\"><details><summary>Phase priorities</summary><p>1 is normal. Increase to favour a phase; 0 gives it the lowest priority.</p>",
+        "<section class=\"panel switch-panel\"><div class=\"panel-heading\"><h2>Current setup details</h2></div><div class=\"combat-body\"><details><summary>Phase priorities</summary><p>1 is normal. Increase to favour a phase; 0 gives it the lowest priority.</p>",
     );
     let mut priority_ids = std::collections::BTreeSet::new();
     for id in encounter_targets(s)

@@ -20,13 +20,13 @@ Your account stays on that browser. Import it again when using a different devic
 - **Use Recommended:** reviewed ToA, Moons, Vorkath and Yama roles guide your owned gear. Selecting Vorkath compares complete melee/ranged loadouts, including Salve and full Void sets. **Why this gear? → Compare owned styles** reruns that comparison. Custom weights live under **Options → Advanced**.
 - **Yama:** packs melee/magic switches, spell runes, poison control and boosts. Combat shows Purging staff/Demonbane damage, Void Flare maximum hits and the alternating Judge cycle. Toggle **Mark of Darkness active** to match your play. Normal fight only; movement, specials and contract mechanics are outside the estimate.
 - **Plan a trip:** boss and raid templates, or your own group of monsters. Select your CoX rooms or choose each Fractured Archive fork.
-- **Switch less:** limit changed items and carried gear; favour one style or phase.
+- **Compare switch limits:** open **Compare switches** to weigh 4 vs 8 (or your own caps): DPS, defence bonuses, incoming scenarios, prayer drain and bag space. Apply either plan.
 - **Compare gear:** outgoing DPS, supported incoming damage, defence and prayer drain.
 - **Check the maths:** [live Wiki comparisons and update guide](docs/combat-validation.md). Run `cargo run --locked --bin validate_combat` to check the pinned reference loadouts.
 - **Model your fight:** Combat → **Boosts, darts & debuffs**. Choose active boosts, loaded blowpipe darts and successful reductions for each target.
 - **See weaknesses:** Combat breaks ranged defence into Light / Standard / Heavy and magic into Air / Water / Earth / Fire. Compare supported owned spells, hit chance, max hit and DPS; the selected spell shows its base and elemental bonuses.
 - **Choose your switch limit:** this is a maximum. See how many changes the plan actually uses. Equal combat scores prefer lower prayer use, then fewer packed items. Numeric controls update while typing or using their arrows.
-- **Why this item?** Hover or keyboard-focus worn gear and carried items for phase roles, verified damage/prayer benefits, or supply purpose.
+- **Why this item?** Hover or keyboard-focus gear for its role and up to two owned alternatives with signed trade-offs. Supplies show their packing purpose.
 - **Pack your inventory:** click any slot, search owned items by type, and keep your chosen positions when exporting.
 - **Compare supplies:** food by potential healing per slot; potions by restoration or boost within each role, with fuller bottles first on ties.
 - **Plan longer trips:** weigh prayer efficiency against damage and see a prayer-supply estimate.

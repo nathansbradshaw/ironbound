@@ -249,12 +249,12 @@ fn macuahuitl_second_hit_depends_on_first_accuracy_and_armour_is_per_splat() {
 }
 
 #[test]
-fn blood_moon_uses_accuracy_dependent_expected_timing_and_requires_all_active_pieces() {
+fn blood_moon_uses_exact_accuracy_dependent_timing_and_accepts_broken_pieces() {
     let s = set(&[(3, 28997), (0, 29028), (4, 29022), (7, 29025)]);
     let r = calc(&s, "Crush", &target(26), &Settings::default());
     close(
         r.expected_attack_ticks,
-        4.0 - r.accuracy / 3.0 - r.accuracy * r.accuracy * 2.0 / 9.0,
+        4.0 - r.accuracy * 0.33 - r.accuracy * r.accuracy * 0.2211,
     );
     valid_distribution(&r);
     for slot in [0, 4, 7] {
@@ -267,7 +267,7 @@ fn blood_moon_uses_accuracy_dependent_expected_timing_and_requires_all_active_pi
     }
     let mut broken = s.clone();
     broken[0] = Some(29073);
-    assert!(!rules::set_effect(&broken, "blood_moon"));
+    assert!(rules::set_effect(&broken, "blood_moon"));
 }
 
 #[test]
@@ -303,12 +303,18 @@ fn atlatl_uses_strength_not_ranged_damage_and_blue_spear_support_is_explicit() {
 }
 
 #[test]
-fn eclipse_burn_is_gated_instead_of_silently_scoring_a_full_set_without_its_passive() {
+fn eclipse_burn_is_included_without_becoming_instant_hit_damage() {
     let s = set(&[(3, 29000), (13, 28991), (0, 29010), (4, 29004), (7, 29007)]);
+    let result = combat::calculate(&member(), &s, "Ranged", &target(26), "").unwrap();
+    assert!(result.burn_dps > 0.0);
     assert!(
-        combat::calculate(&member(), &s, "Ranged", &target(26), "")
-            .unwrap_err()
-            .contains("burn")
+        result.dps
+            > result
+                .hit_distribution
+                .iter()
+                .map(|(d, p)| f64::from(*d) * p)
+                .sum::<f64>()
+                / 1.8
     );
 }
 

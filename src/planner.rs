@@ -1202,12 +1202,12 @@ fn refine_dps_seed(
                 };
                 for a in ammo {
                     trial[13] = a;
-                    if !crate::rules::casting_supported_configured(
+                    if !crate::rules::casting_supported_for_style(
                         m,
                         &trial,
                         owned,
-                        options.combat.spell_casts,
                         &options.combat,
+                        style,
                     ) {
                         continue;
                     }
@@ -1739,11 +1739,10 @@ fn plan_uncached(snapshot: &Snapshot, options: &Options) -> Plan {
     let mut spell_runes = BTreeMap::<i32, u32>::new();
     let mut trip_spells = std::collections::BTreeSet::new();
     let mut mark_applies = false;
-    for set in std::iter::once(&out.equipment).chain(out.phases.iter().map(|p| &p.equipment)) {
-        if !set[3]
-            .and_then(crate::rules::weapon)
-            .is_some_and(|r| r.family.style == "Magic")
-        {
+    for (set, style) in std::iter::once((&out.equipment, primary_style(options)))
+        .chain(out.phases.iter().map(|p| (&p.equipment, p.style.as_str())))
+    {
+        if crate::rules::base_style(style) != "Magic" {
             continue;
         }
         let mut selected_spells = std::collections::BTreeSet::new();

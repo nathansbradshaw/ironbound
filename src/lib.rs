@@ -19,6 +19,7 @@ pub mod guidance;
 pub mod inventory;
 pub mod modifiers;
 pub mod monster_rules;
+pub mod moon;
 pub mod optimization;
 pub mod planner;
 pub mod prayer;

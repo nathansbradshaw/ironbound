@@ -42,8 +42,9 @@ fn normal_yama_has_explicit_slash_and_required_judge_magic_windows() {
         vec![
             (14176, "Slash"),
             (100012, "Magic"),
-            (100013, "Slash"),
-            (100011, "Slash")
+            (100013, "Melee"),
+            (100011, "Slash"),
+            (100014, "Magic")
         ]
     );
     assert!(entry.coverage().contains("partial"));
@@ -94,17 +95,25 @@ fn state_changes_affect_actual_supported_damage() {
     assert!(dps(14176, "Slash", 4151) > dps(100011, "Slash", 4151));
 }
 #[test]
-fn reactive_judge_and_contracts_do_not_borrow_normal_accuracy_damage() {
-    for id in [14180, 100012, 100013, 100001] {
+fn reactive_judge_uses_guaranteed_windows_and_contract_stays_unsupported() {
+    for (id, style, weapon) in [
+        (14180, "Magic", 11905),
+        (100012, "Magic", 11905),
+        (100013, "Melee", 4151),
+    ] {
         let target = planner::monster(id).unwrap();
-        assert!(
-            encounters::limitation(target).is_some(),
-            "Window{id} must declare unfinished mechanics"
-        );
+        assert!(encounters::limitation(target).is_none());
+        assert!(encounters::hit_rule(id).unwrap().always_max);
         let mut set = vec![None; 14];
-        set[3] = Some(4151);
-        assert!(combat::calculate(&member(), &set, "Slash", target, "").is_err());
+        set[3] = Some(weapon);
+        let hit = combat::calculate(&member(), &set, style, target, "").unwrap();
+        assert_eq!(hit.accuracy, 1.0);
+        assert_eq!(
+            hit.guaranteed_hits.as_deref(),
+            Some(&[(hit.max_hit, 1.0)][..])
+        );
     }
+    assert!(encounters::limitation(planner::monster(100001).unwrap()).is_some());
     assert_eq!(encounters::progress_hp(100012, "Magic"), Some(400.0));
     assert_eq!(encounters::progress_hp(100013, "Slash"), Some(400.0));
 }
@@ -128,7 +137,7 @@ fn normal_yama_plan_carries_an_actual_magic_switch_without_quest_checks() {
     };
     let plan = planner::plan(&bank, &options);
     assert!(plan.exportable(), "{:?}", plan.missing);
-    assert_eq!(plan.phases.len(), 4);
+    assert_eq!(plan.phases.len(), 5);
     let magic = plan
         .phases
         .iter()
@@ -272,7 +281,7 @@ fn synthetic_owned_yama_group_keeps_usable_judge_switch_and_hard_budgets() {
         &owned,
         rules::DEFAULT_CASTS
     ));
-    assert!(magic.note.contains("not modelled"));
+    assert!(magic.note.contains("guaranteed maximum"));
     assert!(
         combat::calculate_configured(
             selected,
@@ -283,8 +292,8 @@ fn synthetic_owned_yama_group_keeps_usable_judge_switch_and_hard_budgets() {
             0,
             &options.combat
         )
-        .is_err(),
-        "Packing support must not claim a verified reactive-Judge DPS value"
+        .is_ok(),
+        "Judge Magic window should expose its guaranteed-hit damage"
     );
     for phase in plan.phases.iter().filter(|phase| phase.style == "Slash") {
         assert_eq!(

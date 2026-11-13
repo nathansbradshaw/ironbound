@@ -19,6 +19,7 @@ pub enum Formula {
     Wind,
     Fixed,
     Powered,
+    Spell,
 }
 #[derive(Clone, Copy, Debug, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
@@ -29,6 +30,7 @@ pub enum Effect {
     Shadow,
     Zaryte,
     Demonbane,
+    DemonbaneSpell,
 }
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -144,6 +146,8 @@ pub struct Weapon {
     pub kalphite_damage_percent: Option<i32>,
     #[serde(default)]
     pub demonbane_percent: Option<i64>,
+    #[serde(default)]
+    pub demonbane_spell_factor: Option<i64>,
 }
 #[derive(Debug, Deserialize)]
 pub struct SetPiece {
@@ -549,6 +553,16 @@ pub fn rune_supplies(spell: &str, casts: u32) -> Vec<(i32, u32)> {
                 .collect()
         })
         .unwrap_or_default()
+}
+/// One explicit Mark of Darkness precast; maintaining it longer needs recasts.
+pub fn mark_darkness_supplies() -> Vec<(i32, u32)> {
+    vec![(564, 1), (566, 1)]
+}
+pub fn mark_darkness_supported(member: &Member, owned: &BTreeMap<i32, u32>) -> bool {
+    member.level("Magic").is_some_and(|level| level >= 59)
+        && mark_darkness_supplies()
+            .iter()
+            .all(|(id, quantity)| owned.get(id).copied().unwrap_or(0) >= *quantity)
 }
 pub fn casting_supported(
     member: &Member,

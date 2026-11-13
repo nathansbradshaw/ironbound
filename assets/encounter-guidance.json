@@ -1307,7 +1307,18 @@
     100010,
     100011,
     100012,
-    100013
+    100013,
+    100014
+  ],
+  "skip_stamina": true,
+  "recommended_mark_darkness": true,
+  "food_ids": [391,11936,13441,385,3144,373,379],
+  "supply_roles": [
+    {"id":"poison","label":"Yama poison protection","ids":[10925,10927,10929,10931,29824,29827,29830,29833,12913,12915,12917,12919,5943,5945,5947,5949,2446,175,177,179],"required":true,"prayer_ids":[10925,10927,10929,10931]},
+    {"id":"combat","label":"Melee combat boost","ids":[23685,23688,23691,23694,12695,12697,12699,12701],"styles":["Melee"]},
+    {"id":"attack","label":"Melee attack boost","ids":[2436,145,147,149],"styles":["Melee"],"skipped_by":["combat"]},
+    {"id":"strength","label":"Melee strength boost","ids":[2440,157,159,161],"styles":["Melee"],"skipped_by":["combat"]},
+    {"id":"magic","label":"Magic boost","ids":[23745,23748,23751,23754,3040,3042,3044,3046],"styles":["Magic"],"requires_magic_benefit":true}
   ]
 }
   ]

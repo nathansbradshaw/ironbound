@@ -18,7 +18,8 @@
     "swamp": {"style":"Magic","attack_types":["magic"],"formula":"powered","numerator":1,"denominator":3,"offset":-2,"accuracy_bonus":11,"ticks":4},
     "sanguinesti": {"style":"Magic","attack_types":["magic"],"formula":"powered","numerator":1,"denominator":3,"accuracy_bonus":11,"ticks":4,"procs":[{"numerator":1,"denominator":5,"amount":8,"operation":"add"}]},
     "shadow": {"style":"Magic","attack_types":["magic"],"formula":"powered","numerator":1,"denominator":3,"offset":1,"accuracy_bonus":11,"ticks":5,"effects":["shadow"]},
-    "warped": {"style":"Magic","attack_types":["magic"],"formula":"powered","numerator":8,"denominator":37,"offset":96,"offset_before_division":true,"accuracy_bonus":11,"ticks":4}
+    "warped": {"style":"Magic","attack_types":["magic"],"formula":"powered","numerator":8,"denominator":37,"offset":96,"offset_before_division":true,"accuracy_bonus":11,"ticks":4},
+    "demonbane": {"style":"Magic","attack_types":["magic"],"formula":"spell","accuracy_bonus":9,"ticks":5,"effects":["demonbane_spell"]}
   },
   "weapons": [
     {"ids":[4151,26482],"family":"slash","requirements":{"Attack":70}},
@@ -55,7 +56,8 @@
     {"ids":[12899,22292],"family":"swamp","requirements":{"Magic":78}},
     {"ids":[22323,25731],"family":"sanguinesti","requirements":{"Magic":82}},
     {"ids":[27275],"family":"shadow","requirements":{"Magic":85}},
-    {"ids":[28585],"family":"warped","requirements":{"Magic":62}}
+    {"ids":[28585],"family":"warped","requirements":{"Magic":62}},
+    {"ids":[29594],"family":"demonbane","demonbane_spell_factor":2,"requirements":{"Magic":77,"Attack":50}}
   ],
   "ammunition": [
     {"ids":[892,890,877,878,6061,6062,879,9139,9286,9293,9300,9335,9140,9287,9294,9301,880,9145,9292,9299,9306,9141,9288,9295,9302,9336,9142,9289,9296,9303,9337,9338,9143,9290,9297,9304,9339,9340,9144,9291,9298,9305,11875,21316,9341,9342,21905,21924,21926,21928,21955,21957,21959,21961,21963,21965,21967,21969,21971,21973],"effect":"none"},

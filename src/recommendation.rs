@@ -109,7 +109,7 @@ pub fn assess(
         let weight = o.phase_priorities.get(&id).copied().unwrap_or(1).min(10) as f64;
         let progress = crate::encounters::progress_hp(id, style)
             .unwrap_or_else(|| target.skills.get("hp").copied().unwrap_or(100) as f64);
-        let duration = progress / net * weight;
+        let duration = crate::yama::window_attack_time(id, &out).unwrap_or(progress / net) * weight;
         time += duration;
         coverage += 1;
         if let Some(r) = incoming {

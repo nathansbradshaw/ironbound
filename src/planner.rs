@@ -774,9 +774,65 @@ fn refine_dps(
     let Some(target) = monster(id) else {
         return;
     };
+    let relevant: Vec<_> = options
+        .targets
+        .iter()
+        .filter(|t| t.style == style)
+        .collect();
+    let judge_only =
+        !relevant.is_empty() && relevant.iter().all(|t| crate::yama::is_judge_window(t.id));
+    // Judge melee is a separate attack commitment from the main slash set.
+    // Magic refinement has no reverse dependency, so this comparison is acyclic.
+    let judge_magic = (judge_only && crate::rules::base_style(style) == "Melee")
+        .then(|| style_set("Magic", boss, m, owned, catalog, options));
+    let choose = |trials: &[Vec<Option<i32>>]| {
+        if let Some(magic) = &judge_magic {
+            let best = trials
+                .iter()
+                .enumerate()
+                .filter_map(|(i, set)| {
+                    crate::yama::judge_cycle(m, set, magic, options, owned)
+                        .ok()
+                        .map(|cycle| {
+                            (
+                                i,
+                                cycle.seconds,
+                                crate::guidance::quality(style, set, options),
+                            )
+                        })
+                })
+                .min_by(|a, b| a.1.total_cmp(&b.1).then(a.2.cmp(&b.2)));
+            if let Some((index, _, _)) = best {
+                return index;
+            }
+        }
+        if judge_only && crate::rules::base_style(style) == "Magic" {
+            if let Some((index, _)) = trials
+                .iter()
+                .enumerate()
+                .filter_map(|(i, set)| {
+                    crate::combat::calculate_configured(
+                        m,
+                        set,
+                        style,
+                        target,
+                        crate::rules::spell_name(m, set, owned),
+                        options.raid_level,
+                        &options.combat,
+                    )
+                    .ok()
+                    .map(|r| (i, r.dps))
+                })
+                .max_by(|a, b| a.1.total_cmp(&b.1))
+            {
+                return index;
+            }
+        }
+        crate::recommendation::choose(trials, style, m, options, owned)
+    };
     if crate::recommendation::enabled(options) {
         let trials = guided_trials(set, style, m, owned, options);
-        let chosen = crate::recommendation::choose(&trials, style, m, options, owned);
+        let chosen = choose(&trials);
         *set = trials[chosen].clone();
     }
     let spell = |set: &Vec<Option<i32>>| crate::rules::spell_name(m, set, owned);
@@ -895,7 +951,7 @@ fn refine_dps(
                 }
             }
             if crate::recommendation::enabled(options) {
-                let chosen = crate::recommendation::choose(&trials, style, m, options, owned);
+                let chosen = choose(&trials);
                 if trials[chosen] != *set {
                     *set = trials[chosen].clone();
                     changed = true;
@@ -1020,6 +1076,66 @@ pub fn plan(snapshot: &Snapshot, options: &Options) -> Plan {
     });
     result
 }
+fn pack_profile_supplies(
+    out: &mut Plan,
+    allocated: &mut BTreeMap<i32, u32>,
+    owned: &BTreeMap<i32, u32>,
+    options: &Options,
+    styles: &[&str],
+    profile: &crate::guidance::Profile,
+    magic_boost_useful: bool,
+) -> usize {
+    let mut packed_roles = BTreeSet::new();
+    let mut prayer_bottles = 0usize;
+    for role in &profile.supply_roles {
+        if !role.styles.is_empty()
+            && !role
+                .styles
+                .iter()
+                .any(|style| styles.iter().any(|s| crate::rules::base_style(s) == style))
+            || role.skipped_by.iter().any(|id| packed_roles.contains(id))
+            || role.requires_magic_benefit && !magic_boost_useful
+        {
+            continue;
+        }
+        let reserved = options.food.min(20)
+            + options
+                .prayer_potions
+                .min(12)
+                .saturating_sub(prayer_bottles);
+        if !role.required && out.inventory.len().saturating_add(reserved) >= 28 {
+            continue;
+        }
+        let chosen = role.ids.iter().copied().find(|id| {
+            owned.get(id).copied().unwrap_or(0) > allocated.get(id).copied().unwrap_or(0)
+        });
+        if let Some(id) = chosen {
+            out.inventory.push(Packed {
+                id,
+                quantity: 1,
+                purpose: role.label.clone(),
+            });
+            *allocated.entry(id).or_default() += 1;
+            if role.prayer_ids.contains(&id) {
+                prayer_bottles += 1;
+            }
+            packed_roles.insert(role.id.clone());
+        }
+        if role.required {
+            out.checks.push(Check {
+                name: role.label.clone(),
+                state: Some(chosen.is_some()),
+                detail: chosen.map(item_name).unwrap_or_else(|| {
+                    "No supported owned bottle; prepare protection before entering.".into()
+                }),
+            });
+            if chosen.is_none() {
+                out.warnings.push(format!("{} is missing. This packing list does not establish that the encounter is ready.",role.label));
+            }
+        }
+    }
+    prayer_bottles
+}
 fn plan_uncached(snapshot: &Snapshot, options: &Options) -> Plan {
     let mut out = Plan {
         optimization: None,
@@ -1053,6 +1169,7 @@ fn plan_uncached(snapshot: &Snapshot, options: &Options) -> Plan {
         owned.remove(id);
     }
     let catalog = equipment();
+    let profile = crate::guidance::profile(options);
     out.owned = owned.len();
     out.supported = owned
         .keys()
@@ -1135,7 +1252,7 @@ fn plan_uncached(snapshot: &Snapshot, options: &Options) -> Plan {
         && magic[3].is_none()
     {
         out.missing
-            .push("A charged powered staff usable at your Magic level".into());
+            .push("A usable supported Magic weapon or spell with sufficient runes".into());
     }
     let mut sets = if options.boss == Boss::Custom {
         crate::rules::STYLES
@@ -1161,7 +1278,7 @@ fn plan_uncached(snapshot: &Snapshot, options: &Options) -> Plan {
             }
         }
     }
-    if options.max_switches.is_some() {
+    if options.max_switches.is_some() || crate::yama::has_judge_cycle(options) {
         let mut ideals = vec![crate::optimization::StyleSet {
             style: primary.into(),
             equipment: out.equipment.clone(),
@@ -1352,6 +1469,7 @@ fn plan_uncached(snapshot: &Snapshot, options: &Options) -> Plan {
         allocated.insert(id, 100);
     }
     let mut spell_runes = BTreeMap::<i32, u32>::new();
+    let mut mark_applies = false;
     for set in std::iter::once(&out.equipment).chain(out.phases.iter().map(|p| &p.equipment)) {
         if !set[3]
             .and_then(crate::rules::weapon)
@@ -1360,6 +1478,10 @@ fn plan_uncached(snapshot: &Snapshot, options: &Options) -> Plan {
             continue;
         }
         let spell = crate::rules::spell_name(m, set, &owned);
+        mark_applies |= options.combat.mark_darkness
+            && set[3]
+                .and_then(crate::rules::weapon)
+                .is_some_and(|r| r.has(crate::rules::Effect::DemonbaneSpell));
         if out.spell.is_empty() {
             out.spell = if spell.is_empty() {
                 "Built-in spell"
@@ -1386,6 +1508,15 @@ fn plan_uncached(snapshot: &Snapshot, options: &Options) -> Plan {
                 .entry(id)
                 .and_modify(|q| *q = (*q).max(quantity))
                 .or_insert(quantity);
+        }
+    }
+    if mark_applies {
+        for (id, quantity) in crate::rules::mark_darkness_supplies() {
+            *spell_runes.entry(id).or_default() += quantity;
+        }
+        out.checks.push(Check{name:"Mark of Darkness".into(),state:Some(crate::rules::mark_darkness_supported(m,&owned)),detail:"One pre-cast is packed. You choose the spellbook and cast it manually; recasts consume more runes.".into()});
+        if !crate::rules::mark_darkness_supported(m, &owned) {
+            out.missing.push("Mark of Darkness needs its Magic level and one cast's cosmic/soul runes, in addition to attack-spell runes.".into());
         }
     }
     let mut reserve = |id: i32, q: u32, purpose: &str, required: bool| {
@@ -1426,12 +1557,48 @@ fn plan_uncached(snapshot: &Snapshot, options: &Options) -> Plan {
     } else {
         reserve(8007, 1, "Exit teleport · requires your POH", true);
     }
-    if owned.contains_key(&12625) {
+    if owned.contains_key(&12625) && profile.is_none_or(|p| !p.skip_stamina) {
         reserve(12625, 1, "Stamina", false);
     }
     drop(reserve);
-    let potions = [2434, 139, 141, 143, 3024, 3026, 3028, 3030];
-    for _ in 0..options.prayer_potions.min(12) {
+    let styles: Vec<_> = std::iter::once(primary)
+        .chain(sets.iter().map(|(style, _)| *style))
+        .collect();
+    let magic_boost_useful = sets
+        .iter()
+        .filter(|(style, _)| crate::rules::base_style(style) == "Magic")
+        .any(|(style, set)| {
+            set[3]
+                .and_then(crate::rules::weapon)
+                .is_some_and(|r| r.family.formula == crate::rules::Formula::Powered)
+                || options.targets.iter().any(|t| {
+                    t.style == *style
+                        && !crate::encounters::hit_rule(t.id).is_some_and(|r| r.always_max)
+                })
+        });
+    let supplied_prayer = profile
+        .map(|p| {
+            pack_profile_supplies(
+                &mut out,
+                &mut allocated,
+                &owned,
+                options,
+                &styles,
+                p,
+                magic_boost_useful,
+            )
+        })
+        .unwrap_or(0);
+    let mut potions: Vec<i32> = profile
+        .into_iter()
+        .flat_map(|p| {
+            p.supply_roles
+                .iter()
+                .flat_map(|r| r.prayer_ids.iter().copied())
+        })
+        .collect();
+    potions.extend([2434, 139, 141, 143, 3024, 3026, 3028, 3030]);
+    for _ in supplied_prayer.min(options.prayer_potions.min(12))..options.prayer_potions.min(12) {
         if let Some(id) = potions.iter().find(|id| {
             owned.get(id).copied().unwrap_or(0) > allocated.get(id).copied().unwrap_or(0)
         }) {
@@ -1447,8 +1614,24 @@ fn plan_uncached(snapshot: &Snapshot, options: &Options) -> Plan {
             break;
         }
     }
+    let mut foods = profile
+        .filter(|p| !p.food_ids.is_empty())
+        .map(|p| p.food_ids.clone())
+        .unwrap_or_else(|| vec![385, 3144, 373, 379]);
+    if profile.is_some_and(|p| !p.food_ids.is_empty()) {
+        foods.sort_by_key(|id| {
+            (
+                std::cmp::Reverse(
+                    crate::supplies::food_healing(*id, m.level("Hitpoints"))
+                        .map(|v| v.0)
+                        .unwrap_or(0),
+                ),
+                *id,
+            )
+        });
+    }
     for _ in 0..options.food.min(20) {
-        if let Some(id) = [385, 3144, 373, 379].iter().find(|id| {
+        if let Some(id) = foods.iter().find(|id| {
             owned.get(id).copied().unwrap_or(0) > allocated.get(id).copied().unwrap_or(0)
         }) {
             out.inventory.push(Packed {
@@ -1502,6 +1685,56 @@ fn plan_uncached(snapshot: &Snapshot, options: &Options) -> Plan {
     }
     while out.inventory.last().is_some_and(|p| p.quantity == 0) {
         out.inventory.pop();
+    }
+    if let Some(profile) = profile {
+        for role in profile.supply_roles.iter().filter(|r| r.required) {
+            let packed = out
+                .inventory
+                .iter()
+                .any(|p| p.quantity > 0 && role.ids.contains(&p.id));
+            if let Some(check) = out.checks.iter_mut().find(|c| c.name == role.label) {
+                check.state = Some(packed);
+                if !packed {
+                    check.detail =
+                        "The edited inventory has no supported poison-protection bottle.".into();
+                }
+            }
+        }
+        if !profile.supply_roles.is_empty() {
+            out.warnings.push("Spellbook/prayer unlocks, staff charges, special attacks and potion timing need manual confirmation. Packed boosts are not a full-duration trip simulation.".into());
+        }
+    }
+    if let Some(limit) = options.max_switches {
+        let sets: Vec<_> = std::iter::once(&out.equipment)
+            .chain(out.phases.iter().map(|p| &p.equipment))
+            .collect();
+        let maximum = sets
+            .iter()
+            .flat_map(|a| sets.iter().map(move |b| crate::optimization::changes(a, b)))
+            .max()
+            .unwrap_or(0);
+        if maximum > limit {
+            out.missing.push(format!(
+                "The final phase plan needs {maximum} changed slots; your limit is {limit}."
+            ));
+        }
+        let carried: BTreeSet<_> = out
+            .phases
+            .iter()
+            .flat_map(|p| {
+                p.equipment
+                    .iter()
+                    .enumerate()
+                    .filter_map(|(slot, id)| id.filter(|id| out.equipment[slot] != Some(*id)))
+            })
+            .collect();
+        if carried.len() > options.switch_slots {
+            out.missing.push(format!(
+                "The final phase plan needs {} switch-gear slots; your limit is {}.",
+                carried.len(),
+                options.switch_slots
+            ));
+        }
     }
     for (id, q) in essentials {
         if out
@@ -1639,6 +1872,14 @@ pub fn raw_item_count(m: &Member) -> usize {
     pairs.len()
 }
 pub fn is_stackable(id: i32) -> bool {
+    if crate::rules::all_ammo_ids().contains(&id) {
+        return true;
+    }
+    if crate::inventory::public_name(id)
+        .is_some_and(|name| name.ends_with(" rune") || name.ends_with(" runes"))
+    {
+        return true;
+    }
     matches!(
         id,
         556 | 554 | 560 | 565 | 562 | 563 | 9242 | 9243 | 9144 | 9143 | 9142 | 9141 | 892 | 890

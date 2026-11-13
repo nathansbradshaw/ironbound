@@ -22,6 +22,12 @@ The planner compares ordinary armour with joint equipment candidates. It refines
 
 Stat-only combinations such as Bandos, Torva, Armadyl and Masori use their individual item stats.
 
+The [recent-equipment audit](recent-equipment.md) covers Oathplate/radiant Oathplate,
+Torva/sanguine Torva, both Masori versions, Hueycoatl hide, Sunfire fanatic and
+recent accessories. Their reviewed wear requirements are enforced. Charged Dizana
+quivers add their passive only for compatible arrows/bolts; new weapons use the
+same owned search and cannot borrow an unrelated armour set's passive.
+
 Barrows active degradation variants can mix within one brother's set. Broken pieces and another brother's pieces cannot complete it. Moon armour can complete its set even when broken, using its zero equipment stats and actual level requirements. Recoil and dynamic NPC stat drains are not added to sustained player DPS. Health and Blue Moon assumptions travel with shared setups and export notes.
 
 `tests/armour_sets.rs` checks independently derived per-roll arithmetic, joint discovery, complete-set requirements, finite-HP miss loops, guaranteed-max windows, per-hitsplat acid/armour rounding, and setup constraints. Existing Void, crystal, encounter and reference tests also remain required.

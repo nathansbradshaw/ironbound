@@ -38,6 +38,8 @@ pub enum Effect {
     StrengthRanged,
     TwinHits,
     ObsidianWeapon,
+    SmokeStaff,
+    Twinflame,
 }
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -128,6 +130,8 @@ pub struct Family {
     pub ammo: Vec<i32>,
     #[serde(default)]
     pub rapid: bool,
+    #[serde(default)]
+    pub quiver_ammo: bool,
     #[serde(default)]
     pub numerator: i64,
     #[serde(default = "one")]
@@ -273,6 +277,7 @@ impl Registry {
                         || !["light", "standard", "heavy"]
                             .contains(&family.attack_types[0].as_str())))
                 || family.denominator <= 0
+                || family.quiver_ammo && (family.style != "Ranged" || family.ammo.is_empty())
                 || family.ticks.is_some_and(|n| n <= 0)
                 || (!family.internal_ammo.is_empty()
                     && (!family.ammo.is_empty()

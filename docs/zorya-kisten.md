@@ -98,3 +98,17 @@ Zorya's full/failed opener branches, accurate-zero triggers, held-hit consumptio
 death/overkill and a recursive probability oracle, stage floors, energy and skill
 boundaries, caps/armour/halving, guaranteed maxima, persistence/export and isolation
 from normal calculations. Synthetic fixtures are not gameplay calibration.
+
+Final integrated verification: all 691 Rust tests passed, including 12 special
+attack tests and the latest monster/Tormented Demon regressions. All 24 independent
+reference fixtures, optimized WebAssembly, formatting and whitespace checks pass.
+
+Disposable browser checks against Zombie (26) show normal Zorya DPS remaining
+7.049 when the special budget changes. The opener and empowered previews have
+41 maximum hits at three/two ticks. A paid activation reports 21.74 effective
+damage, 34.35 before overkill and 50% spent; zero energy prevents activation.
+Three explicitly held attacks remain usable with zero energy, persist after
+reload and appear in Inventory Setups export notes. Kisten reports one attack,
+34 maximum, a four-tick cooldown and 50% spent (21.99 effective / 29.38 uncapped
+damage). No browser application errors were reported. The preview was stopped
+after verification; actual gameplay and recovery/rotation gates remain open.

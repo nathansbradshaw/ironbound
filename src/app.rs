@@ -53,6 +53,7 @@ struct State {
     encounter_filter: String,
     building_group: bool,
     raid_rooms_open: bool,
+    bestiary_open: bool,
     switch_preferences_open: bool,
     combat_options_open: bool,
     attack_budget_open: bool,
@@ -155,6 +156,7 @@ impl State {
             encounter_filter: "For you".into(),
             building_group: false,
             raid_rooms_open: false,
+            bestiary_open: false,
             switch_preferences_open: false,
             combat_options_open: false,
             attack_budget_open: false,
@@ -928,7 +930,9 @@ pub fn start() -> Result<(), JsValue> {
     search.forget();
     let disclosure = Closure::<dyn FnMut(web_sys::Event)>::new(|e: web_sys::Event| {
         if let Some(el) = e.target().and_then(|t| t.dyn_into::<Element>().ok()) {
-            if el.id() == "raid-room-picker" {
+            if el.id() == "boss-bestiary" {
+                STATE.with(|state| state.borrow_mut().bestiary_open = el.has_attribute("open"));
+            } else if el.id() == "raid-room-picker" {
                 STATE.with(|state| state.borrow_mut().raid_rooms_open = el.has_attribute("open"));
             } else if el.id() == "switch-preferences" {
                 STATE.with(|state| {
@@ -1852,6 +1856,7 @@ fn act(action: &str) {
                     s.view = "loadout".into();
                     s.building_group = false;
                     s.raid_rooms_open = false;
+                    s.bestiary_open = false;
                 }
             } else {
                 s.notice("Choose a listed boss, raid or encounter.", true);
@@ -2563,7 +2568,7 @@ fn render_with_edit(edit: Option<&str>) {
         html.push_str(&encounter_detail(&s,&plan));
         if s.shared_setup.is_none(){html.push_str(&named_setups(&s));}
         html.push_str("<div class=\"encounter-actions\">");
-        html.push_str(&format!("<details class=\"encounter-picker\" {}><summary>Boss bestiary</summary>",if s.building_group||(options.boss==Boss::Custom&&options.targets.is_empty()){"open"}else{""}));
+        html.push_str(&format!("<details class=\"encounter-picker\" id=\"boss-bestiary\" {}><summary>Boss bestiary</summary>",if s.bestiary_open||s.building_group||(options.boss==Boss::Custom&&options.targets.is_empty()){"open"}else{""}));
         html.push_str(&encounter_catalog(&s));
         html.push_str(&format!("<details class=\"custom-builder\" {}><summary>Build a custom group</summary>",if s.building_group{"open"}else{""}));
         html.push_str(&custom_group(&s));

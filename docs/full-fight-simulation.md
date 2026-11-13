@@ -40,10 +40,12 @@ discarded, not refreshed. NPC ranged reductions apply to the combined pulse.
 Pulses resolve before a same-tick attack, and a burn kill consumes no extra shot,
 cast or charge. No damage is banked for later or carried to a new target/fight.
 
-**Burn stacks at phase changes** chooses **Clear stacks** (default) or **Keep aging
-stacks**. This is a scenario assumption because encounter-specific reset traces
-are not verified. Vorkath special/normal boundaries, Yama interludes, Wardens
-shield/core changes, skull intervals and enrage use this policy. Kept stacks
+**Burn stacks at unverified phase changes** chooses **Clear stacks** (default) or
+**Keep aging stacks** for Vorkath freeze/spawn boundaries, Yama interludes, Wardens
+shield/core changes, skull intervals and enrage. These remain scenario assumptions.
+Vorkath acid entry/exit always retain existing Eclipse stacks and their clock,
+following [inspected 2024 gameplay](eclipse-burn-gameplay.md). Current-patch
+confirmation is still needed; this does not verify other boundaries. Kept stacks
 expire normally during immune/travel intervals but cannot damage the target in
 those intervals. Dead/despawned targets always lose their stacks. Weapon swaps
 on the same target retain them. The results and downloaded replay include burn

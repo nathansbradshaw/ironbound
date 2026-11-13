@@ -47,6 +47,9 @@ See [armour coverage](armour-sets.md) for exact support and limitations.
   damage during immune downtime, target isolation and fresh fights.
 - [ ] Gameplay calibration of each encounter's phase-clearing behaviour; the
   full-fight setting remains an explicit scenario assumption, not a claimed game script.
+- [x] Inspect Eclipse-specific acid gameplay and remove blanket Vorkath acid
+  entry/exit clearing. [Observed persistence](eclipse-burn-gameplay.md) is scoped to
+  the 2024 recording; current-patch repeat and other boundaries remain open.
 - [x] Blue Moon melee, binding/Ice/Grasp spells and conditional spell/melee follow-ups.
 - [x] Explicit Blue Moon free-melee setting, reach/style immunities, per-style NPC
   transforms, rune packing, persistence and exported assumptions.

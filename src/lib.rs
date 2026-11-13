@@ -1,5 +1,6 @@
 pub mod account;
 pub mod bestiary;
+pub mod death_risk;
 pub mod wilderness;
 
 pub mod alternatives;

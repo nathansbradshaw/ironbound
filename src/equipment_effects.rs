@@ -27,7 +27,7 @@ pub fn notes(set: &[Option<i32>], settings: &Settings) -> Vec<String> {
             notes.push("Ascension crossbows: one bolt per attack, two ticks on Rapid and three on Accurate. Ascension bolts only; diamond/onyx proc rates are halved, with the Kandarin multiplier applied. Onyx healing and ammunition recovery are excluded.".into());
         }
         if weapon.weapon.family == "ayak" {
-            notes.push("Charged powered weapon: normal attacks only. Verify loaded charges; special attacks, empowered follow-ups and energy rotations are excluded.".into());
+            notes.push("Eye of Ayak: its own special attack and drains are excluded. Normal powered attacks can supply fillers for a reviewed special-weapon swap. Verify loaded charges.".into());
         }
         if let Some(special) = &weapon.weapon.special {
             notes.push(format!("Special burst: {}% energy available; one activation costs {}%. Normal gear scores and full-fight simulation exclude specials, recovery and rotations.",settings.special_energy,special.energy));

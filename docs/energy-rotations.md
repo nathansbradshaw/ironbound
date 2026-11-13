@@ -129,6 +129,18 @@ expiry, resource availability, and withheld stateful fillers. Source rules:
 Tick-zero impacts, same-tick event ordering and execution overhead are explicit
 comparison conventions; projectile/server processing timing is not calibrated.
 
+Swap/restore release verification: all 738 integrated Rust tests and all 24
+independent reference fixtures pass. Optimized Wasm, formatting and whitespace
+checks pass. Browser fixtures use whip/Avernic filler and a two-tick Zorya swap;
+the trace preserves the three-/two-/four-tick attack intervals, consumes held
+follow-ups before returning, and processes Surge at tick 3 and Energy Transfer
+at tick 20. A one-HP target dies on the seeded opener at tick 5, then Death Charge
+restores 25→40% energy; the future transfer is absent from that trial. Missing
+Surge stock and early cooldown attempts are withheld. Restore times survive
+reload and export correctly. Numeric edits use the existing live-input path,
+and no browser application errors were reported. These remain synthetic model
+checks, not measured gameplay timing.
+
 Release checks: all 719 integrated Rust tests and 24 independent reference
 loadouts pass, including the latest quest and Sailing changes. Optimized
 WebAssembly, formatting and whitespace checks pass. Synthetic browser checks

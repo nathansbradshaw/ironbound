@@ -58,6 +58,7 @@ Ten additional golden loadouts come from the upstream `BasicRolls.test.ts` and `
 - `src/combat.rs`: ordered calculation stages: effective stats → base rolls/hits → equipment and target modifiers → accuracy → hit distributions/procs → expected damage and timing.
 - `assets/encounter-mechanics.json`: encounter windows, demonbane vulnerability and NPC magic-defence exceptions. Unsupported phases retain their coverage gates.
 - `src/recommendation.rs` / `src/optimization.rs`: choose complete owned sets using those calculations and practical constraints; never duplicate weapon formulas here.
+- `src/explanations.rs`: short reasons from the displayed phase, manual selections and the same combat/prayer calculators. Switch-item benefits compare against the starting item in that slot. Shared or unsupported setups retain explicit limits instead of invented damage claims.
 
 Switch limits are ceilings, not a request to fill every available change. The UI reports actual changes separately from the limit and from total gear packed. When primary combat scores tie, the search prefers lower estimated prayer usage across supported attack windows, then fewer carried items. Travel, encounter drains, mechanics and unknown windows are excluded from that secondary estimate; it is not a full-trip forecast. With no active prayer, equal scores still prefer fewer items.
 

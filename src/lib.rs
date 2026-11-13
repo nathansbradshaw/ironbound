@@ -5,6 +5,7 @@ pub mod combat;
 pub mod defence;
 pub mod effects;
 pub mod encounters;
+pub mod explanations;
 pub mod export;
 pub mod guidance;
 pub mod inventory;

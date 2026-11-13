@@ -419,6 +419,14 @@ fn doom_shield_readiness_accepts_ranged_and_magic_routes_without_demonbane_melee
 }
 #[test]
 fn counters_normalise_and_maggot_templates_do_not_duplicate_hp() {
+    assert_eq!(
+        planner::monster(100183).unwrap().name,
+        "Maggot King · nearby"
+    );
+    assert_eq!(
+        planner::monster(100190).unwrap().name,
+        "Tormented Demon · shielded, protects Melee"
+    );
     for (id, weapon, style) in [
         (100180, 4747, "Crush"),
         (100181, 28997, "Crush"),

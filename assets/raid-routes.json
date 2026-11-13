@@ -18,7 +18,7 @@
     {"id":"bork-smorks","name":"Bork and the Smorks","stage":"First fork","required":false,"choice_group":"first","default":false,"targets":[{"id":16640,"style":"Crush"},{"id":16641,"style":"Magic"}]},
     {"id":"moia","name":"Moia","stage":"Second fork","required":false,"choice_group":"second","default":true,"targets":[{"id":16667,"style":"Magic"}]},
     {"id":"dreadnoth","name":"Dreadnoth the Jellied","stage":"Second fork","required":false,"choice_group":"second","default":false,"targets":[{"id":16665,"style":"Magic"}]},
-    {"id":"xarth","name":"Xarth","stage":"Third fork","required":false,"choice_group":"third","default":true,"targets":[{"id":16684,"style":"Magic"},{"id":205030,"style":"Crush"}]},
+    {"id":"xarth","name":"Xarth","stage":"Third fork","required":false,"choice_group":"third","default":true,"targets":[{"id":16684,"style":"Magic"},{"id":205030,"style":"Crush"}],"legacy_targets":[{"id":16684,"style":"Magic"}]},
     {"id":"dagonhai","name":"Dagon'hai Trio","stage":"Third fork","required":false,"choice_group":"third","default":false,"targets":[{"id":16643,"style":"Melee"},{"id":16645,"style":"Melee"},{"id":16647,"style":"Melee"}]},
     {"id":"ocellus","name":"Ocellus (three phases)","stage":"Final room","required":true,"choice_group":null,"default":true,"targets":[{"id":16673,"style":"Melee"},{"id":16675,"style":"Magic"},{"id":16677,"style":"Ranged"}]}
   ]}

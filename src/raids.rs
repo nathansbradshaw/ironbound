@@ -2,8 +2,16 @@
 use crate::planner::Target;
 use serde::Deserialize;
 use std::collections::{BTreeMap, BTreeSet};
-fn source(id:i32)->i32 {if scale(id).is_some(){crate::encounters::source_npc_id(id)}else{id}}
-fn scale(id:i32)->Option<&'static crate::raid_scaling::Scale> {crate::encounters::window(id).and_then(|w|w.raid_scale.as_ref())}
+fn source(id: i32) -> i32 {
+    if scale(id).is_some() {
+        crate::encounters::source_npc_id(id)
+    } else {
+        id
+    }
+}
+fn scale(id: i32) -> Option<&'static crate::raid_scaling::Scale> {
+    crate::encounters::window(id).and_then(|w| w.raid_scale.as_ref())
+}
 
 #[derive(Clone, Debug, Deserialize)]
 pub struct Raid {
@@ -21,23 +29,41 @@ pub struct Room {
     pub choice_group: Option<String>,
     pub default: bool,
     pub targets: Vec<Target>,
+    /// Previously saved room shapes remain readable without silently adding gear phases.
+    #[serde(default)]
+    pub legacy_targets: Vec<Target>,
 }
 
 impl Room {
+    fn phases_for(&self, targets: &[Target]) -> &[Target] {
+        let present = |phases: &[Target]| {
+            phases
+                .iter()
+                .all(|p| targets.iter().any(|t| source(t.id) == p.id))
+        };
+        if !self.legacy_targets.is_empty()
+            && !present(&self.targets)
+            && present(&self.legacy_targets)
+        {
+            &self.legacy_targets
+        } else {
+            &self.targets
+        }
+    }
     /// Styles remain editable; selecting a room includes every recorded NPC phase.
     pub fn selected(&self, targets: &[Target]) -> bool {
-        self.targets
+        self.phases_for(targets)
             .iter()
             .all(|phase| targets.iter().any(|t| source(t.id) == phase.id))
     }
 }
 
 impl Raid {
-    pub fn reference_name(&self,targets:&[Target])->&str {
-        match targets.first().and_then(|t|scale(t.id)) {
-            Some(s) if self.id=="cox" && s.challenge=>"Chambers of Xeric: Challenge Mode",
-            Some(s) if self.id=="cox" && s.party_size==3=>"Chambers of Xeric (3-player)",
-            _=>&self.name,
+    pub fn reference_name(&self, targets: &[Target]) -> &str {
+        match targets.first().and_then(|t| scale(t.id)) {
+            Some(s) if self.id == "cox" && s.challenge => "Chambers of Xeric: Challenge Mode",
+            Some(s) if self.id == "cox" && s.party_size == 3 => "Chambers of Xeric (3-player)",
+            _ => &self.name,
         }
     }
     pub fn default_targets(&self) -> Vec<Target> {
@@ -52,7 +78,12 @@ impl Raid {
         if targets.iter().any(|target| !target.valid()) {
             return false;
         }
-        if targets.first().is_some_and(|first| targets.iter().any(|t|scale(t.id)!=scale(first.id))) {return false;}
+        if targets
+            .first()
+            .is_some_and(|first| targets.iter().any(|t| scale(t.id) != scale(first.id)))
+        {
+            return false;
+        }
         let ids: BTreeSet<_> = targets.iter().map(|t| source(t.id)).collect();
         if ids.len() != targets.len() {
             return false;
@@ -60,15 +91,16 @@ impl Raid {
         let mut covered = BTreeSet::new();
         let mut choices: BTreeMap<&str, usize> = BTreeMap::new();
         for room in &self.rooms {
-            let count = room.targets.iter().filter(|t| ids.contains(&t.id)).count();
-            if (count != 0 && count != room.targets.len()) || (room.required && count == 0) {
+            let phases = room.phases_for(targets);
+            let count = phases.iter().filter(|t| ids.contains(&t.id)).count();
+            if (count != 0 && count != phases.len()) || (room.required && count == 0) {
                 return false;
             }
             if let Some(group) = room.choice_group.as_deref() {
                 *choices.entry(group).or_default() += usize::from(count != 0);
             }
             if count != 0 {
-                covered.extend(room.targets.iter().map(|t| t.id));
+                covered.extend(phases.iter().map(|t| t.id));
             }
         }
         covered == ids && choices.values().all(|count| *count == 1)
@@ -99,7 +131,7 @@ impl Raid {
                 candidate.selected(targets)
             };
             if selected {
-                for phase in &candidate.targets {
+                for phase in candidate.phases_for(targets) {
                     next.push(
                         targets
                             .iter()

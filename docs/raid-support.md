@@ -21,6 +21,9 @@ There are 194 declared raid/Nex attack states. Chambers also has five-player
 normal and three-player CM data references; these are not additional bestiary
 ratings. Alternative state buttons retain the selected raid scale. Preset target
 IDs retain their scale when shared; room toggles preserve it too.
+Older saved Archive routes with one Xarth entry retain their raid identity,
+styles and room controls. Editing another fork does not silently add a phase;
+newly selecting the Xarth fork includes both reviewed body windows.
 
 ## Reviewed rules
 

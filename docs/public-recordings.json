@@ -1,0 +1,131 @@
+{
+  "schema_version": 1,
+  "reviewed_on": "2026-11-13",
+  "purpose": "Visually checked component evidence; not a calibrate_fight Dataset or browser worksheet",
+  "matched_full_fight_worksheets": 0,
+  "defaults_fitted": false,
+  "holdouts_evaluated": false,
+  "recordings": [
+    {
+      "id": "vorkath-theedb0ys-dhcb-2025-01-09",
+      "encounter": "Vorkath",
+      "creator": "TheEdB0ys",
+      "title": "1 Hour of Vorkath (DHCB) | OSRS Vorkath Examples",
+      "url": "https://www.youtube.com/watch?v=mdXk3JWoH-Y",
+      "published_on": "2025-01-09",
+      "status": "visually_verified_component_source",
+      "inspection_points_seconds": [71.3, 216.3, 246.3, 266.3, 321.3],
+      "observations": [
+        {
+          "at_seconds": 71.3,
+          "basis": "visible equipment panel",
+          "ranged_attack_bonus": 260,
+          "ranged_strength_bonus": 146,
+          "prayer_bonus": 9,
+          "ruby_dragon_bolts_in_quiver": 852
+        },
+        {
+          "from_seconds": 246.3,
+          "to_seconds": 266.3,
+          "basis": "video-position and rendered game-clock spot check",
+          "game_clock_from": "2:10:34 PM",
+          "game_clock_to": "2:10:54 PM",
+          "video_elapsed_seconds": 20,
+          "clock_elapsed_seconds": 20,
+          "clock_display_precision_seconds": 1,
+          "scope": "sample interval only; not a whole-upload continuity guarantee"
+        },
+        {
+          "at_seconds": 321.3,
+          "basis": "visible combat and inventory HUD",
+          "boss_hp": 57,
+          "boss_max_hp": 750,
+          "unequipped_bolt_stack": 848,
+          "note": "Following the ruby-to-diamond swap; no shots-fired or net-consumption total inferred"
+        }
+      ],
+      "usable_for": ["gear reconstruction", "phase and attack annotation", "visible food and potion actions", "ammunition stack annotation"],
+      "full_fight_restrictions": ["HP-dependent ammunition switching", "karambwan and possible combo-eating delays", "base stats and hidden rune stock still need reconstruction"],
+      "annotation_status": "sparse inspection points; no complete event timeline"
+    },
+    {
+      "id": "yama-fcasandchill-solo-2025-05-20",
+      "encounter": "Yama",
+      "creator": "FCASandChill",
+      "title": "In-Depth Yama Guide For Beginners Duo/Solo",
+      "url": "https://www.youtube.com/watch?v=_CYs_6GTOUY",
+      "published_on": "2025-05-20",
+      "status": "visually_verified_component_source",
+      "creator_labeled_solo_start_seconds": 2288,
+      "inspection_points_seconds": [2295.4, 2595.4, 2599.4, 2605.4],
+      "observations": [
+        {
+          "at_seconds": 2295.4,
+          "basis": "pre-fight HUD and Mark selection",
+          "player_hp": 99,
+          "player_prayer": 99,
+          "game_clock": "00:18:09"
+        },
+        {
+          "at_seconds": 2599.4,
+          "basis": "visible game chat and final combat HUD before the outro cut",
+          "reported_fight_duration_text": "4:53.40",
+          "reported_fight_duration_seconds": 293.4,
+          "nominal_ticks_derived": 489,
+          "tick_conversion_seconds": 0.6,
+          "boss_hp": 0,
+          "boss_max_hp": 2500,
+          "player_hp": 84,
+          "player_prayer": 20,
+          "visible_base_levels": {"Attack": 99, "Strength": 99, "Defence": 99, "Magic": 99},
+          "game_clock": "00:23:13",
+          "boundary_warning": "Game-counter duration; reconcile challenge/first-attackable and killing-hit boundaries before comparing simulator ticks"
+        },
+        {
+          "at_seconds": 2605.4,
+          "basis": "visible bank outro from a different capture",
+          "game_clock": "00:34:58",
+          "use_as_same_fight_end_inventory": false
+        }
+      ],
+      "usable_for": ["Judge transition and prayer-state annotation", "Mark handling", "visible final stats", "recorded game-counter duration with explicit effects"],
+      "full_fight_restrictions": ["thralls", "lured Judge self-damage", "Donofly/perfect-dodge timing", "release-week patch applicability", "bank outro is another capture"],
+      "annotation_status": "result verified; no exact phase intervals or complete consumption totals"
+    },
+    {
+      "id": "wardens-nibzscape-150-2025-11-19",
+      "encounter": "Wardens",
+      "creator": "NibzScape",
+      "title": "OSRS TOA guide for noobs // In depth solo Tombs of Amascut guide, 150 invocations (OSRS 2025)",
+      "url": "https://www.youtube.com/watch?v=ViGwWEw2Gu4",
+      "published_on": "2025-11-19",
+      "status": "visually_verified_component_source",
+      "inspection_points_seconds": [481.6, 3697.7],
+      "creator_labeled_phase_starts_seconds": {"P1": 3378, "P2": 3631, "P3": 4049},
+      "observations": [
+        {
+          "at_seconds": 481.6,
+          "basis": "visible party and invocation screen",
+          "party_members": 1,
+          "raid_level": 150,
+          "active_invocations_shown": 14
+        },
+        {
+          "at_seconds": 3697.7,
+          "basis": "visible Warden health bar while the first core is attackable",
+          "warden_display_name": "Elidinis' Warden",
+          "warden_body_hp": 5180,
+          "warden_body_max_hp": 5180,
+          "raid_level": 150,
+          "core_attackable": true,
+          "hp_provenance_warning": "HUD value; plugin-supplied maximum is not an independent server-HP measurement",
+          "exact_core_exposure_ticks": null
+        }
+      ],
+      "creator_declared_relevant_invocations": ["Deadly Prayers", "Overclocked", "Overclocked 2"],
+      "usable_for": ["level-150 body HP cross-check", "core ejection/exposure/return annotation", "repeated core downs", "phase-specific visible supply actions"],
+      "full_fight_restrictions": ["Overclocked I/II change P3 timing", "Deadly Prayers changes prayer consumption", "thralls", "adrenaline and dragon-dagger specials", "raid supplies", "tutorial cuts separate full-phase chapters"],
+      "annotation_status": "core HP verified; exposure boundaries and P3 not fully annotated"
+    }
+  ]
+}

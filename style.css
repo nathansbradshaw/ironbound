@@ -912,3 +912,104 @@ button.ranged-type:focus-visible{outline:3px solid #ffe087;outline-offset:2px}
 
 .bestiary-filter-group{border:0;padding:0;margin:8px 0 12px;min-width:0}.bestiary-filter-group legend{font:19px Scape,monospace;color:#583211;padding:0;margin-bottom:6px}.bestiary-filter-note{font:12px/1.45 Arial,Helvetica,sans-serif;color:#61472a;max-width:65ch;margin:8px 0 12px}
 .quest-tag{display:block;color:#684218;font:12px/1.4 Arial,Helvetica,sans-serif;margin:.2rem 0}
+
+/* Sailing shipyard: OSRS sprites, direct part selection and no dropdowns. */
+.shipyard { background: #453e31; border: 2px solid #27251d; box-shadow: inset 0 0 0 1px #8e8164, 0 3px 8px #0005; padding: 18px; color: #eee2c5; }
+.shipyard h2, .shipyard h3 { margin: 0; color: #ffdc65; }
+.shipyard-title { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin-bottom: 14px; }
+.shipyard-title p { margin: 0; font-size: 13px; color: #d0c2a3; }
+.ship-controls { border: 0; padding: 0; margin: 0; min-width: 0; }
+.ship-controls > legend { position: absolute; width: 1px; height: 1px; padding: 0; overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; }
+.ship-types { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 8px; margin-bottom: 16px; }
+.ship-type { display: grid; grid-template-columns: 66px 1fr; align-items: center; text-align: left; padding: 8px; color: #e9d7ad; background: #302c23; border: 2px solid #1f1c16; box-shadow: inset 0 0 0 1px #665b42; cursor: pointer; }
+.ship-type strong { color: #ffbc62; font-size: 17px; }
+.ship-type small { grid-column: 2; font-size: 11px; color: #c5b89c; }
+.ship-type-art { grid-row: span 2; height: 55px; background-size: contain; background-repeat: no-repeat; background-position: center; image-rendering: pixelated; }
+.ship-art-raft { background-image: url('./assets/sailing/raft.png'); }
+.ship-art-skiff { background-image: url('./assets/sailing/skiff.png'); }
+.ship-art-sloop { background-image: url('./assets/sailing/sloop.png'); }
+.shipyard button.selected, .shipyard button[aria-pressed=true] { border-color: #d0a146; box-shadow: inset 0 0 0 1px #ffdc7050, 0 0 0 1px #1b1710; background-color: #50432a; }
+.shipyard button:hover { border-color: #c9ae70; color: #fff; }
+.shipyard button:focus-visible { outline: 2px solid #fff1a5; outline-offset: 3px; }
+.shipyard-grid { display: grid; grid-template-columns: minmax(260px,1fr) minmax(250px,1fr); gap: 14px; align-items: start; }
+.ship-sea { position: relative; height: 340px; border: 2px solid #141e1e; box-shadow: inset 0 0 32px #001015, inset 0 0 0 2px #49666a; background: repeating-linear-gradient(170deg, transparent 0 23px,#9fceca0b 24px 25px,transparent 26px 48px), radial-gradient(ellipse at center,#416766,#214348 65%,#132f35); overflow: hidden; }
+.ship-sea-label { position: absolute; left: 14px; top: 11px; font-size: 12px; color: #cbd7c1; text-shadow: 1px 1px #000; }
+.ship-model { position: absolute; inset: 35px 10px 25px; background-size: contain; background-position: center; background-repeat: no-repeat; image-rendering: pixelated; filter: drop-shadow(4px 12px 6px #041f23aa); }
+.ship-part { position: absolute; display: flex; align-items: center; gap: 5px; min-height: 47px; padding: 5px 7px; border: 2px solid #1b1a16; background: #322d23ed; color: #d8c8a7; text-align: left; font-size: 10px; cursor: pointer; box-shadow: inset 0 0 0 1px #766c52, 2px 3px 3px #0008; }
+.ship-part > img, .ship-part > .unknown-item { width: 32px; height: 32px; object-fit: contain; image-rendering: pixelated; flex-shrink: 0; }
+.ship-part strong { display: block; font-size: 12px; color: #ffcf76; margin-top: 2px; }
+.ship-part-hull { bottom: 15px; left: 10px; }
+.ship-part-keel { bottom: 15px; right: 10px; }
+.ship-part-cannon { top: 43%; left: 10px; }
+.ship-part-cargo { top: 36px; left: 10px; }
+.ship-part-player { top: 36px; right: 10px; }
+.ship-stats { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 4px; margin: 8px 0; }
+.ship-stats > div { display: flex; align-items: center; gap: 7px; background: #302b22; padding: 8px; min-width: 0; }
+.ship-stats img { width: 26px; height: 26px; object-fit: contain; image-rendering: pixelated; }
+.ship-stats span { font-size: 11px; color: #c8bba1; }
+.ship-stats strong { display: block; font-size: 20px; line-height: 1.1; color: #ffff00; }
+.ship-facilities { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 5px; }
+.ship-facility { display: flex; flex-direction: column; align-items: center; gap: 5px; padding: 7px 3px; background: #302b22; color: #d5c6a7; border: 1px solid #75684b; position: relative; cursor: pointer; font-size: 10px; }
+.ship-facility img { width: 28px; height: 28px; object-fit: contain; image-rendering: pixelated; }
+.ship-facility b { position: absolute; top: 3px; right: 5px; color: #ffdc65; }
+.ship-picker { background: #302b23; border: 1px solid #827455; padding: 10px; min-height: 292px; }
+.ship-picker-heading, .ship-section-heading { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; margin-bottom: 10px; }
+.ship-picker-heading span, .ship-section-heading > span { font-size: 11px; color: #bcaf93; }
+.ship-choice-grid { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 5px; }
+.ship-choice { min-width: 0; min-height: 75px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; background: #40392c; border: 2px solid #221e17; box-shadow: inset 0 0 0 1px #665a43; color: #ead8b2; padding: 7px 3px; cursor: pointer; }
+.ship-choice > img { width: 32px; height: 32px; object-fit: contain; image-rendering: pixelated; }
+.ship-choice strong { font-size: 12px; line-height: 1.2; font-weight: normal; }
+.ship-choice small { font-size: 9px; color: #c4b69b; line-height: 1.2; text-align: center; }
+.ship-mount-count { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; margin-top: 10px; font-size: 11px; }
+.ship-ammo { width: 100%; display: flex; gap: 8px; align-items: center; text-align: left; color: #d1c2a4; background: #302b23; border: 1px solid #827455; padding: 9px; margin: 10px 0; cursor: pointer; }
+.ship-ammo img { width: 32px; height: 32px; object-fit: contain; image-rendering: pixelated; }
+.ship-ammo strong { display: block; color: #ffcf76; }
+.ship-ammo > span:last-child { margin-left: auto; font-size: 11px; }
+.ship-enemy { display: flex; align-items: center; gap: 12px; background: #302b23; border: 1px solid #827455; padding: 10px; }
+.ship-enemy > img { width: 76px; height: 90px; object-fit: contain; image-rendering: pixelated; }
+.ship-enemy h3 { font-size: 16px; }
+.ship-enemy span { color: #c4b598; font-size: 12px; }
+.ship-enemy p { margin: 6px 0 0; font-size: 12px; }
+.ship-enemy s { color: #b8ab90; }
+.ship-enemy p strong { font-size: 25px; margin: 0 6px; }
+.ship-enemy small { display: block; font-size: 10px; color: #c4b598; }
+.ship-damage { color: #ffbc70; }
+.ship-safe { color: #b9e58b; }
+.ship-crew, .ship-trip { border-top: 1px solid #847354; padding-top: 16px; margin-top: 16px; }
+.ship-crew-seats { display: grid; grid-template-columns: repeat(auto-fit,minmax(160px,1fr)); gap: 8px; }
+.ship-seat { min-width: 0; background: #302b23; border: 1px solid #827455; }
+.ship-seat-person { display: flex; align-items: center; gap: 8px; width: 100%; min-height: 67px; text-align: left; padding: 6px 10px; color: #ffcf76; background: transparent; border: 1px solid transparent; cursor: pointer; }
+.ship-seat-person > img { width: 38px; height: 38px; object-fit: contain; image-rendering: pixelated; }
+.ship-seat-person span:not(.ship-face) { font-size: 13px; }
+.ship-seat-person small { display: block; font-size: 10px; color: #bcaf93; margin-top: 4px; }
+.ship-seat-job { display: flex; justify-content: space-between; width: 100%; text-align: left; color: #eee2c5; background: #443b2c; border: 0; border-top: 1px solid #75684b; padding: 7px 10px; font-size: 12px; cursor: pointer; }
+.ship-face { display: inline-block; width: 38px; height: 55px; flex-shrink: 0; background-position: center; background-size: contain; background-repeat: no-repeat; image-rendering: pixelated; }
+.ship-face-0 { background-image: url('./assets/sailing/crew-0.png'); }
+.ship-face-1 { background-image: url('./assets/sailing/crew-1.png'); }
+.ship-face-2 { background-image: url('./assets/sailing/crew-2.png'); }
+.ship-face-3 { background-image: url('./assets/sailing/crew-3.png'); }
+.ship-face-4 { background-image: url('./assets/sailing/crew-4.png'); }
+.ship-face-5 { background-image: url('./assets/sailing/crew-5.png'); }
+.ship-face-6 { background-image: url('./assets/sailing/crew-6.png'); }
+.ship-face-7 { background-image: url('./assets/sailing/crew-7.png'); }
+.ship-face-8 { background-image: url('./assets/sailing/crew-8.png'); }
+.ship-face-9 { background-image: url('./assets/sailing/crew-9.png'); }
+.ship-crew-choice { min-height: 108px; }
+.ship-trip-inputs { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 10px; }
+.ship-trip-inputs label { display: flex; align-items: center; gap: 6px; color: #cabd9f; font-size: 10px; min-width: 0; }
+.ship-trip-inputs label > img { width: 28px; height: 28px; object-fit: contain; image-rendering: pixelated; }
+.ship-trip-inputs label > span { min-width: 0; flex: 1; }
+.ship-trip-inputs input { box-sizing: border-box; width: 100%; min-height: 34px; margin-top: 4px; color: #ffff00; background: #27231b; border: 1px solid #8d7953; padding: 5px 6px; font-size: 15px; }
+.ship-checks { color: #dfbe80; font-size: 12px; margin-top: 14px; }
+.ship-checks ul { padding-left: 20px; }
+.ship-checks li { margin: 5px 0; }
+.ship-results { display: grid; gap: 10px; margin-top: 12px; }
+.ship-gunner-result { display: flex; align-items: center; gap: 10px; font-size: 12px; }
+.ship-gunner-result strong { display: block; color: #ffff00; font-size: 17px; }
+.ship-budget { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 5px; margin: 0; background: #302b23; padding: 10px; text-align: center; }
+.ship-budget dt { color: #c5b79c; font-size: 11px; }
+.ship-budget dd { color: #ffff00; font-size: 24px; margin: 4px 0 0; }
+.ship-footnote, .ship-coverage { font-size: 11px; color: #c5b79c; }
+.ship-coverage a { color: #e6bc71; }
+@media (max-width: 760px) { .ship-type {grid-template-columns: 44px 1fr;} .ship-type-art {height: 43px;} .ship-type strong {font-size: 15px;} .ship-type small {font-size: 9px;} }
+@media (max-width: 610px) { .shipyard {padding: 12px;} .shipyard-grid {grid-template-columns: 1fr;} .shipyard-title {align-items: flex-start;flex-direction: column;gap: 4px;} .ship-type {grid-template-columns: 1fr;text-align: center;gap: 2px;} .ship-type-art {grid-row: auto;height: 46px;} .ship-type small {grid-column: 1;} .ship-sea {height: 330px;} .ship-choice-grid {grid-template-columns: repeat(4,minmax(0,1fr));} .ship-picker {min-height: 0;} .ship-trip-inputs {grid-template-columns: repeat(2,minmax(0,1fr));} .ship-section-heading {align-items: flex-start;flex-direction: column;gap: 4px;} }

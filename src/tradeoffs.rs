@@ -142,7 +142,7 @@ pub fn measure(
         &member,
         set,
         &owned,
-        rules::DEFAULT_CASTS,
+        o.combat.spell_casts,
         &o.combat,
     ) {
         Err("This set needs a usable casting weapon and sufficient spell runes.".into())

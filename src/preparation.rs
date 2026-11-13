@@ -24,11 +24,27 @@ pub const CONFIRMATIONS: [(&str, &str); 4] = [
 ];
 
 /// An invalidation token, not a security hash. Include bank/levels and every
-/// option so a changed account, supply budget or encounter requires a new check.
+/// option and the resulting packing list so a changed recommendation after an
+/// app/data update also requires a new check.
 pub fn token(snapshot: &Snapshot, options: &Options) -> String {
     let mut options = options.clone();
     options.confirmations.clear();
-    let bytes = serde_json::to_vec(&(snapshot, options)).expect("serializable account/options");
+    let plan = crate::planner::plan(snapshot, &options);
+    let phases: Vec<_> = plan
+        .phases
+        .iter()
+        .map(|phase| (&phase.name, &phase.style, &phase.equipment))
+        .collect();
+    let bytes = serde_json::to_vec(&(
+        snapshot,
+        options,
+        &plan.equipment,
+        &plan.inventory,
+        phases,
+        &plan.loaded_ammo,
+        &plan.spell,
+    ))
+    .expect("serializable account/options");
     let hash = bytes.iter().fold(0xcbf29ce484222325u64, |h, b| {
         (h ^ u64::from(*b)).wrapping_mul(0x100000001b3)
     });

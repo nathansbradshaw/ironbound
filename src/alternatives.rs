@@ -142,7 +142,7 @@ fn compatible(
             }
         }
     }
-    rules::casting_supported_configured(m, set, owned, rules::DEFAULT_CASTS, &o.combat)
+    rules::casting_supported_configured(m, set, owned, o.combat.spell_casts, &o.combat)
 }
 fn spell_supplies(
     set: &[Option<i32>],
@@ -163,7 +163,7 @@ fn spell_supplies(
     let spell = planner::monster(target)
         .map(|t| rules::spell_name_for_target(m, set, owned, &o.combat, t, o.raid_level))
         .unwrap_or_else(|| rules::spell_name_configured(m, set, owned, &o.combat));
-    rules::rune_supplies_for_set(spell, rules::DEFAULT_CASTS, set)
+    rules::rune_supplies_for_set(spell, o.combat.spell_casts, set)
 }
 fn budget(
     p: &Plan,

@@ -24,7 +24,8 @@ fn saved(options: Options) -> Saved {
 
 #[test]
 fn old_account_backup_migrates_without_losing_bank_or_current_options() {
-    let original = saved(Options::default());
+    let mut original = saved(Options::default());
+    original.budget_caps = [3, 7];
     let mut legacy = serde_json::to_value(&original).unwrap();
     legacy.as_object_mut().unwrap().remove("setups");
     legacy["options"]
@@ -43,6 +44,12 @@ fn old_account_backup_migrates_without_losing_bank_or_current_options() {
     assert_eq!(restored.options.combat.spell_casts, 150);
     assert!(restored.setups.0.is_empty());
     assert_eq!(restored.options.food, original.options.food);
+    assert_eq!(restored.budget_caps, [3, 7]);
+    legacy.as_object_mut().unwrap().remove("budget_caps");
+    assert_eq!(
+        Saved::parse(&legacy.to_string()).unwrap().budget_caps,
+        [4, 8]
+    );
 }
 
 #[test]
@@ -207,7 +214,17 @@ fn short_spell_budget_changes_affordability_selection_and_packed_runes_consisten
             .iter()
             .any(|p| p.id == 565 && p.quantity == 30)
     );
+    assert!(
+        ironbound::tradeoffs::measure(&state.snapshot, &state.options, &set, "Magic", 415)
+            .dps
+            .is_some()
+    );
     state.options.combat.spell_casts = 150;
+    assert!(
+        ironbound::tradeoffs::measure(&state.snapshot, &state.options, &set, "Magic", 415)
+            .dps
+            .is_none()
+    );
     assert!(rules::elemental_candidates(member, &set, &stock, &state.options.combat).is_empty());
     assert!(!planner::plan(&state.snapshot, &state.options).exportable());
     for casts in [0, 10001, u32::MAX] {

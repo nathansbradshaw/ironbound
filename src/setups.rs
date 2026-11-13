@@ -3,7 +3,9 @@ use crate::{account::Snapshot, planner::Options};
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 
-pub fn default_budget_caps() -> [usize; 2] { [4, 8] }
+pub fn default_budget_caps() -> [usize; 2] {
+    [4, 8]
+}
 
 #[derive(Clone, Serialize, Deserialize)]
 pub struct Saved {
@@ -24,7 +26,10 @@ impl Saved {
             return Err("Account backup exceeds 4 MB.".into());
         }
         let saved: Self = serde_json::from_str(raw).map_err(|_| "Could not read saved account.")?;
-        if saved.version != 1 || saved.snapshot.selected().is_none() || saved.budget_caps.iter().any(|cap| *cap > 11) {
+        if saved.version != 1
+            || saved.snapshot.selected().is_none()
+            || saved.budget_caps.iter().any(|cap| *cap > 11)
+        {
             return Err("This backup version or account is not supported.".into());
         }
         Snapshot::parse(

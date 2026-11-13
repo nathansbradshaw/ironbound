@@ -1519,7 +1519,7 @@ fn act(action: &str) {
                     s.saved.options.confirmations.insert(id.into(), token);
                 }
             }
-        } else if action == "reset-inventory" {
+        } else if action == "reset-all-inventory" {
             s.saved.options.inventory_overrides.clear();
             s.saved.options.inventory_quantities.clear();
             s.notice("Manual inventory edits cleared. Automatic packing restored.", false);
@@ -2576,7 +2576,7 @@ fn inventory_panel(s: &State, p: &Plan) -> String {
         && (!s.saved.options.inventory_overrides.is_empty()
             || !s.saved.options.inventory_quantities.is_empty())
     {
-        html.push_str(&format!("<p class=\"small-note\">Manual inventory edits are kept when gear changes. Resolve conflicts below or {}.</p>", button("reset-inventory", "Reset inventory edits", "text-button")));
+        html.push_str(&format!("<p class=\"small-note\">Manual inventory edits are kept when gear changes. Resolve conflicts below or {}.</p>", button("reset-all-inventory", "Reset inventory edits", "text-button")));
     }
     if !p.missing.is_empty() {
         html.push_str("<div class=\"missing-list\"><strong>Before you set out</strong><ul>");
@@ -2683,8 +2683,9 @@ fn manual_checks(s: &State) -> String {
     let mut html = String::from(
         "<section class=\"panel manual-checks\"><h2>Check before leaving</h2><p>Bank imports cannot verify these. Confirm them yourself for this setup; changing the account or plan requires checking again.</p>",
     );
+    let token = crate::preparation::token(&s.saved.snapshot, &s.saved.options);
     for (id, label) in crate::preparation::CONFIRMATIONS {
-        let checked = crate::preparation::confirmed(&s.saved.snapshot, &s.saved.options, id);
+        let checked = s.saved.options.confirmations.get(id) == Some(&token);
         html.push_str(&format!("<button class=\"manual-confirm\" data-action=\"confirm:{id}\" aria-pressed=\"{checked}\">{} {label}</button>", if checked { "✓" } else { "□" }));
     }
     html.push_str("<p class=\"small-note\">Your confirmations are private and do not prove combat mechanics are supported or predict a successful kill.</p></section>");
@@ -4147,7 +4148,7 @@ fn budget_comparison(s: &State) -> String {
     ] {
         html.push_str(&format!("<label>{label}<input id=\"budget-cap-{id}\" type=\"number\" min=\"0\" max=\"11\" value=\"{cap}\"></label>"));
     }
-    html.push_str("</div><p class=\"small-note\">Choose any two caps, 0–11. Same account, prayers and supplies; each cap repacks the bag.</p><div class=\"budget-sides\">");
+    html.push_str("</div><p class=\"small-note\">Choose any two caps, 0–11. Same account, prayers and supplies; each comparison repacks the bag. Applying a cap keeps your manual inventory edits; review any resulting packing conflicts.</p><div class=\"budget-sides\">");
     for (key, side) in [("left", &comparison.left), ("right", &comparison.right)] {
         html.push_str(&format!("<div class=\"budget-side\"><h3>{}-item cap</h3><dl><div><dt>Switch pieces</dt><dd>{}</dd></div><div><dt>Largest switch</dt><dd>{}</dd></div><div><dt>Peak bag</dt><dd>{}/28</dd></div></dl><button data-action=\"budget-apply:{key}\" class=\"phase\" {}>Use {}</button>",side.cap,side.carried_gear,side.max_pair,side.max_inventory_space,if side.feasible{""}else{"disabled"},side.cap));
         if !side.feasible {

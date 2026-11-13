@@ -133,7 +133,7 @@ pub fn for_window(
         * f64::from(entities);
     Ok(Budget {
         attacks,
-        seconds: attacks * f64::from(result.attack_ticks) * 0.6,
+        seconds: attacks * result.expected_attack_ticks * 0.6,
         start_hp: start,
         stop_hp: stop,
         entities,

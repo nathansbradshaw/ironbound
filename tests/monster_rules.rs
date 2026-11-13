@@ -473,3 +473,15 @@ fn npc_limiters_apply_to_each_hitsplat_before_multi_hit_totals() {
         zulrah.accuracy * (19.5 + 1.0 / 40.0 + 0.25 * 382.0 / 40.0) / 1.8,
     );
 }
+
+#[test]
+fn integrated_scythe_corp_reduction_precedes_the_three_hit_sum() {
+    let r = calc(319, 22325, None, "Slash");
+    // Base23 produces23/11/5 maxima on a large NPC. Corp halves these into
+    // 11/5/2, not floor((23+11+5)/2)=19. Their accurate means sum to9.
+    assert_eq!(
+        (r.attack_roll, r.defence_roll, r.max_hit),
+        (20790, 84216, 18)
+    );
+    near(r.dps, 20790.0 / 168434.0 * 9.0 / 3.0);
+}

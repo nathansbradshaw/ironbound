@@ -15,7 +15,7 @@ The planner compares ordinary armour with joint equipment candidates. It refines
 | Obsidian | Armour, compatible melee weapon and optional Berserker necklace jointly. Armour adds a floored 10% of the base roll/hit after Salve/task; necklace scales each damage roll by 20%. | Cape/shield do not complete the armour set. Other weapons receive no Obsidian bonus. |
 | Inquisitor | All owned piece subsets; current crush multipliers are 0.5% helm, 1% body, 1% legs. | Crush only; the removed mace-specific multiplier is not applied. |
 
-Stat-only combinations such as Bandos, Torva, Armadyl and Masori use their individual item stats. Moon set weapons/spells and full Justiciar's incoming reduction remain outside verified support: unsupported weapon calculations and Justiciar incoming damage are withheld rather than assigned an invented bonus. Virtus's Ancient-specific bonus cannot activate while Ancient spells are unsupported.
+Stat-only combinations such as Bandos, Torva, Armadyl and Masori use their individual item stats. The [equipment follow-up](equipment-backlog.md) adds initial Moon weapon/Blood Moon support and ordinary unprotected Justiciar incoming reduction. Eclipse burns, Blue Moon follow-ups and defensive-passive interactions with prayer chip/chained hits remain unavailable. Virtus's Ancient-specific bonus cannot activate while Ancient spells are unsupported.
 
 Barrows active degradation variants can mix within one brother's set. Broken pieces and another brother's pieces cannot complete it. Recoil and dynamic NPC stat drains are not added to sustained player DPS. Health assumptions travel with shared setups and export notes.
 

@@ -23,6 +23,10 @@ pub struct Setup {
         skip_serializing_if = "crate::efficient::is_default_tolerance"
     )]
     pub switch_tolerance: u32,
+    #[serde(default, skip_serializing_if = "crate::efficient::is_zero_tolerance")]
+    pub damage_tolerance: u32,
+    #[serde(default, skip_serializing_if = "crate::efficient::is_zero_tolerance")]
+    pub prayer_tolerance: u32,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub recommended: Option<bool>,
     #[serde(default)]
@@ -53,6 +57,8 @@ impl Setup {
         Self {
             exclude_void: o.exclude_void,
             switch_tolerance: o.switch_tolerance,
+            damage_tolerance: o.damage_tolerance,
+            prayer_tolerance: o.prayer_tolerance,
             recommended: o.recommended,
             ranking: o.ranking.clone(),
             combat: {
@@ -110,6 +116,8 @@ impl Setup {
             return Err(fail());
         }
         if self.switch_tolerance > crate::efficient::MAX_TOLERANCE_PERCENT
+            || self.damage_tolerance > crate::efficient::MAX_TOLERANCE_PERCENT
+            || self.prayer_tolerance > crate::efficient::MAX_TOLERANCE_PERCENT
             || !self.ranking.weights.valid()
             || !self.combat.valid()
             || self.version != 1
@@ -300,6 +308,8 @@ impl Setup {
         Options {
             exclude_void: self.exclude_void,
             switch_tolerance: self.switch_tolerance,
+            damage_tolerance: self.damage_tolerance,
+            prayer_tolerance: self.prayer_tolerance,
             recommended: self.recommended,
             ranking: self.ranking.clone(),
             combat: self.combat.clone(),

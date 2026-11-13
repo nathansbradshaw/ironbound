@@ -10,6 +10,7 @@ pub mod effects;
 pub mod efficient;
 pub mod encounter_summary;
 pub mod encounters;
+pub mod equipment_effects;
 pub mod explanations;
 pub mod export;
 pub mod guidance;

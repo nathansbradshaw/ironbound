@@ -68,6 +68,12 @@ dedicated encounter simulations.
 
 RuneLite verification blocker (13 November): RuneLite is installed but was not running. Computer access to launch it was denied. Actual client import/equip/switch checks remain open; do not replace them with model or decoder evidence.
 
+## 8. Equipment mechanics
+
+The [equipment mechanics backlog](equipment-backlog.md) tracks
+incorrectly blocked rings, Barrows/Obsidian/Inquisitor integration, Moon sets,
+Scythe/Soulreaper, defensive passives, enchanted bolts and special rotations.
+
 ## Release evidence
 
 13 November 2026, workflow release (PR #23): all 325 integrated Rust tests and 24 independent combat references passed, along with the release Wasm build. Disposable browser QA verified named saving/loading/reload, a 73-rune manual slot surviving a gear change, cast-budget repacking, single-slot reset, four manual confirmations and invalidation, plus blocked-storage warning/retry and recovery without losing saved fixtures. The release is merged and deployed; later tooltip publications include it.

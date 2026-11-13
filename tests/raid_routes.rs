@@ -92,6 +92,8 @@ fn archive_forks_replace_rooms_and_preserve_all_final_phases() {
     let setup = ironbound::share::Setup {
         exclude_void: false,
         switch_tolerance: ironbound::efficient::DEFAULT_TOLERANCE_PERCENT,
+        damage_tolerance: 0,
+        prayer_tolerance: 0,
         recommended: None,
         ranking: Default::default(),
         combat: Default::default(),

@@ -37,6 +37,8 @@ fn notable_quest_bosses_are_selectable_in_the_bestiary() {
         assert!(entry.targets.iter().all(planner::Target::valid), "{name}");
         assert!(entry.note.contains("Quest boss"), "{name}");
         assert!(entry.matches(&entry.targets), "{name}");
+        assert!(!entry.guide_url().contains("(Quest)"), "{name}");
+        assert!(!entry.guide_url().ends_with("/Strategies"), "{name}");
     }
 }
 

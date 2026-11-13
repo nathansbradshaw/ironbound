@@ -165,7 +165,7 @@ fn one_unknown_raid_window_does_not_erase_known_weapon_dps_in_the_summary() {
                 style: "Magic".into(),
             },
             Target {
-                id: 16684,
+                id: 14015,
                 style: "Magic".into(),
             },
         ],

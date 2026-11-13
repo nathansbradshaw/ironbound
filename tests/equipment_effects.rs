@@ -527,13 +527,22 @@ fn bulwark_block_is_explicit_applies_reduction_and_prevents_attacks() {
 
 #[test]
 fn new_settings_survive_public_share_validation_without_overriding_missing_mechanics() {
-    let mut o = Options::default();
+    let mut o = Options {
+        boss: planner::Boss::Custom,
+        targets: vec![planner::Target {
+            id: 26,
+            style: "Slash".into(),
+        }],
+        food: 0,
+        prayer_potions: 0,
+        ..Default::default()
+    };
     o.combat.soulreaper_stacks = 5;
     o.combat.bulwark_block = true;
     let snapshot = account::Snapshot {
         members: vec![Member {
             name: "Synthetic equipment".into(),
-            bank: Some(vec![28338, 1]),
+            bank: Some(vec![28338, 1, 8007, 1]),
             ..member()
         }],
         selected: "Synthetic equipment".into(),
@@ -545,4 +554,8 @@ fn new_settings_survive_public_share_validation_without_overriding_missing_mecha
     let copy = ironbound::share::Setup::parse(&setup.fragment().unwrap()).unwrap();
     assert_eq!(copy.combat.soulreaper_stacks, 5);
     assert!(copy.combat.bulwark_block);
+    assert!(p.exportable(), "{:?}", p.missing);
+    let exported = ironbound::export::inventory_setup(&p, &o, "Equipment regression").unwrap();
+    assert!(exported.contains("Soulreaper: 5 held stacks"));
+    assert!(exported.contains("self-damage, healing and the special attack are excluded"));
 }

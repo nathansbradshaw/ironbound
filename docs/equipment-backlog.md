@@ -109,6 +109,12 @@ scenarios and saved/shared settings. Existing armour and reference tests also ap
 
 ## Release evidence
 
-First follow-up: verification in progress. Release requires the integrated Rust
-suite, independent comparator, Wasm build and browser checks, followed by remote
-main and published source verification. Gameplay remains open.
+First follow-up (13 November 2026): 422 integrated Rust tests, including 17 new
+equipment regressions, and all 24 independent reference loadouts pass. The release
+Wasm build passes. Disposable browser checks confirm the formerly blocked ring,
+Soulreaper's 0→5 stacks changing max hit 33→42 with that ring, reload/shared-link
+persistence, full Blood Moon's 3.47 expected ticks, Scythe's three-hit maximum 39,
+onyx damage, Elysian incoming damage, the full Eclipse burn gate and Dinh's Block
+toggle/attack lockout. These are synthetic/model/browser checks; gameplay and
+the unchecked mechanics above remain open. Remote-main/publication evidence is
+recorded with the equipment follow-up pull request.

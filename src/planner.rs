@@ -221,6 +221,8 @@ pub struct Options {
     pub inventory_overrides: BTreeMap<usize, i32>,
     pub inventory_quantities: BTreeMap<usize, u32>,
     pub max_switches: Option<usize>,
+    #[serde(skip_serializing_if = "crate::efficient::is_default_tolerance")]
+    pub switch_tolerance: u32,
     pub switch_slots: usize,
     pub focus_style: String,
     pub phase_priorities: BTreeMap<i32, u32>,
@@ -247,6 +249,7 @@ impl Default for Options {
             inventory_overrides: BTreeMap::new(),
             inventory_quantities: BTreeMap::new(),
             max_switches: None,
+            switch_tolerance: crate::efficient::DEFAULT_TOLERANCE_PERCENT,
             switch_slots: 12,
             focus_style: "Balanced".into(),
             phase_priorities: BTreeMap::new(),
@@ -1290,6 +1293,8 @@ pub fn plan(snapshot: &Snapshot, options: &Options) -> Plan {
     // Manual confirmations never influence gear selection or packing.
     let mut options = options.clone();
     options.confirmations.clear();
+    // Tolerance selects among plans; it does not change an individual plan.
+    options.switch_tolerance = crate::efficient::DEFAULT_TOLERANCE_PERCENT;
     let key = serde_json::to_string(&(snapshot, &options)).unwrap_or_default();
     thread_local! {static CACHE:std::cell::RefCell<std::collections::VecDeque<(String,Plan)>>=const{std::cell::RefCell::new(std::collections::VecDeque::new())};}
     if let Some(p) = CACHE.with(|c| {

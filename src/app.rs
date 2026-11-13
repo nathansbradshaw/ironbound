@@ -275,7 +275,7 @@ fn efficient_result(s: &State) -> Option<crate::efficient::Suggestion> {
         .map(|rows| {
             crate::efficient::choose(
                 rows,
-                crate::efficient::TOLERANCE_PERCENT,
+                s.saved.options.switch_tolerance,
                 s.saved.options.max_switches.unwrap_or(11),
             )
         })
@@ -341,6 +341,7 @@ thread_local! {
 fn live_number(id: &str) -> bool {
     [
         "max-switches",
+        "switch-tolerance",
         "switch-slots",
         "food",
         "potions",
@@ -369,6 +370,23 @@ fn apply_number(s: &mut State, id: &str, value: &str) -> bool {
         return true;
     }
     let o = &mut s.saved.options;
+    if id == "switch-tolerance" {
+        let Ok(number) = value.parse::<i64>() else {
+            return false;
+        };
+        let bounded = number.clamp(0, crate::efficient::MAX_TOLERANCE_PERCENT as i64) as u32;
+        o.switch_tolerance = bounded;
+        if number != bounded as i64 {
+            if let Some(input) = document()
+                .get_element_by_id(id)
+                .and_then(|e| e.dyn_into::<HtmlInputElement>().ok())
+            {
+                input.set_value(&bounded.to_string());
+            }
+        }
+        s.export_text = None;
+        return true;
+    }
     if id == "max-switches" && value.trim().is_empty() {
         o.max_switches = None;
         o.fewer_switches = false;
@@ -4290,15 +4308,23 @@ fn switch_controls(s: &State, p: &Plan) -> String {
 
 fn efficient_panel(s: &State, _plan: &Plan) -> String {
     ensure_efficient(s);
+    let tolerance = s.saved.options.switch_tolerance;
     let mut html = String::from(
         "<section class=\"panel efficient-panel\" aria-label=\"Compact setup recommendation\"><h3>Pack fewer switches</h3>",
     );
+    html.push_str(&format!("<label class=\"tolerance-control\">Tradeoff tolerance <span><input id=\"switch-tolerance\" type=\"number\" min=\"0\" max=\"{}\" step=\"1\" inputmode=\"numeric\" value=\"{tolerance}\" aria-describedby=\"tolerance-help\">%</span></label><p id=\"tolerance-help\" class=\"small-note\">Up to {tolerance}% more attack time, prayer use and known incoming damage.</p>",crate::efficient::MAX_TOLERANCE_PERCENT));
     let Some(result) = efficient_result(s) else {
         html.push_str("<p role=\"status\">Checking switch limits…</p></section>");
         return html;
     };
     let Some((selected, best)) = result.compact.zip(result.best) else {
-        html.push_str(&format!("<p>{}</p><p class=\"small-note\">Near-best target: within {}% of the fastest tested attack time and prayer use, with known incoming damage guarded.</p></section>",esc(result.reason.as_deref().unwrap_or("No comparison available.")),crate::efficient::TOLERANCE_PERCENT));
+        html.push_str(&format!(
+            "<p>{}</p></section>",
+            esc(result
+                .reason
+                .as_deref()
+                .unwrap_or("No comparison available."))
+        ));
         return html;
     };
     let chosen = &result.candidates[selected];
@@ -4342,7 +4368,7 @@ fn efficient_panel(s: &State, _plan: &Plan) -> String {
         && s.saved.options.inventory_overrides.is_empty()
         && s.saved.options.inventory_quantities.is_empty();
     html.push_str(&format!("<div class=\"efficient-actions\"><button class=\"phase\" data-action=\"efficient-apply\" {}>{}</button>{}</div>",if using {"disabled"}else{""},if using {"Using compact setup"}else if edited_inventory {"Repack & use compact setup"}else{"Use compact setup"},button("efficient-compare","Compare with fastest","text-button")));
-    html.push_str(&format!("<details><summary>Within {}% · how we choose</summary><p>Tests every cap from 0 to 11 using your bank, pins, combat settings and supply counts. Your current switch ceiling still limits the suggestion. The fastest tested setup remains the benchmark after applying a smaller cap.</p><p>Allows up to {}% more attack time, prayer use and known incoming damage. Keeps identical workload coverage. Prioritizes peak bag space, then carried gear and actual changes. Applying restores automatic packing, including manual inventory slots. This bounded search does not prove a global BIS.</p><p>Fastest tested: {}-change cap · {} gear pieces · {:.1}s · {:.1} prayer points. Suggested cap: {}.</p></details></section>",crate::efficient::TOLERANCE_PERCENT,crate::efficient::TOLERANCE_PERCENT,benchmark.budget.cap,benchmark.budget.carried_gear,b.seconds,b.prayer_points,chosen.budget.cap));
+    html.push_str(&format!("<details><summary>Within {tolerance}% · how we choose</summary><p>Tests every cap from 0 to 11 using your bank, pins, combat settings and supply counts. Your current switch ceiling still limits the suggestion. The fastest tested setup remains the benchmark after applying a smaller cap.</p><p>Allows up to {tolerance}% more attack time, prayer use and known incoming damage. Keeps identical workload coverage. Prioritizes peak bag space, then carried gear and actual changes. Applying restores automatic packing, including manual inventory slots. This bounded search does not prove a global BIS.</p><p>Fastest tested: {}-change cap · {} gear pieces · {:.1}s · {:.1} prayer points. Suggested cap: {}.</p></details></section>",benchmark.budget.cap,benchmark.budget.carried_gear,b.seconds,b.prayer_points,chosen.budget.cap));
     html
 }
 

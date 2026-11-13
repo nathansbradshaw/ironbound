@@ -254,6 +254,85 @@ fn goal_key(account: &str, options: &Options) -> String {
 }
 thread_local! {static STATE:RefCell<State>=RefCell::new(State::initial());}
 thread_local! {static LIVE_EDIT:Cell<u64>=const {Cell::new(0)};}
+struct EfficientCache {
+    key: String,
+    result: Option<Vec<crate::efficient::Candidate>>,
+}
+thread_local! {static EFFICIENT:RefCell<Option<EfficientCache>>=const {RefCell::new(None)};}
+fn efficient_key(snapshot: &Snapshot, options: &Options) -> String {
+    crate::efficient::cache_key(snapshot, options)
+}
+fn efficient_result(s: &State) -> Option<crate::efficient::Suggestion> {
+    let key = efficient_key(&s.saved.snapshot, &s.saved.options);
+    EFFICIENT
+        .with(|cache| {
+            cache
+                .borrow()
+                .as_ref()
+                .filter(|c| c.key == key)
+                .and_then(|c| c.result.clone())
+        })
+        .map(|rows| {
+            crate::efficient::choose(
+                rows,
+                crate::efficient::TOLERANCE_PERCENT,
+                s.saved.options.max_switches.unwrap_or(11),
+            )
+        })
+}
+fn ensure_efficient(s: &State) {
+    let key = efficient_key(&s.saved.snapshot, &s.saved.options);
+    if EFFICIENT.with(|cache| cache.borrow().as_ref().is_some_and(|c| c.key == key)) {
+        return;
+    }
+    EFFICIENT.with(|cache| {
+        *cache.borrow_mut() = Some(EfficientCache {
+            key: key.clone(),
+            result: None,
+        })
+    });
+    let snapshot = s.saved.snapshot.clone();
+    let options = s.saved.options.clone();
+    spawn_local(async move {
+        let mut rows = Vec::new();
+        for cap in 0..=11 {
+            // Yield between bounded searches so fields and navigation stay usable.
+            let promise = js_sys::Promise::new(&mut |resolve, _| {
+                let _ = window().set_timeout_with_callback_and_timeout_and_arguments_0(&resolve, 0);
+            });
+            let _ = JsFuture::from(promise).await;
+            let current = STATE.with(|state| {
+                let s = state.borrow();
+                s.tab == "bossing"
+                    && s.shared_setup.is_none()
+                    && efficient_key(&s.saved.snapshot, &s.saved.options) == key
+            }) && EFFICIENT
+                .with(|cache| cache.borrow().as_ref().is_some_and(|c| c.key == key));
+            if !current {
+                EFFICIENT.with(|cache| {
+                    let matches = cache.borrow().as_ref().is_some_and(|c| c.key == key);
+                    if matches {
+                        *cache.borrow_mut() = None;
+                    }
+                });
+                return;
+            }
+            rows.push(crate::efficient::Candidate::new(crate::tradeoffs::budget(
+                &snapshot, &options, cap,
+            )));
+        }
+        EFFICIENT.with(|cache| {
+            *cache.borrow_mut() = Some(EfficientCache {
+                key,
+                result: Some(rows),
+            })
+        });
+        let edit = document().active_element().filter(|e| {
+            ["INPUT", "TEXTAREA", "SELECT"].contains(&e.tag_name().as_str()) && !e.id().is_empty()
+        });
+        render_with_edit(edit.as_ref().map(Element::id).as_deref());
+    });
+}
 thread_local! {
     static COMPARISON_TRIGGER: RefCell<Option<Element>> = const { RefCell::new(None) };
     static COMPARISON_DISMISS: Cell<u64> = const { Cell::new(0) };
@@ -1566,6 +1645,24 @@ fn act(action: &str) {
                 s.view = view.into();
                 s.edit_equipment = None;
             }
+        } else if action=="efficient-apply" || action=="efficient-compare" {
+            if s.shared_setup.is_none() {
+                if let Some(result)=efficient_result(&s) {
+                    if let Some((compact,best))=result.compact.zip(result.best) {
+                        let cap=result.candidates[compact].budget.cap;
+                        if action=="efficient-compare" {
+                            s.saved.budget_caps=[cap,result.candidates[best].budget.cap];
+                            s.budget_comparison_open=true;
+                        } else {
+                            apply_number(&mut s,"max-switches",&cap.to_string());
+                            s.saved.options.inventory_overrides.clear();
+                            s.saved.options.inventory_quantities.clear();
+                            s.phase=None; s.view="loadout".into();
+                            s.notice("Compact setup applied. Automatic inventory packing restored.",false);
+                        }
+                    }
+                }
+            }
         } else if let Some(side) = action.strip_prefix("budget-apply:") {
             let index = usize::from(side == "right");
             if side == "left" || side == "right" {
@@ -2390,7 +2487,7 @@ fn render_with_edit(edit: Option<&str>) {
         html.push_str(&raid_rooms(&s));
         html.push_str("</div>");
         if s.shared_setup.is_some(){html.push_str(&format!("<p class=\"notice\">Viewing a shared setup. Your saved bank is unchanged. {}</p>",button("use-bank","Rebuild using my items","text-button")));}
-        if s.shared_setup.is_none(){html.push_str(&switch_controls(&s,&plan));html.push_str(&budget_comparison(&s));}
+        if s.shared_setup.is_none(){html.push_str(&switch_controls(&s,&plan));html.push_str(&efficient_panel(&s,&plan));html.push_str(&budget_comparison(&s));}
         html.push_str("<nav class=\"planner-tabs\" aria-label=\"Planner sections\">");
         for (view,label) in [("loadout","Gear"),("combat","Combat"),("prepare","Preparation")] {let disabled=if view=="combat"&&s.shared_setup.is_some(){"disabled title=\"Rebuild using your items to calculate combat stats\""}else{""};html.push_str(&format!("<button class=\"workspace-tab {}\" data-action=\"view:{view}\" aria-pressed=\"{}\" {disabled}>{label}{}</button>",if s.view==view{"active"}else{""},s.view==view,if view=="prepare"&&!plan.missing.is_empty(){format!(" <span class=\"issue-count\">{}</span>",plan.missing.len())}else{String::new()}));}
         html.push_str("</nav><section class=\"workspace-view\">");
@@ -4188,6 +4285,64 @@ fn switch_controls(s: &State, p: &Plan) -> String {
         }
     }
     html.push_str("</details></div></section>");
+    html
+}
+
+fn efficient_panel(s: &State, _plan: &Plan) -> String {
+    ensure_efficient(s);
+    let mut html = String::from(
+        "<section class=\"panel efficient-panel\" aria-label=\"Compact setup recommendation\"><h3>Pack fewer switches</h3>",
+    );
+    let Some(result) = efficient_result(s) else {
+        html.push_str("<p role=\"status\">Checking switch limits…</p></section>");
+        return html;
+    };
+    let Some((selected, best)) = result.compact.zip(result.best) else {
+        html.push_str(&format!("<p>{}</p><p class=\"small-note\">Near-best target: within {}% of the fastest tested attack time and prayer use, with known incoming damage guarded.</p></section>",esc(result.reason.as_deref().unwrap_or("No comparison available.")),crate::efficient::TOLERANCE_PERCENT));
+        return html;
+    };
+    let chosen = &result.candidates[selected];
+    let benchmark = &result.candidates[best];
+    let a = chosen.totals.as_ref().unwrap();
+    let b = benchmark.totals.as_ref().unwrap();
+    let slower = (a.seconds / b.seconds - 1.0) * 100.0;
+    let time = if slower.abs() < 0.05 {
+        "Same attack time".into()
+    } else {
+        format!("{slower:.1}% slower")
+    };
+    let saving =
+        benchmark.budget.max_inventory_space as i32 - chosen.budget.max_inventory_space as i32;
+    let prayer = a.prayer_points - b.prayer_points;
+    let prayer_cost = if prayer.abs() < 0.05 {
+        "same prayer use".into()
+    } else {
+        format!(
+            "{:.1} {} prayer points",
+            prayer.abs(),
+            if prayer > 0.0 { "more" } else { "fewer" }
+        )
+    };
+    html.push_str(&format!("<p class=\"efficient-choice\">{} switch item{} · up to {} change{}</p><p>{time}; {prayer_cost}.</p><p class=\"small-note\">Peak bag {}/28 · {}{} compared with fastest.</p>",chosen.budget.carried_gear,if chosen.budget.carried_gear==1 {""}else{"s"},chosen.budget.max_pair,if chosen.budget.max_pair==1 {""}else{"s"},chosen.budget.max_inventory_space,saving.abs(),if saving>=0 {" fewer slots"}else{" more slots"}));
+    if !chosen.omissions.is_empty() {
+        html.push_str(&format!(
+            "<p class=\"efficient-unknown\">Partial recommendation: {}</p>",
+            esc(&chosen.omissions[0])
+        ));
+    }
+    if a.incoming_damage.is_none() || b.incoming_damage.is_none() {
+        html.push_str("<p class=\"efficient-unknown\">Incoming damage remains unverified.</p>");
+    }
+    let edited_inventory = !s.saved.options.inventory_overrides.is_empty()
+        || !s.saved.options.inventory_quantities.is_empty();
+    if edited_inventory {
+        html.push_str("<p class=\"small-note\">This suggestion uses automatic packing. Applying replaces your manual inventory slots.</p>");
+    }
+    let using = s.saved.options.max_switches == Some(chosen.budget.cap)
+        && s.saved.options.inventory_overrides.is_empty()
+        && s.saved.options.inventory_quantities.is_empty();
+    html.push_str(&format!("<div class=\"efficient-actions\"><button class=\"phase\" data-action=\"efficient-apply\" {}>{}</button>{}</div>",if using {"disabled"}else{""},if using {"Using compact setup"}else if edited_inventory {"Repack & use compact setup"}else{"Use compact setup"},button("efficient-compare","Compare with fastest","text-button")));
+    html.push_str(&format!("<details><summary>Within {}% · how we choose</summary><p>Tests every cap from 0 to 11 using your bank, pins, combat settings and supply counts. Your current switch ceiling still limits the suggestion. The fastest tested setup remains the benchmark after applying a smaller cap.</p><p>Allows up to {}% more attack time, prayer use and known incoming damage. Keeps identical workload coverage. Prioritizes peak bag space, then carried gear and actual changes. Applying restores automatic packing, including manual inventory slots. This bounded search does not prove a global BIS.</p><p>Fastest tested: {}-change cap · {} gear pieces · {:.1}s · {:.1} prayer points. Suggested cap: {}.</p></details></section>",crate::efficient::TOLERANCE_PERCENT,crate::efficient::TOLERANCE_PERCENT,benchmark.budget.cap,benchmark.budget.carried_gear,b.seconds,b.prayer_points,chosen.budget.cap));
     html
 }
 

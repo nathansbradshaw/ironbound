@@ -261,7 +261,7 @@ fn gear_ids(p: &Plan) -> BTreeSet<i32> {
         )
         .collect()
 }
-fn budget(snapshot: &Snapshot, o: &Options, requested_cap: usize) -> Budget {
+pub fn budget(snapshot: &Snapshot, o: &Options, requested_cap: usize) -> Budget {
     let cap = requested_cap.min(11);
     let mut options = o.clone();
     options.max_switches = Some(cap);

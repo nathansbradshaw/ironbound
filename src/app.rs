@@ -280,7 +280,8 @@ fn goal_key(account: &str, options: &Options) -> String {
     let encounter = if options.boss != Boss::Custom {
         options.boss.key().to_string()
     } else if let Some(raid) = crate::raids::for_targets(&options.targets) {
-        format!("custom:raid:{}", raid.id)
+        let scale=options.targets.first().and_then(|t|crate::encounters::window(t.id)).and_then(|w|w.raid_scale.as_ref());
+        if let Some(s)=scale.filter(|s|s.party_size!=1||s.challenge) {format!("custom:raid:{}:{}:{}",raid.id,s.party_size,s.challenge)}else{format!("custom:raid:{}", raid.id)}
     } else if let Some(entry) = selected_encounter(options) {
         format!("custom:encounter:{}", entry.name)
     } else {
@@ -3633,15 +3634,11 @@ fn selected_encounter(options: &Options) -> Option<&'static crate::encounters::E
     if options.boss != Boss::Custom {
         return None;
     }
-    if let Some(raid) = crate::raids::for_targets(&options.targets) {
-        return crate::encounters::catalog()
-            .iter()
-            .find(|entry| entry.name == raid.name);
-    }
     crate::encounters::catalog()
         .iter()
         .filter(|e| e.matches(&options.targets))
         .min_by_key(|e| !crate::encounters::groups().iter().any(|g| g.name == e.name))
+        .or_else(||crate::raids::for_targets(&options.targets).and_then(|raid|crate::encounters::catalog().iter().find(|entry|entry.name==raid.reference_name(&options.targets))))
 }
 fn encounter_label(options: &Options) -> &str {
     selected_encounter(options)

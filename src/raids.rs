@@ -33,6 +33,13 @@ impl Room {
 }
 
 impl Raid {
+    pub fn reference_name(&self,targets:&[Target])->&str {
+        match targets.first().and_then(|t|scale(t.id)) {
+            Some(s) if self.id=="cox" && s.challenge=>"Chambers of Xeric: Challenge Mode",
+            Some(s) if self.id=="cox" && s.party_size==3=>"Chambers of Xeric (3-player)",
+            _=>&self.name,
+        }
+    }
     pub fn default_targets(&self) -> Vec<Target> {
         self.rooms
             .iter()

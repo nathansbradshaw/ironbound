@@ -208,6 +208,10 @@ pub fn budgets(left: &tradeoffs::Budget, right: &tradeoffs::Budget) -> Overview 
             ));
             continue;
         };
+        if encounters::window(k.0).is_some_and(|w|w.raid_scale.is_some()||w.hp_probe.is_some()||w.npc_id==11278||w.comparison_weapon.is_some()) {
+            result.omissions.push(format!("{}: outgoing probe only; raid workload and complete timing are unverified.",wa.name));
+            continue;
+        }
         if let Some(cycle_id) = encounters::window(k.0).and_then(|w| w.cycle.as_deref()) {
             if !done_cycles.insert(cycle_id.to_string()) {
                 continue;

@@ -452,7 +452,9 @@ fn presets_preserve_room_scale_and_reject_mixed_party_context() {
             .find(|g| g.name == name)
             .unwrap();
         let raid = ironbound::raids::for_targets(&entry.targets).unwrap();
+        assert_eq!(raid.reference_name(&entry.targets), name);
         let without = raid.toggle(&entry.targets, "vanguards").unwrap();
+        assert_eq!(raid.reference_name(&without), name);
         assert_eq!(raid.toggle(&without, "vanguards").unwrap(), entry.targets);
         let mut mix = entry.targets.clone();
         mix[0].id = 7540;
@@ -583,6 +585,30 @@ fn raid_probes_do_not_invent_incoming_or_whole_fight_workloads() {
     o.combat.target_hp.insert(203201, 1000);
     let note = ironbound::coverage::export_note(&o);
     assert!(note.contains("1000") && note.contains("raid-loaned Dawnbringer"));
+    let o = Options {
+        boss: planner::Boss::Custom,
+        targets: vec![planner::Target {
+            id: 16652,
+            style: "Crush".into(),
+        }],
+        ..Default::default()
+    };
+    let comparison = ironbound::tradeoffs::compare(&account::demo(), &o, 4, 8);
+    assert!(
+        comparison
+            .left
+            .windows
+            .iter()
+            .any(|w| w.metrics.dps.is_some())
+    );
+    let overview = ironbound::encounter_summary::compare(&comparison);
+    assert!(overview.left.is_none());
+    assert!(
+        overview
+            .omissions
+            .iter()
+            .any(|why| why.contains("outgoing probe only"))
+    );
 }
 #[test]
 fn ruby_and_multi_hit_weapons_keep_verzik_limiters_per_splat() {

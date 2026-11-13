@@ -738,3 +738,5 @@ footer{font-size:10px;padding:9px 4px 0}footer>span:last-child{display:none}
 .combat-breakdown h3 { margin: .8rem 0 .4rem; }
 .combat-breakdown .wiki-table { width: 100%; font-size: .86rem; }
 .combat-breakdown .wiki-table th, .combat-breakdown .wiki-table td { padding: .4rem; text-align: left; }
+.analysis-layout { grid-template-columns: minmax(0, 1fr); }
+.combat-breakdown .wiki-table { min-width: 540px; }

@@ -68,6 +68,7 @@ struct State {
     encounter_filters_open: bool,
     wilderness_options_open: bool,
     combat_options_open: bool,
+    rotation_options_open: bool,
     attack_budget_open: bool,
     simulation_open: bool,
     simulation_result: Option<(String, Result<crate::simulation::Report, String>)>,
@@ -193,6 +194,7 @@ impl State {
             encounter_filters_open: false,
             wilderness_options_open: false,
             combat_options_open: false,
+            rotation_options_open: false,
             attack_budget_open: false,
             simulation_open: false,
             simulation_result: None,
@@ -1098,6 +1100,10 @@ pub fn start() -> Result<(), JsValue> {
             } else if el.id() == "combat-assumptions" {
                 STATE.with(|state| {
                     state.borrow_mut().combat_options_open = el.has_attribute("open")
+                });
+            } else if el.id() == "rotation-extras" {
+                STATE.with(|state| {
+                    state.borrow_mut().rotation_options_open = el.has_attribute("open")
                 });
             } else if el.id() == "attack-budget" {
                 STATE
@@ -5243,8 +5249,9 @@ fn rotation_extra_controls(s: &State, member: &account::Member) -> String {
         }
     }
     ids.sort();
-    let mut html = String::from(
-        "<details class=\"rotation-extras\"><summary>Weapon swap &amp; external energy</summary><p>Keep the equipped setup for normal attacks; swap to this weapon for specials and its follow-ups, then return. Rings and other armour stay fixed. A two-handed swap removes the shield until you return.</p><label>Special swap weapon<select id=\"rotation-swap-weapon\">",
+    let mut html = format!(
+        "<details class=\"rotation-extras\" id=\"rotation-extras\" {}><summary>Weapon swap &amp; external energy</summary><p>Keep the equipped setup for normal attacks; swap to this weapon for specials and its follow-ups, then return. Rings and other armour stay fixed. A two-handed swap removes the shield until you return.</p><label>Special swap weapon<select id=\"rotation-swap-weapon\">",
+        if s.rotation_options_open { "open" } else { "" }
     );
     html.push_str(&format!(
         "<option value=\"0\" {}>Use equipped weapon</option>",

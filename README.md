@@ -67,7 +67,7 @@ The prioritized [development backlog](docs/backlog.md) records completed work, r
 
 **The catalog covers all 72 current hiscores bosses/modes. Their combat mechanics are not all fully supported.**
 
-Coverage notes distinguish packing templates from supported calculations. CoX supports selecting rooms while keeping all Olm phases together. The Fractured Archive supports five-boss routes: Archive Guardian, one room at each of three forks, and Ocellus. Ordinary attack DPS is available for the flying Guardian, Ezekiel, Moia, Dreadnoth, the Dagon'hai Trio and Ocellus phases 1–3. Bork, Smorks and Xarth still need dedicated damage states. These are fixed attack-window comparisons; team HP, phase uptime, Ocellus phase 4 and full-raid survival are not simulated. ToB and ToA also have raid templates. Challenge/Hard/Expert scaling, full wave simulations and many special phases remain unfinished.
+Coverage notes distinguish packing templates from supported calculations. [Nex and raid damage/readiness](docs/raid-support.md) now include declared-scale normal/CM Chambers, normal/Hard Theatre, recorded-defence Archive probes and fixed solo-300 Expert ToA. CoX room choices retain their scale; Archive supports every five-boss fork route. Guardian pickaxes/Mining, Nylocas colours and raid-loaned Dawnbringer are explicit. Full raid timing, team contribution, incoming mechanics, supplies, arbitrary Expert settings and full wave simulations remain unfinished.
 
 Moons includes defence-aware normal attacks, chained hits, flat armour and Blood Moon healing. Its curses, special phases, camp boosts and movement are not fully simulated. Unknown damage mechanics show **unavailable**, rather than zero.
 

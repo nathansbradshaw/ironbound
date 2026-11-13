@@ -41,8 +41,12 @@ See [armour coverage](armour-sets.md) for exact support and limitations.
 - [x] Pack the chosen Atlatl dart budget; retain exact armour variants, including
   wearable broken Moon pieces with zero stats and a working set effect.
 - [x] Eclipse sustained burn DPS, five-stack blocking and strong-burn immunities.
-- [ ] Eclipse initial buildup, phase resets, target death and finite-HP transitions;
-  the finite-HP estimator remains withheld rather than crediting instant burn damage.
+- [x] Eclipse initial buildup, target-local pulse clocks, expiry, target death and
+  finite-HP timing, with seeded estimates and sampling uncertainty.
+- [x] Full-fight burn state, explicit clear/retain phase boundaries, expiry without
+  damage during immune downtime, target isolation and fresh fights.
+- [ ] Gameplay calibration of each encounter's phase-clearing behaviour; the
+  full-fight setting remains an explicit scenario assumption, not a claimed game script.
 - [x] Blue Moon melee, binding/Ice/Grasp spells and conditional spell/melee follow-ups.
 - [x] Explicit Blue Moon free-melee setting, reach/style immunities, per-style NPC
   transforms, rune packing, persistence and exported assumptions.

@@ -1846,6 +1846,8 @@ fn act(action: &str) {
             }
         } else if let Some(value)=action.strip_prefix("simulation-warden:").and_then(|v|v.parse::<u32>().ok()) {
             s.saved.options.simulation.warden=value.min(1);
+        } else if let Some(value)=action.strip_prefix("simulation-burn-reset:").and_then(|v|v.parse::<u32>().ok()) {
+            s.saved.options.simulation.burn_phase_resets=value.min(1);
         } else if action == "simulate-fight" {
             let plan=s.plan();
             let key=simulation_key(&s,&plan);
@@ -4556,9 +4558,12 @@ fn combat_panel(s: &State, p: &Plan) -> String {
                     esc(&r.attack_type),
                     r.expected_attack_ticks * 0.6
                 );
+                if r.burn.is_some() {
+                    headline = headline.replace("Outgoing DPS", "Sustained DPS");
+                }
                 html.push_str(&attack_window_budget(s, target, &set, &r));
                 if r.burn_dps > 0.0 {
-                    html.push_str(&format!("<p>Eclipse burn: {:.3} of the DPS above is delayed steady-state damage (1 every 4 ticks, 10 per stack, at most 5 stacks). Short fights, phase resets and target death reduce this contribution; no finite-HP attack-time estimate is credited.</p>", r.burn_dps));
+                    html.push_str(&format!("<p>Eclipse's long-run burn reference is {:.3} HP/s. The finite-HP estimate above instead starts empty and advances actual burn pulses, stack expiry and target death. Each separate attack window or target starts fresh; use the full-fight scenario for transitions and downtime.</p>", r.burn_dps));
                 }
                 if r.expected_attack_ticks != f64::from(r.attack_ticks) {
                     html.push_str(&format!("<p>Bloodrager average delay: {:.3} ticks ({:.3}s), including the 33% chance per accurate splat to attack one tick sooner.</p>",r.expected_attack_ticks,r.expected_attack_ticks*0.6));
@@ -4653,7 +4658,11 @@ fn attack_window_budget(
         .unwrap_or_default();
     let mut html = format!(
         "<details id=\"attack-budget\" class=\"attack-budget\" {}><summary>Attack window & supply budget</summary><label>Current target HP<input id=\"target-hp\" type=\"number\" min=\"{min}\" max=\"{max}\" placeholder=\"{max}\" value=\"{current}\"></label><p class=\"small-note\">Leave empty for this window's starting HP. Ruby bolts and HP-dependent NPC stats use this HP; the attack budget recalculates them as HP falls.</p>",
-        if s.attack_budget_open { "open" } else { "" }
+        if s.attack_budget_open || result.burn.is_some() {
+            "open"
+        } else {
+            ""
+        }
     );
     if let Some(window) = crate::encounters::window(target.id) {
         html.push_str(&format!("<p>{}</p>", esc(&window.description)));
@@ -4677,6 +4686,11 @@ fn attack_window_budget(
         crate::attack_budget::for_window(target, result, &s.saved.options, set)
     };
     match budget {
+        Ok(budget) if budget.burn.is_some() => {
+            let burn=budget.burn.as_ref().unwrap();
+            let spread=f64::from(budget.entities);
+            html.push_str(&format!("<dl class=\"combat-values\"><div><dt>Estimated attacks</dt><dd>{:.2} ± {:.2}</dd></div><div><dt>Attack cooldown budget</dt><dd>{:.2}s ± {:.2}s</dd></div><div><dt>HP window · each of {} target(s)</dt><dd>{} → {}</dd></div><div><dt>Burn damage · each target</dt><dd>{:.2}</dd></div></dl><p>Time to HP boundary from the first attack: {:.2}s ± {:.2}s per target, excluding projectile travel. No attacks or burn damage are credited after that boundary.</p><p class=\"small-note\">{} seeded trials; ± is an approximate 95% confidence interval for the estimated mean, not an outcome range or safe supply minimum. Five-stack cap, expiry, misses, accurate zeroes and overkill are included. The cooldown budget retains the finishing attack's committed delay. Each entity/window starts with no burns. Transition clearing and downtime are handled separately in the full-fight scenario.</p>",budget.attacks,1.96*burn.attacks_error*spread,budget.seconds,1.96*burn.cooldown_error*0.6*spread,budget.entities,budget.start_hp,budget.stop_hp,burn.burn_damage,burn.death_ticks*0.6,1.96*burn.death_error*0.6,burn.trials));
+        },
         Ok(budget) => html.push_str(&format!("<dl class=\"combat-values\"><div><dt>Expected attacks</dt><dd>{:.1}</dd></div><div><dt>Attack cooldown budget</dt><dd>{:.1}s</dd></div><div><dt>HP window · each of {} target(s)</dt><dd>{} → {}</dd></div></dl><p class=\"small-note\">Includes misses, overkill and the finishing cooldown. This is an expectation, not a safe supply minimum or kill-time prediction. Compare with your {}-cast / {}-projectile packing budgets; projectile recovery, ruby self-damage, movement, specials, regeneration and eating are excluded.</p>", budget.attacks, budget.seconds, budget.entities, budget.start_hp, budget.stop_hp, s.saved.options.combat.spell_casts, s.saved.options.combat.ammo_shots)),
         Err(reason) => html.push_str(&format!("<p class=\"small-note\">{}</p>", esc(&reason))),
     }
@@ -4727,7 +4741,13 @@ fn simulation_panel(s: &State, p: &Plan) -> String {
         } else {
             true
         };
-        if relevant && key == "warden" {
+        if relevant && key == "burn_phase_resets" {
+            html.push_str("<div role=\"group\" aria-label=\"Burn stacks at phase changes\"><span>Burn stacks at phase changes</span><div class=\"combat-subtype-options\">");
+            for (n, label) in [(1, "Clear stacks"), (0, "Keep aging stacks")] {
+                html.push_str(&format!("<button class=\"phase {}\" data-action=\"simulation-burn-reset:{n}\" aria-pressed=\"{}\">{label}</button>",if value==n {"active"}else{""},value==n));
+            }
+            html.push_str("</div><p class=\"small-note\">Scenario assumption: confirm phase clearing for this encounter. Retained burns expire during invulnerable downtime without damaging the target.</p></div>");
+        } else if relevant && key == "warden" {
             html.push_str("<div role=\"group\" aria-label=\"P2 Warden\"><span>Fight in P2</span><div class=\"combat-subtype-options\">");
             for (n, label) in [(0, "Elidinis"), (1, "Tumeken")] {
                 html.push_str(&format!("<button class=\"phase {}\" data-action=\"simulation-warden:{n}\" aria-pressed=\"{}\">{label}</button>",if value==n {"active"}else{""},value==n));
@@ -4756,7 +4776,9 @@ fn simulation_panel(s: &State, p: &Plan) -> String {
                 let mut failures=BTreeMap::new();for run in report.runs.iter().filter(|r|!r.completed){*failures.entry(run.reason.as_str()).or_insert(0usize)+=1;}
                 if !failures.is_empty(){html.push_str("<p>Unfinished first fights: ");for (reason,n) in failures {html.push_str(&format!("{}: {n}. ",esc(reason)));}html.push_str("</p>");}
                 html.push_str("<table class=\"wiki-table\"><thead><tr><th>First-fight demand</th><th>Median</th><th>90th percentile</th></tr></thead><tbody>");
-                let rows:[(&str,fn(&crate::simulation::Usage)->f64);15]=[
+                let rows:[(&str,fn(&crate::simulation::Usage)->f64);19]=[
+                    ("Burn damage (HP)",|u|u.burn_damage as f64),("Burn stacks applied",|u|u.burns_applied as f64),
+                    ("Burn procs discarded at cap",|u|u.burns_discarded as f64),("Burn stacks cleared",|u|u.burns_cleared as f64),
                     ("Duration (seconds)",|u|u.ticks as f64*0.6),("Attacks",|u|u.attacks as f64),
                     ("Rune casts",|u|u.casts as f64),("Projectiles fired",|u|u.shots as f64),
                     ("Weapon charges",|u|u.charges.values().sum::<u32>() as f64),("Blowpipe scales",|u|u.scales as f64),

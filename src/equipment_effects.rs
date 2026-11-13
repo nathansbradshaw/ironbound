@@ -15,7 +15,7 @@ pub fn notes(set: &[Option<i32>], settings: &Settings) -> Vec<String> {
             notes.push("Dual macuahuitl: the second hit requires the first accuracy roll to succeed. Full Blood Moon uses expected sustained attack timing; specials are excluded.".into());
         }
         if weapon.has(rules::Effect::StrengthRanged) {
-            notes.push("Atlatl: Ranged accuracy/prayers, Strength level and melee strength bonuses for damage. Full Eclipse Moon uses delayed sustained burn DPS with five-stack limits; finite-HP burn timing remains unavailable.".into());
+            notes.push("Atlatl: Ranged accuracy/prayers, Strength level and melee strength bonuses for damage. Full Eclipse Moon finite-HP timing starts empty and simulates buildup, timed pulses, five-stack blocking, expiry and target death. Full-fight phase clearing is an explicit scenario assumption.".into());
         }
     }
     if set.get(3) == Some(&Some(28988)) {

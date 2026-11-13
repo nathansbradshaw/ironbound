@@ -31,6 +31,41 @@ The model excludes special attacks, passive healing, boost decay, combo eating, 
 
 ## Verification and replay
 
+### Eclipse burn timing
+
+Eclipse attacks retain joint direct-damage/burn outcomes, so misses cannot apply
+burn while accurate zeroes can. Each target owns a four-tick pulse clock and up
+to five ten-pulse stacks. New stacks keep that clock; procs at the cap are
+discarded, not refreshed. NPC ranged reductions apply to the combined pulse.
+Pulses resolve before a same-tick attack, and a burn kill consumes no extra shot,
+cast or charge. No damage is banked for later or carried to a new target/fight.
+
+**Burn stacks at phase changes** chooses **Clear stacks** (default) or **Keep aging
+stacks**. This is a scenario assumption because encounter-specific reset traces
+are not verified. Vorkath special/normal boundaries, Yama interludes, Wardens
+shield/core changes, skull intervals and enrage use this policy. Kept stacks
+expire normally during immune/travel intervals but cannot damage the target in
+those intervals. Dead/despawned targets always lose their stacks. Weapon swaps
+on the same target retain them. The results and downloaded replay include burn
+damage, applied/discarded stacks, clearing counts and the chosen policy.
+
+The separate attack-window budget starts with no stacks, runs 4,096 deterministic
+seeded trials and shows approximate 95% confidence intervals for the mean. It
+reports time from the first attack to the HP boundary separately from the final
+committed cooldown. The error bar describes Monte Carlo precision, not gameplay
+variance or a supply guarantee. HP/stack boundaries and phase policy remain
+explicit; no complete-only estimate is returned if the bounded estimator stalls.
+Windows with HP-dependent NPC accuracy still withhold Eclipse timing rather than
+reuse one fixed accuracy snapshot for the whole workload.
+
+References: [burn rules](https://oldschool.runescape.wiki/w/Burn) and
+[Eclipse atlatl](https://oldschool.runescape.wiki/w/Eclipse_atlatl), reviewed
+13 November 2026. Shared-clock ordering and encounter phase clearing are model
+conventions awaiting gameplay trace validation. Fixed timeline/probability-tree
+tests are independent of seeded full-fight regression fixtures. Saved old models
+that only contain a stationary burn rate must be rebuilt, rather than replaying
+without delayed damage.
+
 `cargo test --locked --test full_fight` checks independently calculated timelines, alternating Judges, core transfer/exposure, skull/enrage counts, cooldown continuity, trip stock conservation, prayer/food/charge demand, flare deadlines, deaths/timeouts, bounded inputs, migration and reproducible seeds. These checks are separate from gameplay calibration.
 
 **Download scenario results** includes the numerical model inputs and individual trials, without bank history or account identity. Replay the same inputs offline:

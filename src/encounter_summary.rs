@@ -50,7 +50,12 @@ fn hp(window: &tradeoffs::Window, invocation: u32) -> Option<f64> {
         combat::target_hitpoints(planner::monster(window.target_id)?, invocation).map(f64::from)
     })
 }
-fn seconds(window: &tradeoffs::Window, hp: f64, split: f64) -> Result<f64, String> {
+fn seconds(
+    window: &tradeoffs::Window,
+    hp: f64,
+    split: f64,
+    finite_burn: bool,
+) -> Result<f64, String> {
     let out = window.metrics.attack.as_ref().ok_or_else(|| {
         window
             .metrics
@@ -77,6 +82,16 @@ fn seconds(window: &tradeoffs::Window, hp: f64, split: f64) -> Result<f64, Strin
     let net = out.dps - healing;
     if !net.is_finite() || net <= 0.0 {
         return Err("Damage does not overcome modelled healing.".into());
+    }
+    if finite_burn {
+        if healing > 0.0 {
+            return Err("Finite burn timing with NPC healing needs a full-fight scenario.".into());
+        }
+        let entities = encounters::window(window.target_id)
+            .map(|w| w.entity_count)
+            .unwrap_or(1);
+        let each = (hp / f64::from(entities)).ceil() as u32;
+        return crate::attack_budget::for_hp(out, each, 0).map(|t| t.seconds * f64::from(entities));
     }
     let value = yama::window_attack_time(window.target_id, out)
         .map(|time| time / split)
@@ -271,7 +286,11 @@ pub fn budgets(left: &tradeoffs::Budget, right: &tradeoffs::Budget) -> Overview 
                 .push(format!("{}: HP allocation unavailable.", wa.name));
             continue;
         };
-        match seconds(wa, hp, split).and_then(|at| seconds(wb, hp, split).map(|bt| (at, bt))) {
+        let finite_burn = wa.metrics.attack.as_ref().is_some_and(|a| a.burn.is_some())
+            || wb.metrics.attack.as_ref().is_some_and(|a| a.burn.is_some());
+        match seconds(wa, hp, split, finite_burn)
+            .and_then(|at| seconds(wb, hp, split, finite_burn).map(|bt| (at, bt)))
+        {
             Ok((at, bt)) => {
                 av.add(wa, at);
                 bv.add(wb, bt);

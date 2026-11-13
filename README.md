@@ -25,7 +25,7 @@ If browser saving fails, a persistent warning offers a private backup and retry.
 
 ## What you can do
 
-- **Use Recommended:** reviewed ToA, Moons, Vorkath and Yama roles guide your owned gear. Selecting Vorkath compares complete melee/ranged loadouts, including Salve and full Void sets. **Why this gear? → Compare owned styles** reruns that comparison. Custom weights live under **Options → Advanced**.
+- **Use Recommended:** reviewed ToA, Moons, Vorkath and Yama roles guide your owned gear. Every encounter compares complete owned Void/Elite Void sets with other armour for melee, ranged and magic, using supported calculations and your priorities. Selecting Vorkath also compares complete melee/ranged loadouts, including Salve. **Why this gear? → Compare owned styles** reruns that comparison. Custom weights live under **Options → Advanced**.
 - **Yama:** packs melee/magic switches, spell runes, poison control and boosts. Combat shows Purging staff/Demonbane damage, Void Flare maximum hits and the alternating Judge cycle. Toggle **Mark of Darkness active** to match your play. Normal fight only; movement, specials and contract mechanics are outside the estimate.
 - **Plan a trip:** boss and raid templates, or your own group of monsters. Select your CoX rooms or choose each Fractured Archive fork.
 - **Compare switch limits:** choose any two caps in **Compare switches**. The encounter overview shows effective DPS, attack time, prayer used and drain alongside bag space. Expand phase details only when needed; apply either plan.

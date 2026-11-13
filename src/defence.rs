@@ -122,10 +122,20 @@ pub struct Attack {
     #[serde(default)]
     pub guaranteed_accuracy: bool,
 }
+#[derive(Clone, Copy, Debug, Default, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum BarrowsEffect {
+    #[default]
+    None,
+    Dharok,
+    Verac,
+}
 #[derive(Debug, Deserialize)]
 pub struct Profile {
     pub ids: Vec<i32>,
     pub kind: String,
+    #[serde(default)]
+    pub barrows_effect: BarrowsEffect,
     #[serde(default)]
     pub typeless: bool,
     #[serde(default)]
@@ -250,6 +260,10 @@ pub fn estimate(
     if profile.is_some_and(|p| p.kind == "unverified") {
         return Err(profile.unwrap().note.clone());
     }
+    let effect = profile.map(|p| p.barrows_effect).unwrap_or_default();
+    if effect == BarrowsEffect::Verac && crate::equipment_effects::has_defensive_passive(set) {
+        return Err("Verac's Defiler interaction with defensive equipment passives is unverified; remove the passive item to compare this attack.".into());
+    }
     let chained = profile.is_some_and(|p| p.kind == "chained");
     let scenario = profile.and_then(|p| {
         p.attacks
@@ -342,7 +356,7 @@ pub fn estimate(
                 "atk"
             },
         ) + 64);
-    let chance = if scenario.is_some_and(|a| a.guaranteed_accuracy) {
+    let mut chance = if scenario.is_some_and(|a| a.guaranteed_accuracy) {
         1.0
     } else {
         combat::accuracy(npc_roll, player_roll)
@@ -370,6 +384,7 @@ pub fn estimate(
     }
     let mut damage = 0.0;
     let mut healing = 0.0;
+    let mut assumption = String::new();
     let reduce = |hit: i32| {
         let hit = (f64::from(hit) * through).floor() as i32;
         if profile.is_some_and(|p| p.typeless) {
@@ -396,10 +411,18 @@ pub fn estimate(
             }
         }
     } else {
-        let max = match scenario {
+        let mut max = match scenario {
             Some(a) => a.max,
             None => recorded_max(target, basic)?,
         };
+        if effect == BarrowsEffect::Dharok {
+            let hp = combat::current_target_hp(original, 0, settings)?;
+            let full = original.skills.get("hp").copied().unwrap_or(100) as u32;
+            max = max * (100 + full.saturating_sub(hp)) as i32 / 100;
+            assumption = format!(
+                "Dharok at {hp}/{full} HP: ordinary 0–{max} damage rolls. Matching Protect from Melee blocks HP damage. "
+            );
+        }
         let min = scenario.map(|a| a.min).unwrap_or(0);
         if min < 0 || max < min || max > 10_000 {
             return Err("Incoming damage distribution is invalid.".into());
@@ -407,6 +430,19 @@ pub fn estimate(
         // Prayer reduction is applied to each possible hit before averaging.
         let mean = (min..=max).map(&reduce).sum::<f64>() / (max - min + 1) as f64;
         damage = chance * mean;
+        if effect == BarrowsEffect::Verac {
+            let proc_max = if settings.protection == "Melee" {
+                15
+            } else {
+                23
+            };
+            // NPC Defiler keeps zero rolls: the player's extra damage does not apply.
+            damage = damage * 0.75 + 0.25 * f64::from(proc_max) / 2.0;
+            chance = chance * 0.75 + 0.25;
+            assumption = format!(
+                "Verac: 75% ordinary attacks plus 25% Defiler bypassing accuracy and protection; Defiler rolls 0–{proc_max}. "
+            );
+        }
         healing = damage * scenario.map(|a| a.healing_fraction).unwrap_or(0.0);
     }
     let mut note = profile.map(|p| p.note.clone()).unwrap_or("Unprotected basic-attack estimate only. Attack choice frequencies, chip damage, protection interactions, scaling and special mechanics are unverified.".into());
@@ -426,7 +462,7 @@ pub fn estimate(
         healing_per_second: healing / (ticks as f64 * 0.6),
         healing_modelled: profile.is_some_and(|p| p.healing_modelled),
         note: format!(
-            "{note} Uses the selected current-level boosts, prayer and +0 defensive-stance bonus. This is one attack scenario, not full-fight incoming DPS."
+            "{assumption}{note} Uses the selected current-level boosts, prayer and +0 defensive-stance bonus. This is one attack scenario, not full-fight incoming DPS."
         ),
     })
 }

@@ -4,6 +4,8 @@ use std::collections::BTreeMap;
 fn alternative() -> Alternative {
     Alternative {
         id: 11772,
+        style: "Magic".into(),
+        slot: 12,
         dps_delta: Some(0.0),
         prayer_delta: 0.41,
         defence_delta: BTreeMap::from([("crush".into(), 8), ("magic".into(), -5)]),
@@ -27,6 +29,9 @@ fn tooltip_colors_benefits_and_costs_including_inverse_prayer_drain() {
     assert!(html.contains("tooltip-loss\">+0.41</strong>"));
     assert!(html.contains("tooltip-neutral\">Same DPS</strong>"));
     assert_eq!(html.matches("data:image/png;base64,").count(), 2);
+    assert!(html.contains("data-action=\"pick-gear:Magic:12:11772\""));
+    assert!(html.contains("aria-label=\"Equip Warrior ring (i)\""));
+    assert!(!html.contains("Green = better") && !html.contains("Red = worse"));
     choice.prayer_delta = -0.2;
     choice.dps_delta = Some(0.123);
     let html = tooltip::render("Current", None, &[choice], None);

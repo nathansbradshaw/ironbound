@@ -256,6 +256,10 @@ fn goal_key(account: &str, options: &Options) -> String {
 }
 thread_local! {static STATE:RefCell<State>=RefCell::new(State::initial());}
 thread_local! {static LIVE_EDIT:Cell<u64>=const {Cell::new(0)};}
+thread_local! {
+    static COMPARISON_TRIGGER: RefCell<Option<Element>> = const { RefCell::new(None) };
+    static COMPARISON_DISMISS: Cell<u64> = const { Cell::new(0) };
+}
 
 fn live_number(id: &str) -> bool {
     [
@@ -440,6 +444,12 @@ fn badge(label: &str, class: &str) -> String {
 }
 
 fn hide_item_tooltip() {
+    keep_item_tooltip();
+    COMPARISON_TRIGGER.with(|trigger| {
+        if let Some(item) = trigger.borrow_mut().take() {
+            let _ = item.set_attribute("aria-expanded", "false");
+        }
+    });
     if let Some(tooltip) = document().get_element_by_id("item-explanation") {
         if tooltip.has_attribute("hidden") {
             return;
@@ -449,10 +459,106 @@ fn hide_item_tooltip() {
     }
 }
 
+fn keep_item_tooltip() {
+    COMPARISON_DISMISS.with(|version| version.set(version.get().wrapping_add(1)));
+}
+
+fn dismiss_item_tooltip_later() {
+    let version = COMPARISON_DISMISS.with(|v| {
+        v.set(v.get().wrapping_add(1));
+        v.get()
+    });
+    let callback = Closure::once_into_js(move || {
+        if COMPARISON_DISMISS.with(|v| v.get() == version) {
+            hide_item_tooltip();
+        }
+    });
+    let _ = window()
+        .set_timeout_with_callback_and_timeout_and_arguments_0(callback.unchecked_ref(), 200);
+}
+
+fn comparison_contains(element: &Element) -> bool {
+    element
+        .closest("#item-explanation, [data-explanation]")
+        .ok()
+        .flatten()
+        .is_some()
+}
+
+fn comparison_key(event: &web_sys::Event, key: &str) -> bool {
+    let Some(panel) = document()
+        .get_element_by_id("item-explanation")
+        .filter(|p| !p.has_attribute("hidden"))
+    else {
+        return false;
+    };
+    let Some(active) = document().active_element() else {
+        return false;
+    };
+    let inside = panel.contains(Some(&active));
+    let trigger = COMPARISON_TRIGGER.with(|t| t.borrow().clone());
+    if key == "Escape" && inside {
+        event.prevent_default();
+        if let Some(trigger) = trigger.and_then(|e| e.dyn_into::<web_sys::HtmlElement>().ok()) {
+            let _ = trigger.focus();
+        }
+        hide_item_tooltip();
+        return true;
+    }
+    if key != "Tab" {
+        return false;
+    }
+    let backwards = js_sys::Reflect::get(event.as_ref(), &JsValue::from_str("shiftKey"))
+        .ok()
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false);
+    let Ok(buttons) = panel.query_selector_all("button[data-action]") else {
+        return false;
+    };
+    if buttons.length() == 0 {
+        return false;
+    }
+    if trigger.as_ref() == Some(&active) && !backwards {
+        event.prevent_default();
+        if let Some(first) = buttons
+            .item(0)
+            .and_then(|n| n.dyn_into::<web_sys::HtmlElement>().ok())
+        {
+            let _ = first.focus();
+        }
+        return true;
+    }
+    let edge = buttons
+        .item(if backwards { 0 } else { buttons.length() - 1 })
+        .and_then(|n| n.dyn_into::<Element>().ok());
+    if inside && edge.as_ref() == Some(&active) {
+        if let Some(trigger) = trigger.and_then(|e| e.dyn_into::<web_sys::HtmlElement>().ok()) {
+            let _ = trigger.focus();
+            if backwards {
+                event.prevent_default();
+            }
+        }
+        hide_item_tooltip();
+        return true;
+    }
+    false
+}
+
 fn show_item_tooltip(item: &Element) {
     let Some(base) = item.get_attribute("data-explanation") else {
         return;
     };
+    keep_item_tooltip();
+    COMPARISON_TRIGGER.with(|trigger| {
+        if let Some(prior) = trigger
+            .borrow_mut()
+            .replace(item.clone())
+            .filter(|prior| prior != item)
+        {
+            let _ = prior.set_attribute("aria-expanded", "false");
+        }
+    });
+    let _ = item.set_attribute("aria-expanded", "true");
     let text = item
         .get_attribute("data-complete-explanation")
         .unwrap_or_else(|| {
@@ -544,6 +650,14 @@ fn show_item_tooltip(item: &Element) {
 pub fn start() -> Result<(), JsValue> {
     render();
     let explain = Closure::<dyn FnMut(web_sys::Event)>::new(|event: web_sys::Event| {
+        if event
+            .target()
+            .and_then(|t| t.dyn_into::<Element>().ok())
+            .is_some_and(|e| e.closest("#item-explanation").ok().flatten().is_some())
+        {
+            keep_item_tooltip();
+            return;
+        }
         let item = event
             .target()
             .and_then(|t| t.dyn_into::<Element>().ok())
@@ -551,13 +665,13 @@ pub fn start() -> Result<(), JsValue> {
         if let Some(item) = item {
             show_item_tooltip(&item);
         } else if event.type_() == "mousemove" {
-            if let Some(item) = document()
+            if document()
                 .active_element()
-                .and_then(|e| e.closest("[data-explanation]").ok().flatten())
+                .is_some_and(|e| comparison_contains(&e))
             {
-                show_item_tooltip(&item);
+                keep_item_tooltip();
             } else {
-                hide_item_tooltip();
+                dismiss_item_tooltip_later();
             }
         } else {
             hide_item_tooltip();
@@ -574,35 +688,57 @@ pub fn start() -> Result<(), JsValue> {
             let item = event
                 .target()
                 .and_then(|t| t.dyn_into::<Element>().ok())
-                .and_then(|e| e.closest("[data-explanation]").ok().flatten());
-            let Some(item) = item else { return };
+                .and_then(|e| {
+                    e.closest("[data-explanation], #item-explanation")
+                        .ok()
+                        .flatten()
+                });
+            let Some(_) = item else { return };
             let related = mouse
                 .related_target()
-                .and_then(|t| t.dyn_into::<web_sys::Node>().ok());
-            if related.is_some_and(|related| item.contains(Some(&related)))
+                .and_then(|t| t.dyn_into::<Element>().ok());
+            if related.is_some_and(|related| comparison_contains(&related))
                 || document()
                     .active_element()
-                    .is_some_and(|active| item.contains(Some(&active)))
+                    .is_some_and(|active| comparison_contains(&active))
             {
                 return;
             }
         }
-        hide_item_tooltip();
+        // Focus may move from the source item into an alternative button.
+        dismiss_item_tooltip_later();
     });
     for event in ["mouseout", "focusout"] {
         document().add_event_listener_with_callback(event, dismiss.as_ref().unchecked_ref())?;
     }
     dismiss.forget();
     let click = Closure::<dyn FnMut(web_sys::Event)>::new(|e: web_sys::Event| {
+        if !e
+            .target()
+            .and_then(|t| t.dyn_into::<Element>().ok())
+            .is_some_and(|el| comparison_contains(&el))
+        {
+            hide_item_tooltip();
+        }
         let target = e
             .target()
             .and_then(|t| t.dyn_into::<Element>().ok())
             .and_then(|e| e.closest("[data-action]").ok().flatten());
         if let Some(el) = target {
             if let Some(action) = el.get_attribute("data-action") {
+                let comparison_slot = el
+                    .closest("#item-explanation")
+                    .ok()
+                    .flatten()
+                    .and_then(|_| el.get_attribute("data-slot"))
+                    .and_then(|slot| slot.parse::<usize>().ok());
                 let return_slot = STATE.with(|s| s.borrow().edit_equipment);
                 let return_inventory = STATE.with(|s| s.borrow().edit_inventory);
                 act(&action);
+                if let Some(slot) = comparison_slot {
+                    focus_equipment(slot);
+                    hide_item_tooltip();
+                }
                 if STATE.with(|s| s.borrow().edit_equipment.is_none()) {
                     if let Some(slot) = return_slot {
                         focus_equipment(slot);
@@ -699,6 +835,9 @@ pub fn start() -> Result<(), JsValue> {
             .ok()
             .and_then(|v| v.as_string())
             .unwrap_or_default();
+        if comparison_key(&e, &key) {
+            return;
+        }
         if key == "Escape" {
             hide_item_tooltip();
         }
@@ -1661,7 +1800,7 @@ fn act(action: &str) {
                         && (id == 0
                             || (planner::gear(id)
                                 .is_some_and(|g| g.slot == planner::SLOT_KEYS[slot])
-                                && s.saved.snapshot.available(false).contains_key(&id)
+                                && s.saved.snapshot.available(s.saved.options.shared).contains_key(&id)
                                 && s.saved
                                     .snapshot
                                     .selected()
@@ -2221,6 +2360,7 @@ fn update_markup(root: &Element, html: &str, keep: Option<&str>) {
 }
 
 fn render() {
+    hide_item_tooltip();
     // A full render already includes the latest inputs; cancel older delayed renders.
     LIVE_EDIT.with(|generation| generation.set(generation.get().wrapping_add(1)));
     render_with_edit(None);
@@ -2265,7 +2405,7 @@ fn render_with_edit(edit: Option<&str>) {
         if s.view=="loadout" && s.shared_setup.is_none(){html.push_str("<details class=\"secondary-section\"><summary>All owned gear</summary>");html.push_str(&tier_table(&s));html.push_str("</details>");}
     }
     html.push_str("</div><footer><span>Ironbound — an unofficial OSRS fan site.</span><a href=\"https://oldschool.runescape.wiki/\" target=\"_blank\" rel=\"noreferrer\">OSRS Wiki ↗</a><a href=\"./assets/osrs/NOTICE.txt\" target=\"_blank\" rel=\"noreferrer\">Asset credits</a><span>Starter catalog · 9 Nov 2026</span></footer></main></div>");
-    html.push_str("<div id=\"item-explanation\" class=\"item-explanation-tooltip\" role=\"tooltip\" hidden></div>");
+    html.push_str("<div id=\"item-explanation\" class=\"item-explanation-tooltip\" role=\"dialog\" aria-label=\"Equipment comparison\" hidden></div>");
     if s.edit_equipment.is_some(){html.push_str(&gear_picker(&s));}
     if let Some(index)=s.edit_inventory{html.push_str(&inventory_editor(&s,index));}
     if let Some(el)=document().get_element_by_id("app"){update_markup(&el,&html,edit);}
@@ -2431,7 +2571,7 @@ fn loadout_panel(s: &State, p: &Plan) -> String {
             slot_index,
         );
         let explanation = format!("{tooltip}\n{reason}");
-        html.push_str(&format!(r#"<button class="equipment-edit {class}" data-action="edit-equipment:{slot_index}" data-item-id="{}" data-explanation="{}" aria-describedby="item-explanation" aria-label="Change {}">{}</button>"#,set[slot_index].map(|id| id.to_string()).unwrap_or_default(),esc(&explanation),esc(&tooltip),slot(set[slot_index],planner::SLOTS[slot_index],"",None)));
+        html.push_str(&format!(r#"<button class="equipment-edit {class}" data-action="edit-equipment:{slot_index}" data-item-id="{}" data-explanation="{}" aria-describedby="item-explanation" aria-controls="item-explanation" aria-haspopup="dialog" aria-expanded="false" aria-label="Change {}">{}</button>"#,set[slot_index].map(|id| id.to_string()).unwrap_or_default(),esc(&explanation),esc(&tooltip),slot(set[slot_index],planner::SLOTS[slot_index],"",None)));
     }
     html.push_str(
         "</div></div><details class=\"loadout-notes\"><summary>Spell & exclusions</summary>",
@@ -2535,7 +2675,7 @@ fn inventory_panel(s: &State, p: &Plan) -> String {
                 )
             })
             .unwrap_or_else(|| format!("Inventory slot {}: Empty\nChoose an owned item.", i + 1));
-        html.push_str(&format!("<button class=\"inventory-edit\" data-action=\"edit-inventory:{i}\" data-item-id=\"{}\" data-explanation=\"{}\" aria-describedby=\"item-explanation\" aria-label=\"Inventory slot {}\" {}>",item.map(|p| p.id.to_string()).unwrap_or_default(),esc(&explanation),i+1,if phase.is_some() { "disabled" } else { "" }));
+        html.push_str(&format!("<button class=\"inventory-edit\" data-action=\"edit-inventory:{i}\" data-item-id=\"{}\" data-explanation=\"{}\" aria-describedby=\"item-explanation\" aria-controls=\"item-explanation\" aria-haspopup=\"dialog\" aria-expanded=\"false\" aria-label=\"Inventory slot {}\" {}>",item.map(|p| p.id.to_string()).unwrap_or_default(),esc(&explanation),i+1,if phase.is_some() { "disabled" } else { "" }));
         html.push_str(&slot(
             item.map(|p| p.id),
             &format!(

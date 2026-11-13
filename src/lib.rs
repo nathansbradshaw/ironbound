@@ -36,6 +36,7 @@ pub mod prayer;
 pub mod preparation;
 pub mod quest_bosses;
 pub mod raids;
+pub mod raid_scaling;
 pub mod ranking;
 pub mod recommendation;
 pub mod reference;

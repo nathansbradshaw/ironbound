@@ -291,7 +291,8 @@ fn goal_key(account: &str, options: &Options) -> String {
     let encounter = if options.boss != Boss::Custom {
         options.boss.key().to_string()
     } else if let Some(raid) = crate::raids::for_targets(&options.targets) {
-        format!("custom:raid:{}", raid.id)
+        let scale=options.targets.first().and_then(|t|crate::encounters::window(t.id)).and_then(|w|w.raid_scale.as_ref());
+        if let Some(s)=scale.filter(|s|s.party_size!=1||s.challenge) {format!("custom:raid:{}:{}:{}",raid.id,s.party_size,s.challenge)}else{format!("custom:raid:{}", raid.id)}
     } else if let Some(entry) = selected_encounter(options) {
         format!("custom:encounter:{}", entry.name)
     } else {
@@ -2737,6 +2738,7 @@ fn act(action: &str) {
                         s.edit_style = Some(target.style.clone());
                     }
                 }
+                if crate::encounters::window(id).is_some_and(|w|w.comparison_weapon.is_some()) {s.edit_style=Some("Magic".into());}
             }
         } else if let Some(style) = action.strip_prefix("edit-style:") {
             if crate::rules::STYLES.contains(&style) {
@@ -3332,13 +3334,17 @@ fn phase_navigation(s: &State, p: &Plan) -> String {
 fn loadout_panel(s: &State, p: &Plan) -> String {
     let current = s.phase.and_then(|i| p.phases.get(i));
     let set = current.map(|p| &p.equipment).unwrap_or(&p.equipment);
-    let quest_requirement = s
+    let target = s
         .saved
         .options
         .targets
         .get(s.phase.unwrap_or(0))
-        .filter(|_| s.saved.options.boss == Boss::Custom)
+        .filter(|_| s.saved.options.boss == Boss::Custom);
+    let provided_note = target.and_then(|target| crate::quest_bosses::provided_weapon_note(
+        target.id, set, &s.saved.snapshot.available(s.saved.options.shared)));
+    let quest_requirement = target
         .and_then(|target| crate::quest_bosses::weapon_requirement(target.id, set, &target.style))
+        .or_else(|| provided_note.map(str::to_owned))
         .map(|message| {
             format!(
                 "<p class=\"connection-warning\" role=\"status\">{}</p>",
@@ -3353,6 +3359,8 @@ fn loadout_panel(s: &State, p: &Plan) -> String {
         badge(
             if s.shared_setup.is_some() {
                 "SHARED SETUP"
+            } else if provided_note.is_some() {
+                "BANK + QUEST GEAR"
             } else {
                 "FROM YOUR BANK"
             },
@@ -3761,15 +3769,11 @@ fn selected_encounter(options: &Options) -> Option<&'static crate::encounters::E
     if options.boss != Boss::Custom {
         return None;
     }
-    if let Some(raid) = crate::raids::for_targets(&options.targets) {
-        return crate::encounters::catalog()
-            .iter()
-            .find(|entry| entry.name == raid.name);
-    }
     crate::encounters::catalog()
         .iter()
         .filter(|e| e.matches(&options.targets))
         .min_by_key(|e| !crate::encounters::groups().iter().any(|g| g.name == e.name))
+        .or_else(||crate::raids::for_targets(&options.targets).and_then(|raid|crate::encounters::catalog().iter().find(|entry|entry.name==raid.reference_name(&options.targets))))
 }
 fn encounter_label(options: &Options) -> &str {
     selected_encounter(options)
@@ -4195,20 +4199,7 @@ fn encounter_targets(s: &State) -> Vec<i32> {
     if targets.contains(&14176) || targets.contains(&100011) {
         targets.push(100030);
     }
-    let sources = targets.clone();
-    targets.extend(
-        crate::encounters::mechanics()
-            .windows
-            .iter()
-            .filter(|w| {
-                w.comparison_alternative && sources.contains(&w.npc_id)
-                    || w.comparison_sources.iter().any(|id| sources.contains(id))
-            })
-            .map(|w| w.id),
-    );
-    let mut seen = std::collections::BTreeSet::new();
-    targets.retain(|id| seen.insert(*id));
-    targets
+    crate::encounters::comparison_targets(&targets)
 }
 fn comparison_style(s: &State) -> &str {
     s.edit_style
@@ -5373,7 +5364,11 @@ fn combat_panel(s: &State, p: &Plan) -> String {
         return String::new();
     }
     let style = comparison_style(s);
-    let set = planned_style(s, p, style);
+    let mut set = planned_style(s, p, style);
+    if let Some(weapon)=comparison_monster(s).and_then(|m|crate::encounters::window(m.id)).and_then(|w|w.comparison_weapon) {
+        set[3]=Some(weapon);
+        if planner::gear(weapon).is_some_and(|g|g.two_handed){set[5]=None;}
+    }
     let bonus = combat::bonuses(&set);
     let mut html = String::from(
         r#"<section class="panel combat-panel"><div class="panel-heading"><h2>Combat stats</h2></div><div class="combat-body">"#,
@@ -5411,6 +5406,9 @@ fn combat_panel(s: &State, p: &Plan) -> String {
     }
     html.push_str("</div></div>");
     if let (Some(m), Some(target)) = (s.saved.snapshot.selected(), comparison_monster(s)) {
+        if crate::encounters::window(target.id).is_some_and(|w|w.comparison_weapon.is_some()) {
+            html.push_str("<p class=\"small-note\"><strong>Raid-loaned Dawnbringer comparison.</strong> This calculation supplies Dawnbringer in the weapon slot. It does not require bank ownership or add the loan to your saved equipment. The single-special probe excludes energy regeneration, transfers and full-phase timing.</p>");
+        }
         if let Some(hp) = s.saved.options.combat.target_hp.get(&target.id) {
             html.push_str(&format!(
                 "<p class=\"small-note\">{}: {hp}. {}</p>",
@@ -5421,8 +5419,7 @@ fn combat_panel(s: &State, p: &Plan) -> String {
                 button("reset-target-hp", "Reset target HP", "text-button")
             ));
         }
-        let mut stock = s.saved.snapshot.available(s.saved.options.shared);
-        stock.retain(|id, _| !s.saved.options.item_excluded(*id));
+        let stock = planner::planning_stock(&s.saved.snapshot, &s.saved.options);
         let stock_member = planner::member_with_stock(m, &stock);
         let m = &stock_member;
         html.push_str(&combat_assumptions(s, p, m, target, &set));
@@ -5453,6 +5450,11 @@ fn combat_panel(s: &State, p: &Plan) -> String {
             html.push_str(&format!("<label><input id=\"mark-darkness\" type=\"checkbox\" {}> Mark of Darkness active</label>", if s.saved.options.combat.mark_darkness { "checked" } else { "" }));
         }
         let spell = comparison_spell(s, m, &set, target);
+        if let Some(note) = crate::quest_bosses::provided_weapon_note(
+            target.id, &set, &s.saved.snapshot.available(s.saved.options.shared))
+        {
+            html.push_str(&format!("<p class=\"small-note\">{}</p>", esc(note)));
+        }
         match combat::calculate_configured(
             m,
             &set,
@@ -5475,11 +5477,17 @@ fn combat_panel(s: &State, p: &Plan) -> String {
                 if r.burn.is_some() {
                     headline = headline.replace("Outgoing DPS", "Sustained DPS");
                 }
+                if crate::encounters::window(target.id).is_some_and(|w|w.fixed_damage.is_some()) {
+                    headline=headline.replace("Outgoing DPS","Single-special rate");
+                    headline.push_str("<p class=\"small-note\">One guaranteed 75–150 attack · 112.5 mean damage. This rate uses the nominal weapon cooldown; it excludes the 35% energy cost, recovery and transfers, so it is not sustained fight DPS.</p>");
+                }
                 html.push_str(&attack_window_budget(s, target, &set, &r));
                 if r.burn_dps > 0.0 {
                     html.push_str(&format!("<p>Eclipse's long-run burn reference is {:.3} HP/s. The finite-HP estimate above instead starts empty and advances actual burn pulses, stack expiry and target death. Each separate attack window or target starts fresh; use the full-fight scenario for transitions and downtime.</p>", r.burn_dps));
                 }
-                if r.expected_attack_ticks != f64::from(r.attack_ticks) {
+                if crate::encounters::window(target.id).is_some_and(|w|w.ocellus_explosions==Some(true)) {
+                    html.push_str("<p>Explosion opportunity: two-tick expected cooldown. The damage reduction still uses the ordinary weapon speed; opportunity uptime is not predicted.</p>");
+                }else if r.expected_attack_ticks != f64::from(r.attack_ticks) {
                     html.push_str(&format!("<p>Bloodrager average delay: {:.3} ticks ({:.3}s), including the 33% chance per accurate splat to attack one tick sooner.</p>",r.expected_attack_ticks,r.expected_attack_ticks*0.6));
                 }
                 if crate::rules::set_effect(&set, "blue_moon") {
@@ -5552,7 +5560,7 @@ fn combat_panel(s: &State, p: &Plan) -> String {
         "<tr><th>Magic damage</th><td>{:.1}%</td></tr>",
         bonus.other.get("magic_str").copied().unwrap_or(0) as f64 / 10.0
     ));
-    html.push_str("</tbody></table></details><details><summary>DPS assumptions</summary><p class=\"small-note\">Selected current-level boosts and stat prayer; no boost decay, special-attack damage, venom or recoil. ToA assumes solo, path level 0, raid levels 0–150. Ruby bolts use selected target HP (phase start by default) and the selected Kandarin diary setting. Outgoing DPS covers uninterrupted attacks while vulnerable. Incoming scenarios are separate and their coverage notes apply. Movement, special-phase uptime, curses and eating are not a full encounter simulation. Unsupported mechanics show no DPS.</p></details></div></section>");
+    html.push_str("</tbody></table></details><details><summary>DPS assumptions</summary><p class=\"small-note\">Selected current-level boosts and stat prayer; no boost decay, venom or recoil. Ordinary outgoing values exclude special attacks; the explicitly named Dawnbringer single-special probe is separate. The ToA preset uses solo/path 0 at levels 0–150; the Expert reference is fixed solo-300/path 0. Other raid references retain their declared scales. Ruby bolts use selected target HP or the declared comparison point, plus the selected Kandarin diary setting. Outgoing DPS covers uninterrupted attacks while vulnerable. Incoming scenarios are separate and their coverage notes apply. Movement, phase uptime, curses, team contribution and eating are not a full encounter simulation. Unsupported mechanics show no DPS.</p></details></div></section>");
     html.insert_str(results_index, &headline);
     html
 }

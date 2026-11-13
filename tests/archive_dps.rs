@@ -65,16 +65,15 @@ fn reviewed_windows_calculate_without_enabling_unknown_phases_or_reach() {
         assert!(
             encounters::window(id)
                 .unwrap()
-                .description
-                .contains("excluded")
+                .hp_probe.is_some()
         );
     }
     assert!(calc(16659, 11905, "Magic").unwrap().dps > 0.0);
     assert!(calc(16659, 1434, "Crush").unwrap_err().contains("reach"));
     assert!(ironbound::monster_rules::check_weapon(16659, "Melee", 3204).is_ok());
     for id in [16640, 16641, 16684] {
-        let error = calc(id, 11905, "Magic").unwrap_err();
-        assert!(error.contains("needs"), "{id}: {error}");
+        assert!(calc(id,11905,"Magic").unwrap().dps>0.0,"{id}");
+        assert!(encounters::window(id).unwrap().comparison_probe);
     }
 }
 
@@ -166,7 +165,7 @@ fn one_unknown_raid_window_does_not_erase_known_weapon_dps_in_the_summary() {
                 style: "Magic".into(),
             },
             Target {
-                id: 16684,
+                id: 14015,
                 style: "Magic".into(),
             },
         ],

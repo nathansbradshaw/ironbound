@@ -226,6 +226,13 @@ fn profile(name: &str) -> Option<Profile> {
         });
     }
     let (level, styles, slayer, note): (_, &[&str], _, _) = match name {
+        "Nex" => (90, &["Ranged"], 0, "Group ranged gear baseline across vulnerable body phases and activated mages. This does not assess solo viability, team damage share, curses, siphon, incoming damage or complete supplies."),
+        "Chambers of Xeric" | "Chambers of Xeric (3-player)" => (90, &["Melee", "Ranged", "Magic", "Pickaxe"], 0, "Declared party reference at maximum Combat 126 / HP 99 and average Mining 99. Your Mining and owned pickaxe determine Guardian damage. Room timing, resets, healing, incoming attacks and whole-raid supplies are not scored."),
+        "Chambers of Xeric: Challenge Mode" => (95, &["Melee", "Ranged", "Magic", "Pickaxe"], 0, "Solo CM reference with reviewed stat scaling and exceptions. Guardian damage uses your Mining and owned pickaxe. This does not assess raid mechanics, incoming damage or supplies."),
+        "Theatre of Blood" | "Theatre of Blood (5-player)" => (90, &["Melee", "Ranged", "Magic"], 0, "Declared party HP reference and matching Nylocas colours. Verzik phase 1 uses raid-loaned Dawnbringer and is excluded from bank readiness. Exposure, waves, healing, incoming attacks and complete supplies are not scored."),
+        "Theatre of Blood: Hard Mode" => (95, &["Melee", "Ranged", "Magic"], 0, "Hard-mode recorded stats at three-player HP. Nylocas colours are scored; raid-loaned Dawnbringer is excluded from bank readiness. Hard-mode mechanics, timing, incoming damage and supplies are not scored."),
+        "The Fractured Archive" => (95, &["Melee", "Ranged", "Magic"], 0, "Recorded-defence gear screen for the default route. Large bodies use explicit 500-HP probes, not inferred team HP. Route transformations, adds, incoming attacks and whole-raid supplies remain unverified."),
+        "Tombs of Amascut: Expert Mode" => (95, &["Melee", "Ranged", "Magic"], 0, "Solo raid level 300 / path 0 only. Vulnerable Akkha styles and reviewed Wardens hit models are scored. Invocation-specific mechanics, other path/team levels, incoming attacks and complete supplies are not scored."),
         "Doom of Mokhaiotl" => (
             90,
             &["Ranged", "Melee", "Demonbane shield"],
@@ -533,6 +540,15 @@ fn requires_all(name: &str) -> bool {
             | "Abyssal Sire"
             | "Dagannoth Kings"
             | "Tombs of Amascut"
+            | "Nex"
+            | "Chambers of Xeric"
+            | "Chambers of Xeric (3-player)"
+            | "Chambers of Xeric: Challenge Mode"
+            | "Theatre of Blood"
+            | "Theatre of Blood (5-player)"
+            | "Theatre of Blood: Hard Mode"
+            | "The Fractured Archive"
+            | "Tombs of Amascut: Expert Mode"
             | "Yama"
             | "Nightmare"
             | "The Nightmare"
@@ -630,7 +646,43 @@ fn assess_gear_catalog(snapshot: &Snapshot, preferences: &Options) -> Vec<Assess
             return a;
         }
         let Some(p) = guideline else { return unknown("No reviewed readiness guideline yet. Open the gear plan where available."); };
+        // Scope assumed quest stock to this entry, never the catalog-wide pool.
+        let provided_stock = entry.targets.iter()
+            .find(|t| crate::quest_bosses::provided_weapon(t.id).is_some())
+            .map(|t| {
+                let mut stock = owned.clone();
+                let supplied = crate::quest_bosses::include_provided_weapon(t.id, &mut stock, &member, &options);
+                (stock, supplied)
+            });
+        let supplied = provided_stock.as_ref().is_some_and(|(_, supplied)| *supplied);
+        let owned = provided_stock.as_ref().map(|(stock, _)| stock).unwrap_or(&owned);
         let mut entry_sets = sets.clone();
+        if entry.name=="Nex" || matches!(entry.category(),"Raids") && p.styles.len()>=3 {
+            // Raid screens must consider owned specialist weapons and bolts.
+            // A generic bank winner can miss fire spells or HP-dependent ammo.
+            for (style,set) in &sets {
+                if !p.styles.contains(&rules::base_style(style)) {continue;}
+                for id in owned.keys().filter(|id|planner::can_use(**id,&member) && rules::weapon_for_style(**id,style).is_some()) {
+                    let mut alternative=set.clone();alternative[3]=Some(*id);
+                    if planner::gear(*id).is_some_and(|g|g.two_handed){alternative[5]=None;}
+                    if rules::base_style(style)=="Ranged" {
+                        let ammo=rules::ammo_ids(*id);
+                        if ammo.is_empty(){alternative[13]=None;entry_sets.push((*style,alternative));}
+                        else {for round in ammo.iter().filter(|a|owned.get(a).is_some_and(|q|*q>=options.combat.ammo_shots)&&planner::can_use(**a,&member)) {let mut kit=alternative.clone();kit[13]=Some(*round);entry_sets.push((*style,kit));}}
+                    }else{entry_sets.push((*style,alternative));}
+                }
+            }
+        }
+        if p.styles.contains(&"Pickaxe") {
+            if member.level("Mining").is_none() { return unknown("Add your Mining level to assess Guardian pickaxe damage and Chambers gear readiness."); }
+            for (style,set) in sets.iter().filter(|(style,_)|rules::base_style(style)=="Melee") {
+                for id in owned.keys().filter(|id| planner::can_use(**id,&member) && combat::stats(**id).is_some_and(|g|g.category=="Pickaxe")) {
+                    let mut alternative=set.clone(); alternative[3]=Some(*id);
+                    if planner::gear(*id).is_some_and(|g|g.two_handed){alternative[5]=None;}
+                    entry_sets.push((*style,alternative));
+                }
+            }
+        }
         if let Some(quest) = crate::quest_bosses::profile(&entry.name) {
             let missing_weapon = !quest.weapons.is_empty() && !quest.weapons.iter().any(|id|
                 owned.get(id).is_some_and(|q| *q > 0) && planner::can_use(*id, &member));
@@ -697,23 +749,30 @@ fn assess_gear_catalog(snapshot: &Snapshot, preferences: &Options) -> Vec<Assess
         let mut choices = vec![];
         for required in p.styles {
             let shield_role = *required == "Demonbane shield";
+            let pickaxe_role = *required == "Pickaxe";
             let mut best: Option<(f64, &str, i32, u32, usize)> = None;
             for (style, set) in &entry_sets {
                 let actual_style = rules::base_style(style);
-                if !shield_role && actual_style != *required { continue; }
+                if !shield_role && actual_style != if pickaxe_role {"Melee"}else{*required} { continue; }
                 let Some(weapon) = set[3] else { continue; };
+                if pickaxe_role && !combat::stats(weapon).is_some_and(|g|g.category=="Pickaxe") {continue;}
                 let level = match actual_style { "Melee" => member.level("Attack").unwrap().min(member.level("Strength").unwrap()), "Magic" => member.level("Magic").unwrap(), _ => member.level("Ranged").unwrap() };
                 let armour = [0, 4, 7, 9, 10].iter().filter(|slot| set[**slot].is_some()).count();
                 let mut lowest = f64::INFINITY;
                 let mut valid = true;
                 for target in &entry.targets {
+                    if crate::encounters::window(target.id).is_some_and(|w|w.readiness_exempt) {continue;}
+                    if p.styles.contains(&"Pickaxe") {
+                        let guardian=crate::monster_rules::profile(target.id).is_some_and(|r|r.kind==crate::monster_rules::Kind::Guardian);
+                        if guardian!=pickaxe_role {continue;}
+                    }
                     // Tormented Demons need any two styles. Score each against
                     // a compatible explicit overhead, rather than requiring Magic.
                     if entry.name == "Tormented Demons" && crate::monster_rules::style_limitation(target.id, required).is_some() { continue; }
                     // Mixed encounters use each recorded phase's intended style.
                     if entry.name == "Doom of Mokhaiotl" {
                         if (target.id == 100178) != shield_role || !shield_role && rules::base_style(&target.style) != *required { continue; }
-                    } else if requires_all(&entry.name) && rules::base_style(&target.style) != *required { continue; }
+                    } else if !pickaxe_role && requires_all(&entry.name) && rules::base_style(&target.style) != *required { continue; }
                     let Some(monster) = planner::monster(target.id) else { valid = false; break; };
                     let spell = rules::spell_name_for_target(&member, set, &owned, &options.combat, monster, 0);
                     if actual_style == "Magic" && (!rules::casting_supported_for_style(&member, set, &owned, &options.combat, style) || rules::spell_requirement(&member, set, &owned, &options.combat, spell).is_some()) { valid = false; break; }
@@ -743,9 +802,18 @@ fn assess_gear_catalog(snapshot: &Snapshot, preferences: &Options) -> Vec<Assess
                 else { Readiness::WellEquipped };
             readiness = readiness.max(band);
         }
-        let setup_reason = choices.iter().map(|(dps, style, weapon, _, _)| format!("{} · {style} · {dps:.1} basic DPS", planner::item_name(*weapon))).collect::<Vec<_>>().join("; ");
+        let setup_reason = choices.iter().map(|(dps, style, weapon, _, _)| format!("{}{} · {style} · {dps:.1} basic DPS", planner::item_name(*weapon), if supplied { " (quest-provided)" } else { "" })).collect::<Vec<_>>().join("; ");
         let scope = match entry.name.as_str() {
             "Tombs of Amascut" => "Solo · raid level 0",
+            "Tombs of Amascut: Expert Mode" => "Solo · raid level 300 · path 0",
+            "Nex" => "Group ranged gear · vulnerable phases",
+            "Chambers of Xeric" => "Solo reference · Combat 126 / HP 99",
+            "Chambers of Xeric (3-player)" => "3-player reference · Combat 126 / HP 99",
+            "Chambers of Xeric: Challenge Mode" => "Solo CM reference · Combat 126 / HP 99",
+            "Theatre of Blood" => "3-player HP · owned tribrid gear",
+            "Theatre of Blood (5-player)" => "5-player HP · owned tribrid gear",
+            "Theatre of Blood: Hard Mode" => "Hard · 3-player HP · owned tribrid gear",
+            "The Fractured Archive" => "Default route · recorded defences / HP probes",
             "Yama" => "Melee-boss hybrid",
             "Corporeal Beast" => "Undrained baseline",
             "Fight Caves" => "Ranged gear baseline",
@@ -757,7 +825,7 @@ fn assess_gear_catalog(snapshot: &Snapshot, preferences: &Options) -> Vec<Assess
             _ => "",
         };
         let reason = if scope.is_empty() { setup_reason } else { format!("{scope}: {setup_reason}") };
-        let gaps = if readiness == Readiness::WellEquipped { "Levels and owned gear meet this screening baseline.".into() } else { format!("Guideline: {} offensive level / HP, {} Defence, {} Prayer; 3+ basic DPS and four armour slots for the top band. Yours: {} HP, {} Defence, {} Prayer.", p.level, p.level.saturating_sub(10), p.prayer, hp, def, prayer) };
+        let gaps = if readiness == Readiness::WellEquipped { "Levels and equipment meet this screening baseline.".into() } else { format!("Guideline: {} offensive level / HP, {} Defence, {} Prayer; 3+ basic DPS and four armour slots for the top band. Yours: {} HP, {} Defence, {} Prayer.", p.level, p.level.saturating_sub(10), p.prayer, hp, def, prayer) };
         Assessment { readiness, requirements: Requirements::default(), reason, detail: format!("{gaps} {}", p.note), wilderness: false, preview: None }
     }).collect()
 }
@@ -784,11 +852,12 @@ pub fn card(entry: &Entry, index: usize, a: &Assessment) -> String {
         .first()
         .and_then(|t| planner::monster(t.id))
         .map(|m| {
-            let hp = m
+            let window=crate::encounters::window(m.id);
+            let hp = window.and_then(|w|w.hp_probe).map(|hp|format!("{hp} HP probe")).unwrap_or_else(||m
                 .skills
                 .get("hp")
-                .map(|v| v.to_string())
-                .unwrap_or_else(|| "?".into());
+                .map(|v| format!("{v} HP"))
+                .unwrap_or_else(|| "? HP".into()));
             let def = m
                 .skills
                 .get("def")
@@ -800,11 +869,16 @@ pub fn card(entry: &Entry, index: usize, a: &Assessment) -> String {
                 .map(|v| v.to_string())
                 .unwrap_or_else(|| "?".into());
             format!(
-                "<span>♥ {hp} HP</span><span>⛨ {def} Defence</span><span>✦ {magic} Magic</span>"
+                "<span>♥ {hp}</span><span>⛨ {def} Defence</span><span>✦ {magic} Magic</span>"
             )
         })
         .unwrap_or_else(|| "<span>Recorded stats unavailable</span>".into());
-    let context = if entry.targets.len() > 1 {
+    let first_window=entry.targets.first().and_then(|t|crate::encounters::window(t.id));
+    let context = if first_window.is_some_and(|w|w.raid_scale.is_some()) {
+        "First attack window · declared raid scale"
+    }else if first_window.is_some_and(|w|w.hp_probe.is_some()) {
+        "Current HP probe · recorded defences"
+    }else if entry.targets.len() > 1 {
         "First recorded phase · base stats"
     } else {
         "Recorded target · base stats"

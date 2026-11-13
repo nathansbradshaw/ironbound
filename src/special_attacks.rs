@@ -69,6 +69,10 @@ pub(crate) fn validate_setup(
     let window = crate::encounters::window(monster.id);
     if window.is_some_and(|w| {
         w.invulnerable
+            || w.raid_scale.is_some()
+            || w.hp_probe.is_some()
+            || w.comparison_weapon.is_some()
+            || w.npc_id==11278
             || w.counter != crate::encounters::Counter::None
             || w.guaranteed_accuracy
             || w.min_hp.is_some_and(|hp| hp > 1)

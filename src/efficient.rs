@@ -13,12 +13,50 @@ pub fn default_tolerance() -> u32 {
 pub fn is_default_tolerance(value: &u32) -> bool {
     *value == DEFAULT_TOLERANCE_PERCENT
 }
+pub fn is_zero_tolerance(value: &u32) -> bool {
+    *value == 0
+}
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Tolerances {
+    pub dps_loss: u32,
+    pub damage_taken: u32,
+    pub prayer_drain: u32,
+}
+impl Default for Tolerances {
+    fn default() -> Self {
+        Self {
+            dps_loss: DEFAULT_TOLERANCE_PERCENT,
+            damage_taken: 0,
+            prayer_drain: 0,
+        }
+    }
+}
+impl Tolerances {
+    pub fn from_options(o: &crate::planner::Options) -> Self {
+        Self {
+            dps_loss: o.switch_tolerance,
+            damage_taken: o.damage_tolerance,
+            prayer_drain: o.prayer_tolerance,
+        }
+    }
+}
+impl std::fmt::Display for Tolerances {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "{}% DPS loss, {}% extra damage and {}% extra prayer drain",
+            self.dps_loss, self.damage_taken, self.prayer_drain
+        )
+    }
+}
 pub fn cache_key(snapshot: &crate::account::Snapshot, options: &crate::planner::Options) -> String {
     let mut options = options.clone();
     // Trials set their own ceiling and repack both bags. Applying a lower cap
     // must not move the benchmark or restart the identical twelve searches.
     options.max_switches = None;
     options.switch_tolerance = DEFAULT_TOLERANCE_PERCENT;
+    options.damage_tolerance = 0;
+    options.prayer_tolerance = 0;
     options.inventory_overrides.clear();
     options.inventory_quantities.clear();
     serde_json::to_string(&(snapshot, options)).unwrap_or_default()
@@ -111,18 +149,42 @@ fn incoming_guard(candidate: &Candidate, best: &Candidate, tolerance: u32) -> bo
     }
     true
 }
-pub fn qualifies(candidate: &Candidate, best: &Candidate, tolerance: u32) -> bool {
+pub fn qualifies(candidate: &Candidate, best: &Candidate, limits: Tolerances) -> bool {
     if !candidate.usable() || candidate.signature != best.signature {
         return false;
     }
     let (Some(a), Some(b)) = (&candidate.totals, &best.totals) else {
         return false;
     };
-    within(a.seconds, b.seconds, tolerance)
-        && within(a.prayer_points, b.prayer_points, tolerance)
-        && incoming_guard(candidate, best, tolerance)
+    // Workloads are identical, so effective DPS ratio is inverse attack time.
+    let retained = 1.0 - limits.dps_loss.min(MAX_TOLERANCE_PERCENT) as f64 / 100.0;
+    b.seconds / a.seconds + 1e-10 >= retained
+        && within(
+            a.prayer_per_minute,
+            b.prayer_per_minute,
+            limits.prayer_drain,
+        )
+        && best.budget.windows.iter().all(|reference| {
+            if reference.metrics.defence.is_empty() {
+                return true;
+            }
+            candidate
+                .budget
+                .windows
+                .iter()
+                .find(|w| w.target_id == reference.target_id && w.style == reference.style)
+                .is_some_and(|w| {
+                    !w.metrics.defence.is_empty()
+                        && within(
+                            w.metrics.prayer_per_minute,
+                            reference.metrics.prayer_per_minute,
+                            limits.prayer_drain,
+                        )
+                })
+        })
+        && incoming_guard(candidate, best, limits.damage_taken)
 }
-pub fn choose(candidates: Vec<Candidate>, tolerance: u32, ceiling: usize) -> Suggestion {
+pub fn choose(candidates: Vec<Candidate>, limits: Tolerances, ceiling: usize) -> Suggestion {
     let mut result = Suggestion {
         candidates,
         best: None,
@@ -164,8 +226,8 @@ pub fn choose(candidates: Vec<Candidate>, tolerance: u32, ceiling: usize) -> Sug
         .enumerate()
         .filter(|(_, c)| {
             c.budget.cap <= ceiling.min(11)
-                && qualifies(c, best, tolerance)
-                && incoming_guard(c, &result.candidates[basis], tolerance)
+                && qualifies(c, best, limits)
+                && incoming_guard(c, &result.candidates[basis], limits.damage_taken)
         })
         .min_by(|(_, a), (_, b)| {
             (
@@ -192,12 +254,10 @@ pub fn choose(candidates: Vec<Candidate>, tolerance: u32, ceiling: usize) -> Sug
     if result.compact.is_none() {
         result.reason = Some(if ceiling < 11 {
             format!(
-                "No setup within your {ceiling}-change limit meets the {tolerance}% time, prayer and known-damage tolerance. Raise the limit to consider more switches."
+                "No setup within your {ceiling}-change limit meets {limits}. Adjust the individual limits or allow more switches."
             )
         } else {
-            format!(
-                "No setup meets the combined {tolerance}% time, prayer and defensive targets. Compare switches to review the tradeoffs."
-            )
+            format!("No setup meets {limits}. Compare switches to review the tradeoffs.")
         });
     }
     result

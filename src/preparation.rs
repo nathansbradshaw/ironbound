@@ -22,6 +22,8 @@ pub fn token(snapshot: &Snapshot, options: &Options) -> String {
     options.confirmations.clear();
     // An unapplied recommendation preference does not change trip preparation.
     options.switch_tolerance = crate::efficient::DEFAULT_TOLERANCE_PERCENT;
+    options.damage_tolerance = 0;
+    options.prayer_tolerance = 0;
     let plan = crate::planner::plan(snapshot, &options);
     let phases: Vec<_> = plan
         .phases

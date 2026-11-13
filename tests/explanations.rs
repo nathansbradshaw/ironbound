@@ -34,6 +34,7 @@ fn fixture() -> (account::Snapshot, Options, Plan) {
     magic[3] = Some(11905);
     magic[4] = Some(10462);
     let p = Plan {
+        ammo_shots: 100,
         loaded_ammo: None,
         optimization: None,
         equipment: melee.clone(),

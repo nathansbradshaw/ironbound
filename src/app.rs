@@ -267,6 +267,7 @@ fn live_number(id: &str) -> bool {
         "budget-cap-left",
         "budget-cap-right",
         "spell-casts",
+        "ammo-shots",
     ]
     .contains(&id)
         || id.starts_with("priority-")
@@ -314,6 +315,13 @@ fn apply_number(s: &mut State, id: &str, value: &str) -> bool {
         }
         "raid-level" => o.raid_level = n.min(150),
         "spell-casts" => o.combat.spell_casts = n.clamp(1, 10_000),
+        "ammo-shots" => {
+            let shots = n.clamp(1, 10_000);
+            if o.combat.ammo_shots != shots {
+                o.combat.loaded_ammo_confirmed = false;
+            }
+            o.combat.ammo_shots = shots;
+        }
         _ if id.starts_with("reduction-") => {
             let Some(target) = target_id else {
                 return false;
@@ -2546,7 +2554,7 @@ fn inventory_panel(s: &State, p: &Plan) -> String {
     if let Some(phase) = phase {
         html.push_str(&format!("<p class=\"phase-note\">{} inventory preview. {} to edit the packing list. Exports use Start gear.</p>",esc(&phase.name),button("phase:start","Back to Start","text-button")));
     }
-    html.push_str(&format!("<details class=\"supply-settings\"><summary>Adjust supplies</summary><label>Food<input id=\"food\" type=\"number\" min=\"0\" max=\"20\" value=\"{}\"></label><label>Prayer / restores<input id=\"potions\" type=\"number\" min=\"0\" max=\"12\" value=\"{}\"></label><label>Spell casts for trip<input id=\"spell-casts\" type=\"number\" min=\"1\" max=\"10000\" value=\"{}\"></label><p class=\"small-note\">Rune stacks cover the worst-case mix of this many total attack casts. This does not measure weapon charges or predict trip length. Ammunition assumes 100 projectiles; check remaining charges and your actual consumption.</p><div class=\"small-note\">{} slots free</div></details></div>",s.saved.options.food,s.saved.options.prayer_potions,s.saved.options.combat.spell_casts,28usize.saturating_sub(occupied)));
+    html.push_str(&format!("<details class=\"supply-settings\"><summary>Adjust supplies</summary><label>Food<input id=\"food\" type=\"number\" min=\"0\" max=\"20\" value=\"{}\"></label><label>Prayer / restores<input id=\"potions\" type=\"number\" min=\"0\" max=\"12\" value=\"{}\"></label><label>Spell casts for trip<input id=\"spell-casts\" type=\"number\" min=\"1\" max=\"10000\" value=\"{}\"></label><label>Ammunition per weapon<input id=\"ammo-shots\" type=\"number\" min=\"1\" max=\"10000\" value=\"{}\"></label><p class=\"small-note\">Rune stacks cover the worst-case mix of the total attack casts. The ammunition budget applies to each arrow/bolt stack or loaded blowpipe; recovered projectiles may last longer. Check actual consumption and charges; these counts do not predict trip length.</p><div class=\"small-note\">{} slots free</div></details></div>",s.saved.options.food,s.saved.options.prayer_potions,s.saved.options.combat.spell_casts,s.saved.options.combat.ammo_shots,28usize.saturating_sub(occupied)));
     if s.shared_setup.is_none()
         && (!s.saved.options.inventory_overrides.is_empty()
             || !s.saved.options.inventory_quantities.is_empty())
@@ -3008,7 +3016,7 @@ fn inventory_remaining(p: &Plan, slot: usize, id: i32, owned: u64) -> u32 {
         .iter()
         .enumerate()
         .filter(|(_, item)| **item == Some(id))
-        .map(|(slot, _)| if slot == 13 { 100 } else { 1 })
+        .map(|(slot, _)| u64::from(planner::equipped_quantity(slot, id, p.ammo_shots)))
         .sum();
     let packed: u64 = p
         .inventory
@@ -3261,7 +3269,7 @@ fn combat_assumptions(
                 owned.get(&id).copied().unwrap_or(0)
             ));
         }
-        html.push_str(&format!("</select></label><label><input id=\"loaded-ammo-confirmed\" type=\"checkbox\" {} {}> Already loaded: at least 100 darts</label>",if settings.loaded_ammo_confirmed{"checked"}else{""},if settings.loaded_dart.is_none(){"disabled"}else{""}));
+        html.push_str(&format!("</select></label><label><input id=\"loaded-ammo-confirmed\" type=\"checkbox\" {} {}> Already loaded: at least {} darts</label>",if settings.loaded_ammo_confirmed{"checked"}else{""},if settings.loaded_dart.is_none(){"disabled"}else{""}, settings.ammo_shots));
         if let Some(ammo) = &p.loaded_ammo {
             html.push_str(&format!("<p class=\"small-note\">Load {} × {} inside the weapon. Check charges; darts occupy no worn ammo or bag slot.</p>",esc(&planner::item_name(ammo.id)),ammo.quantity));
         }
@@ -4729,7 +4737,8 @@ fn ranked_gear(s: &State) -> (Vec<GearChoice>, Vec<&'static str>) {
             let usable = compatible
                 && planner::can_use(g.id, member)
                 && !s.saved.options.excluded.contains(&g.id)
-                && (slot != 13 || owned.get(&g.id).copied().unwrap_or(0) >= 100);
+                && (slot != 13
+                    || owned.get(&g.id).copied().unwrap_or(0) >= s.saved.options.combat.ammo_shots);
             let mut trial = set.clone();
             trial[slot] = Some(g.id);
             if slot == 3 && g.two_handed {
@@ -4754,7 +4763,8 @@ fn ranked_gear(s: &State) -> (Vec<GearChoice>, Vec<&'static str>) {
                     .iter()
                     .copied()
                     .filter(|id| {
-                        owned.get(id).copied().unwrap_or(0) >= 100 && planner::can_use(*id, member)
+                        owned.get(id).copied().unwrap_or(0) >= s.saved.options.combat.ammo_shots
+                            && planner::can_use(*id, member)
                     })
                     .max_by(|a, b| {
                         let evaluate = |id| {

@@ -29,7 +29,7 @@ browser, reference-calculator and gameplay evidence are recorded separately.
 - [x] Replace the fixed 150-cast spell affordability/packing assumption with a bounded user choice used consistently by selection, packing, sharing, alternatives, switch comparisons and export. Rune stacks cover the worst-case mix of the total cast budget.
 - [x] Keep the chosen budget in backups and named setups.
 - [x] State that ammunition, charges and food/prayer counts are packing assumptions, not a kills-per-trip prediction.
-- [ ] Make the ammunition packing budget editable throughout selection, phase previews, carried-stock validation and both RuneLite export formats; keep 100 as the migration default.
+- [x] Make the ammunition packing budget editable throughout selection, phase previews, carried-stock validation and both RuneLite export formats; keep 100 as the migration default. Increasing the budget resets the existing-loaded-darts confirmation.
 - [ ] Follow-up: independently verified consumption and changing-HP encounter simulation before offering automatic trip-duration or kill-count estimates.
 
 ## 5. Surface preparation unknowns
@@ -48,12 +48,16 @@ browser, reference-calculator and gameplay evidence are recorded separately.
 ## 7. Expand workflow verification
 
 - [x] Add end-to-end model checks spanning owned bank → customized plan → named setup → public link / RuneLite export.
-- [ ] Run the full Rust suite, independent combat comparator, Wasm build and browser workflow checks.
-- [ ] Verify merged main and GitHub Pages source revision.
+- [x] Run the full Rust suite, independent combat comparator, Wasm build and browser workflow checks for the initial workflow release (325 tests, 24 reference cases).
+- [x] Verify merged main and GitHub Pages source revision for the initial workflow release: PR #23, source `a81fbe0147b11d18c2e0c5151f982e1bac685d00`. The succeeding live source `75c8940442ca036cb393b9a405097f0af71d16ec` includes it.
 - [ ] Actual RuneLite Inventory Setups import, equipping and phase switches: requires a running client and human/gameplay verification; decoder checks do not close this item.
+
+RuneLite verification blocker (13 November): RuneLite is installed but was not running. Computer access to launch it was denied. Actual client import/equip/switch checks remain open; do not replace them with model or decoder evidence.
 
 ## Release evidence
 
-13 November 2026: eight new workflow regressions pass; the pre-integration full suite passed 311 tests, and all 24 independent combat reference cases passed. Browser QA on a disposable origin verified named saving/loading/reload, a 73-rune manual slot surviving a gear change, cast-budget repacking, four manual confirmations and invalidation, plus blocked-storage warning/retry and recovery without loss of the saved fixtures. Integration with concurrent switch-comparison and encounter-summary changes is being verified before publication.
+13 November 2026, workflow release (PR #23): all 325 integrated Rust tests and 24 independent combat references passed, along with the release Wasm build. Disposable browser QA verified named saving/loading/reload, a 73-rune manual slot surviving a gear change, cast-budget repacking, single-slot reset, four manual confirmations and invalidation, plus blocked-storage warning/retry and recovery without losing saved fixtures. The release is merged and deployed; later tooltip publications include it.
+
+Ammunition follow-up: the full suite and 24 combat references pass with separate verification profiles inside the shared Cargo target root. Five focused regressions cover small budgets, worn and internal ammunition, phase previews, legacy defaults, over-allocation and forged share budgets. Browser QA verified 37 bolts in the starting bag and phase preview, a 1,000-projectile shortage disabling export, and recovery after restoring 37. Source/release publication pending final integration.
 
 Reproduce browser storage failure with `rustc tools/browser-check.rs -o /tmp/ironbound-browser-check`, then run `/tmp/ironbound-browser-check dist PORT` using a verified-free port. Open `/?storage=blocked`; return to `/` to recover the ordinary origin. Stop the owned server afterward. Use a disposable preview origin; never seed or clear a real account for testing.

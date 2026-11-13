@@ -567,7 +567,7 @@ pub fn internal_ammo(
         .internal_ammo
         .iter()
         .copied()
-        .filter(|id| owned.get(id).copied().unwrap_or(0) >= DEFAULT_LOADED_SHOTS)
+        .filter(|id| owned.get(id).copied().unwrap_or(0) >= settings.ammo_shots)
         .max_by_key(|id| {
             crate::combat::stats(*id)
                 .and_then(|s| s.bonuses.get("ranged_str"))

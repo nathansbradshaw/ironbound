@@ -526,12 +526,17 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             );
         }
         Some("build") => {
+            let profile = args.get(2).map(String::as_str).unwrap_or("release");
+            if !["release", "verify-release"].contains(&profile) {
+                return Err("Build profile must be release or verify-release".into());
+            }
             pack_icons()?;
             run(
                 "cargo",
                 &[
                     "build",
-                    "--release",
+                    "--profile",
+                    profile,
                     "--lib",
                     "--target",
                     "wasm32-unknown-unknown",
@@ -551,9 +556,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     "--out-name",
                     "ironbound",
                     &std::env::var("CARGO_TARGET_DIR")
-                        .map(|p| format!("{p}/wasm32-unknown-unknown/release/ironbound.wasm"))
+                        .map(|p| format!("{p}/wasm32-unknown-unknown/{profile}/ironbound.wasm"))
                         .unwrap_or_else(|_| {
-                            "target/wasm32-unknown-unknown/release/ironbound.wasm".into()
+                            format!("target/wasm32-unknown-unknown/{profile}/ironbound.wasm")
                         }),
                 ],
             )?;

@@ -109,6 +109,14 @@ pub fn inventory_setup(plan: &Plan, options: &Options, _account: &str) -> Result
     if let Some(ammo) = &plan.loaded_ammo {
         notes.push_str(&format!(" Loaded weapon: {} × {} inside the blowpipe; verify contents and charges. Not worn ammo or inventory.",crate::planner::item_name(ammo.id),ammo.quantity));
     }
+    for (id, hp) in &options.combat.target_hp {
+        notes.push_str(&format!(
+            " Target HP assumption: {} = {hp}.",
+            crate::planner::monster(*id)
+                .map(|m| m.name.clone())
+                .unwrap_or_else(|| id.to_string())
+        ));
+    }
     notes.push_str(&format!(" Spell budget: {} casts total across selected attack spells; rune stacks cover the worst-case mix. Ammunition budget: {} projectiles per ranged weapon. These are packing counts, not a duration or kill-count prediction; recovered projectiles and remaining charges need manual verification. {} User confirmations stay private and must be repeated by the recipient.", options.combat.spell_casts, plan.ammo_shots, crate::coverage::export_note(options)));
     let buffs = [
         &options.combat.boosts.melee,

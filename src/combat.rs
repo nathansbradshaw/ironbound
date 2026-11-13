@@ -76,6 +76,9 @@ fn bonuses_in_context(set: &[Option<i32>], toa: bool) -> Bonuses {
 }
 #[derive(Clone, Debug)]
 pub struct ResultStats {
+    /// Marginal per-attack damage, including misses and reviewed bolt effects.
+    pub hit_distribution: Vec<(i32, f64)>,
+    pub hp_dependent: Option<HpDependentHit>,
     pub dps: f64,
     pub accuracy: f64,
     pub max_hit: i32,
@@ -87,6 +90,13 @@ pub struct ResultStats {
     pub elemental: Option<ElementalStats>,
     /// Guaranteed-hit windows retain proc probabilities for exact alternating cycles.
     pub guaranteed_hits: Option<Vec<(i32, f64)>>,
+}
+#[derive(Clone, Copy, Debug)]
+pub struct HpDependentHit {
+    pub chance: f64,
+    pub percent: i32,
+    pub cap: i32,
+    pub divisor: i32,
 }
 #[derive(Clone, Debug)]
 pub struct ElementalStats {
@@ -103,7 +113,14 @@ pub struct ElementalStats {
 pub fn target_hitpoints(monster: &Monster, invocation: u32) -> Option<i32> {
     let mut hp = monster.skills.get("hp").copied().filter(|hp| *hp > 0)?;
     if crate::encounters::mechanics().toa_ids.contains(&monster.id) {
-        hp += hp * (4 * invocation.min(150) as i32 / 10) / 100;
+        let scale = if crate::encounters::window(monster.id)
+            .is_some_and(|w| w.damage_model == crate::encounters::DamageModel::WardenCore)
+        {
+            1
+        } else {
+            4
+        };
+        hp += hp * (scale * invocation.min(150) as i32 / 10) / 100;
         if hp > 100 {
             let round = if hp > 300 { 10 } else { 5 };
             hp = (hp + round / 2) / round * round;
@@ -219,6 +236,10 @@ pub fn calculate_configured(
         );
     }
     let always_max = hit_rule.is_some_and(|rule| rule.always_max);
+    let damage_model = crate::encounters::window(monster.id)
+        .map(|w| w.damage_model)
+        .unwrap_or_default();
+    let warden_p2 = damage_model == crate::encounters::DamageModel::WardensP2;
     let demon = monster
         .attributes
         .iter()
@@ -539,6 +560,12 @@ pub fn calculate_configured(
         .map(|scaling| scaling.apply(monster, attack, max_hit))
         .unwrap_or((attack, max_hit));
     let (mut attack, mut max_hit) = (attack, max_hit);
+    if warden_p2 {
+        if let Some(scaling) = &rule.family.target_scaling {
+            // The P2 accuracy multiplier applies twice; damage scales once.
+            attack = scaling.apply(monster, attack, max_hit).0;
+        }
+    }
     if rule.has(Effect::Demonbane)
         && monster
             .attributes
@@ -606,11 +633,15 @@ pub fn calculate_configured(
         };
         hit = double / (1.0 + double - hit);
     }
-    let min_hit = if fang { max_hit * 3 / 20 } else { 0 };
+    let mut min_hit = if fang { max_hit * 3 / 20 } else { 0 };
     if fang {
         max_hit -= min_hit;
     }
-    let (mean, ceiling, hits) = if always_max {
+    if warden_p2 {
+        (min_hit, max_hit) = crate::effects::wardens_p2_bounds(attack, defence, max_hit);
+        hit = 1.0;
+    }
+    let (_mean, ceiling, hits) = if always_max {
         hit = 1.0;
         conditional_hit(
             max_hit,
@@ -630,28 +661,72 @@ pub fn calculate_configured(
             mark_bonus,
         )
     };
-    let mut expected = hit * mean;
+    let mut distribution: Vec<_> = hits.iter().map(|(damage, p)| (*damage, p * hit)).collect();
+    let mut hp_dependent = None;
+    if hit < 1.0 {
+        distribution.push((0, 1.0 - hit));
+    }
     max_hit = ceiling;
     if style == "Ranged" && !rule.family.ammo.is_empty() {
         let zcb = rule.has(Effect::Zaryte);
         let chance = rules::bolt_proc_chance(set[13].unwrap_or(0), settings.kandarin_diary);
         match rules::ammunition(set[13].unwrap_or(0)) {
             AmmoEffect::Ruby => {
-                let hp = target_hitpoints(monster, invocation).unwrap_or(1);
+                let full_hp = target_hitpoints(monster, invocation).unwrap_or(1);
+                let hp = settings
+                    .target_hp
+                    .get(&monster.id)
+                    .copied()
+                    .map(|hp| hp as i32)
+                    .unwrap_or(full_hp);
+                if hp > full_hp {
+                    return Err("Current target HP exceeds its scaled maximum.".into());
+                }
                 let ruby = (hp * if zcb { 22 } else { 20 } / 100).min(if zcb { 110 } else { 100 });
-                expected = expected * (1.0 - chance) + ruby as f64 * chance;
+                for (_, p) in &mut distribution {
+                    *p *= 1.0 - chance;
+                }
+                distribution.push((ruby, chance));
+                hp_dependent = Some(HpDependentHit {
+                    chance,
+                    percent: if zcb { 22 } else { 20 },
+                    cap: if zcb { 110 } else { 100 },
+                    divisor: 1,
+                });
                 max_hit = max_hit.max(ruby);
             }
             AmmoEffect::Diamond => {
                 let diamond = max_hit * if zcb { 126 } else { 115 } / 100;
-                expected = expected * (1.0 - chance)
-                    + crate::effects::accurate_uniform_mean(diamond) * chance;
+                for (_, p) in &mut distribution {
+                    *p *= 1.0 - chance;
+                }
+                let (_, _, proc_hits) = conditional_hit(0, diamond, 0, &[], monster, None);
+                distribution.extend(
+                    proc_hits
+                        .into_iter()
+                        .map(|(damage, p)| (damage, p * chance)),
+                );
                 max_hit = max_hit.max(diamond);
             }
             _ => {}
         }
     }
+    if damage_model == crate::encounters::DamageModel::HalfDamage {
+        for (damage, _) in &mut distribution {
+            *damage /= 2;
+        }
+        max_hit /= 2;
+        if let Some(proc) = &mut hp_dependent {
+            proc.divisor = 2;
+        }
+    }
+    let expected = distribution
+        .iter()
+        .map(|(damage, p)| *damage as f64 * p)
+        .sum::<f64>();
     Ok(ResultStats {
+        hit_distribution: distribution,
+        hp_dependent,
         dps: expected / (ticks as f64 * 0.6),
         accuracy: hit,
         max_hit,

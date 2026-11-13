@@ -2,6 +2,7 @@ pub mod account;
 pub mod alternatives;
 #[cfg(target_arch = "wasm32")]
 mod app;
+pub mod attack_budget;
 pub mod combat;
 pub mod coverage;
 pub mod defence;

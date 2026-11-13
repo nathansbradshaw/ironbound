@@ -19,9 +19,12 @@ browser, reference-calculator and gameplay evidence are recorded separately.
 
 - [x] Show which selected attack windows have supported outgoing calculations and which are packing only.
 - [x] Explain remaining mechanics beside the encounter and in preparation/export notes. Count Wardens explicitly rather than omitting it from the supported fraction.
-- [ ] Vorkath: validate changing-HP bolt effects and special-phase timing against independent references before offering encounter-duration/consumption estimates.
-- [ ] Normal Yama: validate movement/transition timing, flare counts and incoming/special mechanics; retain the existing explicit paired Judge model.
-- [ ] ToA / Wardens: research each phase, defence and damage rules, scaling and invocation limits; add independent fixtures before enabling each supported calculation.
+- [x] Vorkath: expose current-HP ruby bolts and an acid damage window with per-outcome rounding; verify finite-HP attack budgets with decreasing ruby procs.
+- [x] Normal Yama: distinguish the 71-HP final shadow flare, boss HP stages and full-health flare pairs; retain the explicit paired Judge model.
+- [x] ToA / Wardens: enable explicit obelisk, unprotected P2 shield, melee core and vulnerable P3 outgoing windows with pinned P2 observations, independent loadouts and core scaling checks.
+- [ ] Vorkath: model six-attack special cycles, freeze/spawn immunity, acid movement/healing and incoming mechanics before offering full encounter duration or consumption.
+- [ ] Normal Yama: validate movement/transition timing, actual flare counts, regeneration and incoming/special mechanics.
+- [ ] ToA / Wardens: validate shield rotations/regeneration, core exposure/transfer/downs, skulls, enrage healing/reset and incoming mechanics. Current outgoing windows do not establish a full Wardens simulation.
 - [ ] Later coverage: Challenge/Hard/Expert scaling, full-wave encounters and other unsupported bosses. Catalog presence alone does not close a mechanics task.
 
 ## 4. Make trip assumptions editable
@@ -58,6 +61,8 @@ RuneLite verification blocker (13 November): RuneLite is installed but was not r
 
 13 November 2026, workflow release (PR #23): all 325 integrated Rust tests and 24 independent combat references passed, along with the release Wasm build. Disposable browser QA verified named saving/loading/reload, a 73-rune manual slot surviving a gear change, cast-budget repacking, single-slot reset, four manual confirmations and invalidation, plus blocked-storage warning/retry and recovery without losing saved fixtures. The release is merged and deployed; later tooltip publications include it.
 
-Ammunition follow-up: the full suite and 24 combat references pass with separate verification profiles inside the shared Cargo target root. Five focused regressions cover small budgets, worn and internal ammunition, phase previews, legacy defaults, over-allocation and forged share budgets. Browser QA verified 37 bolts in the starting bag and phase preview, a 1,000-projectile shortage disabling export, and recovery after restoring 37. Source/release publication pending final integration.
+Ammunition follow-up (PR #26): the full suite and 24 combat references pass with separate verification profiles inside the shared Cargo target root. Five focused regressions cover small budgets, worn and internal ammunition, phase previews, legacy defaults, over-allocation and forged share budgets. Browser QA verified 37 bolts in the starting bag and phase preview, a 1,000-projectile shortage disabling export, and recovery after restoring 37. Merged and deployed source: `1775cd72e2d661c5b430820e9eac64d8c7e086ec`.
+
+Encounter follow-up: eight focused regressions include 18 pinned Wardens P2 observations, two independently computed P2 loadouts, core HP scaling, explicit invulnerability/incoming gates, current-HP ruby/share round trips, finite-HP miss loops/overkill, acid rounding and Yama flare/stage workloads. These are source/formula checks; actual gameplay remains open. See [calculator validation](combat-validation.md) for sources and exact limits.
 
 Reproduce browser storage failure with `rustc tools/browser-check.rs -o /tmp/ironbound-browser-check`, then run `/tmp/ironbound-browser-check dist PORT` using a verified-free port. Open `/?storage=blocked`; return to `/` to recover the ordinary origin. Stop the owned server afterward. Use a disposable preview origin; never seed or clear a real account for testing.

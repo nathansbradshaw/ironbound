@@ -113,10 +113,7 @@ fn incompatible_ammo_and_unmodelled_phases_return_explanations() {
     let mut s = set(861);
     s[13] = Some(9144);
     assert!(combat::calculate(&member(99), &s, "Ranged", monster(1672), "").is_err());
-    let w = planner::monsters()
-        .iter()
-        .find(|m| m.name.contains("Warden"))
-        .unwrap();
+    let w = monster(11763); // Invulnerable P3 remains outside supported outgoing windows.
     assert!(combat::calculate(&member(99), &set(11905), "Magic", w, "").is_err());
 }
 #[test]

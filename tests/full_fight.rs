@@ -11,6 +11,7 @@ fn hit(damage: i32) -> Attack {
             hit_distribution: vec![(damage, 1.0)],
             hp_dependent: None,
             dps: damage as f64 / 0.6,
+            burn_dps: 0.0,
             potential_healing_per_second: 0.0,
             accuracy: 1.0,
             max_hit: damage,
@@ -32,6 +33,17 @@ fn hit(damage: i32) -> Attack {
         scales: false,
         prayer: 0.0,
     }
+}
+
+#[test]
+fn delayed_burn_is_not_silently_dropped_from_the_fight_timeline() {
+    let mut m = model(Encounter::Vorkath, 10);
+    m.attacks[0].hits.burn_dps = 1.0;
+    assert!(
+        simulation::simulate(&m)
+            .unwrap_err()
+            .contains("burn timing")
+    );
 }
 fn model(encounter: Encounter, damage: i32) -> Model {
     let count = if encounter == Encounter::Vorkath {

@@ -441,6 +441,9 @@ fn attack(
     let spell = rules::spell_name_for_target(member, set, &stock, &settings, &target, o.raid_level);
     let hits =
         combat::calculate_configured(member, set, style, &target, spell, o.raid_level, &settings)?;
+    if hits.burn_dps > 0.0 {
+        return Err("Eclipse burn buildup, expiration and target death are unverified in the fight simulator. Choose another packed set for this scenario.".into());
+    }
     if (hits.expected_attack_ticks - hits.attack_ticks as f64).abs() > 1e-8 {
         return Err("Conditional attack-speed procs need a verified per-attack timing model. Use another packed set for this simulation.".into());
     }
@@ -1220,6 +1223,9 @@ pub fn core_exposure(remaining: u32, maximum: u32) -> u32 {
     }
 }
 pub fn simulate(model: &Model) -> Result<Report, String> {
+    if model.attacks.iter().any(|a| a.hits.burn_dps != 0.0) {
+        return Err("Delayed burn timing is unverified in the fight simulator.".into());
+    }
     let count = match model.encounter {
         Encounter::Vorkath => 2,
         _ => 6,

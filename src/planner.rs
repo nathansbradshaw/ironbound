@@ -722,6 +722,7 @@ fn style_set(
     if crate::recommendation::enabled(options) {
         crate::guidance::seed(&mut set, style, m, owned, options);
     }
+    align_spell_weapon(&mut set, style, m, owned, options);
     for (slot, value) in set.iter_mut().enumerate() {
         if let Some(id) = options.gear_overrides.get(&format!("{style}:{slot}")) {
             if *id == 0 {
@@ -768,6 +769,52 @@ fn style_set(
     }
     refine_dps(&mut set, style, boss, m, owned, catalog, options);
     set
+}
+fn align_spell_weapon(
+    set: &mut [Option<i32>],
+    style: &str,
+    member: &Member,
+    owned: &BTreeMap<i32, u32>,
+    options: &Options,
+) {
+    let selection = &options.combat.spell_selection;
+    if crate::rules::base_style(style) != "Magic"
+        || selection.is_auto()
+        || options.gear_overrides.contains_key(&format!("{style}:3"))
+        || set[3].is_some_and(|id| selection.permits_weapon(id))
+    {
+        return;
+    }
+    set[3] = owned
+        .keys()
+        .copied()
+        .filter(|id| {
+            can_use(*id, member)
+                && crate::rules::weapon(*id).is_some_and(|r| r.family.style == "Magic")
+                && selection.permits_weapon(*id)
+        })
+        .max_by_key(|id| {
+            let mut trial = set.to_vec();
+            trial[3] = Some(*id);
+            let spell = crate::rules::spell_name_configured(member, &trial, owned, &options.combat);
+            let missing: u64 =
+                crate::rules::rune_supplies_for_set(spell, options.combat.spell_casts, &trial)
+                    .iter()
+                    .map(|(id, q)| u64::from(q.saturating_sub(owned.get(id).copied().unwrap_or(0))))
+                    .sum();
+            (
+                crate::rules::casting_supported_configured(
+                    member,
+                    &trial,
+                    owned,
+                    options.combat.spell_casts,
+                    &options.combat,
+                ),
+                std::cmp::Reverse(missing),
+                equipment_score(*id, style),
+                std::cmp::Reverse(*id),
+            )
+        });
 }
 fn refine_dps(
     set: &mut Vec<Option<i32>>,
@@ -1045,6 +1092,7 @@ fn guided_trials(
         &guided, style, member, owned, options,
     ));
     for trial in &mut trials {
+        align_spell_weapon(trial, style, member, owned, options);
         for (key, id) in &options.gear_overrides {
             if let Some(slot) = key
                 .strip_prefix(&format!("{style}:"))
@@ -1596,6 +1644,22 @@ fn plan_uncached(snapshot: &Snapshot, options: &Options) -> Plan {
         }
     }
     out.spell = trip_spells.into_iter().collect::<Vec<_>>().join(" / ");
+    if out.spell.is_empty()
+        && !options.combat.spell_selection.is_auto()
+        && crate::recommendation::targets(options)
+            .iter()
+            .any(|(_, style)| crate::rules::base_style(style) == "Magic")
+    {
+        out.spell = match &options.combat.spell_selection {
+            crate::rules::SpellSelection::Spell(name) => name.clone(),
+            crate::rules::SpellSelection::Element(element) => format!("{element} spell"),
+            _ => String::new(),
+        };
+        out.missing.push(format!(
+            "A compatible owned spellcasting weapon for {}",
+            out.spell
+        ));
+    }
     if mark_applies {
         for (id, quantity) in crate::rules::mark_darkness_supplies() {
             *spell_runes.entry(id).or_default() += quantity;

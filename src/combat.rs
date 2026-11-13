@@ -196,6 +196,16 @@ pub fn calculate_configured(
     }
     let requested_style = style;
     let style = rules::base_style(style);
+    if style == "Magic" {
+        if let Some(recipe) = rules::spells().iter().find(|recipe| recipe.name == spell) {
+            if recipe.family != rule.weapon.family {
+                return Err(format!(
+                    "This weapon cannot cast {}. Choose a supported spell or a compatible spellcasting weapon.",
+                    recipe.name
+                ));
+            }
+        }
+    }
     let hit_rule = crate::encounters::hit_rule(monster.id);
     if hit_rule.is_some_and(|rule| !rule.allowed_styles.iter().any(|allowed| allowed == style)) {
         return Err(

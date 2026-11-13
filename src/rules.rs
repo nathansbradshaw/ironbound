@@ -1,6 +1,6 @@
 //! Item IDs are data. Calculation code implements reusable mechanics, not individual weapons.
 use crate::account::Member;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 
 pub const STYLES: [&str; 6] = ["Melee", "Stab", "Slash", "Crush", "Ranged", "Magic"];
@@ -586,13 +586,50 @@ pub fn all_ammo_ids() -> Vec<i32> {
 }
 
 pub const DEFAULT_CASTS: u32 = 150;
-/// Temporary calculator choice; this does not alter the planned trip's spells or supplies.
-#[derive(Clone, Debug, Default, PartialEq, Eq)]
-pub enum SpellComparison {
+/// One source of truth for calculation, planning, rune packing and sharing.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(
+    tag = "mode",
+    content = "value",
+    rename_all = "snake_case",
+    deny_unknown_fields
+)]
+pub enum SpellSelection {
     #[default]
     Auto,
     Element(String),
     Spell(String),
+}
+impl SpellSelection {
+    pub fn is_auto(&self) -> bool {
+        matches!(self, Self::Auto)
+    }
+    pub fn valid(&self) -> bool {
+        match self {
+            Self::Auto => true,
+            Self::Element(element) => ["air", "water", "earth", "fire"].contains(&element.as_str()),
+            Self::Spell(name) => spells().iter().any(|recipe| recipe.name == *name),
+        }
+    }
+    pub fn permits_weapon(&self, id: i32) -> bool {
+        let Some(rule) = weapon(id) else {
+            return false;
+        };
+        if rule.family.style != "Magic" {
+            return false;
+        }
+        if self.is_auto() {
+            return true;
+        }
+        match self {
+            Self::Auto => true,
+            Self::Element(_) => rule.family.formula == Formula::Elemental,
+            Self::Spell(name) => spells()
+                .iter()
+                .find(|recipe| recipe.name == *name)
+                .is_some_and(|recipe| recipe.family == rule.weapon.family),
+        }
+    }
 }
 #[derive(Debug, Deserialize)]
 pub struct SpellRecipe {
@@ -654,6 +691,9 @@ pub fn spell_name_configured(
     owned: &BTreeMap<i32, u32>,
     settings: &crate::defence::Settings,
 ) -> &'static str {
+    if let Some(name) = manual_spell_name(member, set, owned, settings, settings.spell_casts) {
+        return name;
+    }
     spell_name_at_level(
         set,
         owned,
@@ -727,6 +767,9 @@ pub fn spell_name_for_target(
     invocation: u32,
 ) -> &'static str {
     let fallback = spell_name_configured(member, set, owned, settings);
+    if !settings.spell_selection.is_auto() {
+        return fallback;
+    }
     let Some(rule) = set.get(3).copied().flatten().and_then(weapon) else {
         return fallback;
     };
@@ -771,46 +814,45 @@ pub fn elemental_candidates(
         .filter(|s| elements.insert(s.element.as_deref()))
         .collect()
 }
-pub fn comparison_spell_name(
+fn manual_spell_name(
     member: &Member,
     set: &[Option<i32>],
     owned: &BTreeMap<i32, u32>,
     settings: &crate::defence::Settings,
-    target: &crate::planner::Monster,
-    invocation: u32,
-    choice: &SpellComparison,
-) -> &'static str {
-    let auto = || spell_name_for_target(member, set, owned, settings, target, invocation);
-    let Some(rule) = set.get(3).copied().flatten().and_then(weapon) else {
-        return auto();
-    };
-    match choice {
-        SpellComparison::Auto => auto(),
-        SpellComparison::Spell(name) => spells()
+    casts: u32,
+) -> Option<&'static str> {
+    if set
+        .get(3)
+        .copied()
+        .flatten()
+        .and_then(weapon)
+        .is_some_and(|r| r.family.style != "Magic")
+    {
+        return None;
+    }
+    match &settings.spell_selection {
+        SpellSelection::Auto => None,
+        SpellSelection::Spell(name) => spells()
             .iter()
-            .find(|s| s.name == *name && s.family == rule.weapon.family)
-            .map(|s| s.name.as_str())
-            .unwrap_or_else(auto),
-        SpellComparison::Element(element) => {
+            .find(|s| s.name == *name)
+            .map(|s| s.name.as_str()),
+        SpellSelection::Element(element) => {
             let magic = crate::modifiers::level(member, "Magic", &settings.boosts).unwrap_or(0);
             let recipes: Vec<_> = spells()
                 .iter()
-                .filter(|s| {
-                    s.family == rule.weapon.family && s.element.as_deref() == Some(element.as_str())
-                })
+                .filter(|s| s.element.as_deref() == Some(element.as_str()))
                 .collect();
             recipes
                 .iter()
-                .find(|s| magic >= s.level && has_runes(s, set, owned, settings.spell_casts))
+                .find(|s| magic >= s.level && has_runes(s, set, owned, casts))
                 .or_else(|| recipes.iter().find(|s| magic >= s.level))
                 .or_else(|| recipes.last())
                 .map(|s| s.name.as_str())
-                .unwrap_or_else(auto)
         }
     }
 }
-/// Availability is separate from hypothetical damage: missing runes need not hide an estimate.
-pub fn spell_comparison_requirement(
+/// Missing supplies do not hide theoretical damage, but must block a ready/exportable plan.
+pub fn spell_requirement(
     member: &Member,
     set: &[Option<i32>],
     owned: &BTreeMap<i32, u32>,
@@ -818,7 +860,9 @@ pub fn spell_comparison_requirement(
     name: &str,
 ) -> Option<String> {
     let recipe = spells().iter().find(|s| s.name == name)?;
-    let rule = set.get(3).copied().flatten().and_then(weapon)?;
+    let Some(rule) = set.get(3).copied().flatten().and_then(weapon) else {
+        return Some("Requires a compatible spellcasting weapon.".into());
+    };
     if recipe.family != rule.weapon.family {
         return Some("Requires a compatible spellcasting weapon.".into());
     }
@@ -837,7 +881,7 @@ pub fn spell_comparison_requirement(
         .collect();
     (!missing.is_empty()).then(|| {
         format!(
-            "Missing runes for {} casts: {}. Damage shown is hypothetical.",
+            "Missing runes for {} casts: {}. Prepare these runes before using this plan.",
             settings.spell_casts,
             missing.join(", ")
         )
@@ -901,7 +945,7 @@ pub fn casting_supported(
     owned: &BTreeMap<i32, u32>,
     casts: u32,
 ) -> bool {
-    casting_at_level(member, set, owned, casts, member.level("Magic"))
+    casting_at_level(member, set, owned, casts, member.level("Magic"), None)
 }
 pub fn casting_supported_configured(
     member: &Member,
@@ -916,6 +960,7 @@ pub fn casting_supported_configured(
         owned,
         casts,
         crate::modifiers::level(member, "Magic", &settings.boosts),
+        manual_spell_name(member, set, owned, settings, casts),
     )
 }
 fn casting_at_level(
@@ -924,6 +969,7 @@ fn casting_at_level(
     owned: &BTreeMap<i32, u32>,
     casts: u32,
     magic: Option<u32>,
+    selected: Option<&str>,
 ) -> bool {
     let Some(rule) = set.get(3).copied().flatten().and_then(weapon) else {
         return false;
@@ -940,11 +986,13 @@ fn casting_at_level(
         return false;
     }
     if rule.family.formula == Formula::Powered {
-        return magic.is_some();
+        return selected.is_none() && magic.is_some();
     }
-    let name = spell_name_at_level(set, owned, magic, casts);
+    let name = selected.unwrap_or_else(|| spell_name_at_level(set, owned, magic, casts));
     spells().iter().find(|s| s.name == name).is_some_and(|s| {
-        magic.is_some_and(|level| level >= s.level) && has_runes(s, set, owned, casts)
+        s.family == rule.weapon.family
+            && magic.is_some_and(|level| level >= s.level)
+            && has_runes(s, set, owned, casts)
     })
 }
 pub fn spell_max_hit(name: &str, magic: u32) -> Option<i64> {

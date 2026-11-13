@@ -190,7 +190,11 @@ fn reviewed_quest_bodies_have_damage_without_claiming_complete_fights() {
             .iter()
             .find(|e| e.name == name)
             .unwrap();
-        assert_eq!(entry.coverage(), "Basic attack estimates · mechanics partial", "{name}");
+        assert_eq!(
+            entry.coverage(),
+            "Basic attack estimates · mechanics partial",
+            "{name}"
+        );
         for target in &entry.targets {
             assert!(
                 encounters::limitation(planner::monster(target.id).unwrap()).is_none(),

@@ -206,6 +206,18 @@ fn normal_policy_keeps_energy_full_and_existing_empowerment_is_consumed_first() 
     close(r.empowered_remaining, 0.0);
     close(r.energy_spent, 0.0);
     conserved(&r, 0, 10000);
+    s.special_energy = 100;
+    s.rotation.policy = Policy::SpecialsWhenReady;
+    let r = run(&gear(34725), &s);
+    assert_eq!(r.trace[0].attack, "Empowered");
+    assert_eq!(r.trace[1].attack, "Empowered");
+    assert_eq!(r.trace[2].attack, "Empowered");
+    assert_eq!(
+        (r.trace[3].tick, r.trace[3].attack.as_str()),
+        (6, "Special")
+    );
+    close(r.energy_spent, 50.0);
+    conserved(&r, 100, 10000);
 }
 
 #[test]

@@ -228,7 +228,9 @@ pub fn estimate(
     attack: &str,
     settings: &Settings,
 ) -> Result<Estimate, String> {
-    if crate::sailing::is_sea(target.id) { return Err("Sea creatures attack the boat. Use Boat setup for hull HP and keel damage reduction; personal defence and protection prayers do not protect the hull.".into()); }
+    if crate::sailing::is_sea(target.id) {
+        return Err("Sea creatures attack the boat. Use Boat setup for hull HP and keel damage reduction; personal defence and protection prayers do not protect the hull.".into());
+    }
     if crate::encounters::window(target.id)
         .is_some_and(|w| w.damage_model != crate::encounters::DamageModel::Standard)
         && !profile(target.id).is_some_and(|p| p.kind == "standard" && !p.attacks.is_empty())

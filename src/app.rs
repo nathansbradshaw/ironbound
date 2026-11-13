@@ -383,7 +383,7 @@ thread_local! {
 
 fn live_number(id: &str) -> bool {
     if let Some(key) = id.strip_prefix("sailing-") {
-        return ["visible","balls","kits","reserved","minutes","uptime"].contains(&key);
+        return ["visible", "balls", "kits", "reserved", "minutes", "uptime"].contains(&key);
     }
     if id.starts_with("risk-") {
         return true;
@@ -418,7 +418,7 @@ fn apply_number(s: &mut State, id: &str, value: &str) -> bool {
         return false;
     }
     if let Some(key) = id.strip_prefix("sailing-") {
-        return s.saved.options.sailing.update(key,value);
+        return s.saved.options.sailing.update(key, value);
     }
     if let Some(key) = id.strip_prefix("risk-") {
         if let Some((field, item)) = key
@@ -1219,9 +1219,34 @@ pub fn start() -> Result<(), JsValue> {
         };
         let id = el.id();
         if let Some(key) = id.strip_prefix("sailing-") {
-            let value = el.dyn_ref::<HtmlSelectElement>().map(|e| e.value()).or_else(|| el.dyn_ref::<HtmlInputElement>().map(|e| if e.type_()=="checkbox" { e.checked().to_string() } else { e.value() })).unwrap_or_default();
-            let changed=STATE.with(|state| {let mut s=state.borrow_mut(); if s.shared_setup.is_some() {return false;} let changed=s.saved.options.sailing.update(key,&value); if changed {s.persist();} changed });
-            if changed {render();} return;
+            let value = el
+                .dyn_ref::<HtmlSelectElement>()
+                .map(|e| e.value())
+                .or_else(|| {
+                    el.dyn_ref::<HtmlInputElement>().map(|e| {
+                        if e.type_() == "checkbox" {
+                            e.checked().to_string()
+                        } else {
+                            e.value()
+                        }
+                    })
+                })
+                .unwrap_or_default();
+            let changed = STATE.with(|state| {
+                let mut s = state.borrow_mut();
+                if s.shared_setup.is_some() {
+                    return false;
+                }
+                let changed = s.saved.options.sailing.update(key, &value);
+                if changed {
+                    s.persist();
+                }
+                changed
+            });
+            if changed {
+                render();
+            }
+            return;
         }
         if id.starts_with("rank-") || id.starts_with("plan-rank-") {
             let value = el
@@ -1684,15 +1709,28 @@ fn focus_inventory(slot: usize) {
     }
 }
 fn act(action: &str) {
-    if let Some(slot)=action.strip_prefix("sailing-slot:") {
+    if let Some(slot) = action.strip_prefix("sailing-slot:") {
         if crate::sailing_view::valid_slot(slot) {
-            STATE.with(|state| state.borrow_mut().sailing_slot=slot.into());
+            STATE.with(|state| state.borrow_mut().sailing_slot = slot.into());
             render();
-            if let Ok(Some(picker))=document().query_selector(".ship-picker") {picker.scroll_into_view();}
-        } return;
+            if let Ok(Some(picker)) = document().query_selector(".ship-picker") {
+                picker.scroll_into_view();
+            }
+        }
+        return;
     }
-    if let Some((key,value))=action.strip_prefix("sailing:").and_then(|v|v.split_once(':')) {
-        STATE.with(|state| {let mut s=state.borrow_mut();if s.shared_setup.is_none() && s.saved.options.sailing.update(key,value) {s.persist();}});render();return;
+    if let Some((key, value)) = action
+        .strip_prefix("sailing:")
+        .and_then(|v| v.split_once(':'))
+    {
+        STATE.with(|state| {
+            let mut s = state.borrow_mut();
+            if s.shared_setup.is_none() && s.saved.options.sailing.update(key, value) {
+                s.persist();
+            }
+        });
+        render();
+        return;
     }
 
     if action.starts_with("risk-") {
@@ -3650,7 +3688,9 @@ fn bestiary_assessments(s: &State) -> Vec<crate::bestiary::Assessment> {
 }
 fn extra_filter_label(s: &State) -> String {
     let mut labels = vec!["Gear & requirements"];
-    if s.hide_quest_bosses { labels.push("Quest bosses hidden"); }
+    if s.hide_quest_bosses {
+        labels.push("Quest bosses hidden");
+    }
     if s.gear_filter != crate::bestiary::GearFilter::Any {
         labels.push(s.gear_filter.label());
     }
@@ -3701,7 +3741,11 @@ fn encounter_catalog(s: &State) -> String {
         ));
     }
     html.push_str("</nav></fieldset><fieldset class=\"bestiary-filter-group\"><legend>Quest bosses</legend><nav class=\"encounter-filters\" aria-label=\"Quest boss filters\">");
-    html.push_str(&encounter_filter_button("quest-filter", "Hide quest bosses", s.hide_quest_bosses));
+    html.push_str(&encounter_filter_button(
+        "quest-filter",
+        "Hide quest bosses",
+        s.hide_quest_bosses,
+    ));
     html.push_str("</nav></fieldset><p class=\"bestiary-filter-note\">Known levels met checks recorded Slayer requirements only. Quest, key and task access remain unverified. Gear, requirements and quest filters apply together.</p>");
     let location = match s.wilderness_location.as_str() {
         "safe" => " · avoiding Wilderness",
@@ -3729,7 +3773,9 @@ fn encounter_results(s: &State) -> String {
         .iter()
         .enumerate()
         .filter(|(index, e)| {
-            if !crate::quest_bosses::visible(e, s.hide_quest_bosses) { return false; }
+            if !crate::quest_bosses::visible(e, s.hide_quest_bosses) {
+                return false;
+            }
             let exposed = crate::wilderness::exposure(&e.name) != crate::wilderness::Exposure::None;
             if s.wilderness_location == "safe" && exposed
                 || s.wilderness_location == "wild" && !exposed
@@ -3832,7 +3878,10 @@ fn refresh_encounter_browser(s: &State) {
                     )
                 }),
         );
-    for (id, active) in buttons.chain(std::iter::once(("quest-filter-Hide-quest-bosses".into(), s.hide_quest_bosses))) {
+    for (id, active) in buttons.chain(std::iter::once((
+        "quest-filter-Hide-quest-bosses".into(),
+        s.hide_quest_bosses,
+    ))) {
         if let Some(el) = document().get_element_by_id(&id) {
             el.set_class_name(if active {
                 "encounter-filter active"
@@ -4946,7 +4995,7 @@ fn rotation_panel(
     let cfg = &settings.rotation;
     let period = crate::rotation::interval(crate::rotation::lightbearer(set));
     let mut html = format!(
-        "<section aria-label=\"Energy recovery and rotations\"><h3>Energy recovery &amp; rotations</h3><p>Worn ring: restores 10% every {:.1} seconds. Recovery pauses at full energy.</p><label><input id=\"rotation-enabled\" type=\"checkbox\" {}> Compare a timed rotation</label>",
+        "<section aria-label=\"Energy recovery and rotations\"><h3>Energy recovery &amp; rotations</h3><p>Worn ring: restores 10% every {:.1} seconds. Recovery pauses at full energy.</p><p><label><input id=\"rotation-enabled\" type=\"checkbox\" {}> Compare a timed rotation</label></p>",
         period as f64 * 0.6,
         if cfg.enabled { "checked" } else { "" }
     );
@@ -5077,7 +5126,9 @@ fn combat_panel(s: &State, p: &Plan) -> String {
     );
     let results_index = html.len();
     let mut headline = String::new();
-    if crate::sailing::active(&s.saved.options) { html.push_str("<p class=\"notice\">Personal weapon comparison only. Cannon and crew damage are not included. The player cannot use a weapon while operating a cannon or steering.</p>"); }
+    if crate::sailing::active(&s.saved.options) {
+        html.push_str("<p class=\"notice\">Personal weapon comparison only. Cannon and crew damage are not included. The player cannot use a weapon while operating a cannon or steering.</p>");
+    }
     html.push_str(&combat_style_controls(s, &set, style));
     html.push_str(r#"<div class="target-choices" role="group" aria-label="Against"><h4>Against</h4><div class="combat-subtype-options">"#);
     let mut priority_ids = std::collections::BTreeSet::new();
@@ -6880,5 +6931,11 @@ fn death_risk_panel(s: &State, plan: &Plan) -> String {
 }
 
 fn sailing_panel(s: &State) -> String {
-    crate::sailing_view::render(&s.saved.options.sailing,s.saved.snapshot.selected(),&s.saved.options.targets,&s.sailing_slot,s.shared_setup.is_some())
+    crate::sailing_view::render(
+        &s.saved.options.sailing,
+        s.saved.snapshot.selected(),
+        &s.saved.options.targets,
+        &s.sailing_slot,
+        s.shared_setup.is_some(),
+    )
 }

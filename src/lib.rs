@@ -1,9 +1,9 @@
 pub mod account;
-pub mod sailing;
-pub mod sailing_view;
 pub mod bestiary;
 pub mod burn;
 pub mod death_risk;
+pub mod sailing;
+pub mod sailing_view;
 pub mod wilderness;
 
 pub mod alternatives;
@@ -29,8 +29,8 @@ pub mod moon;
 pub mod optimization;
 pub mod planner;
 pub mod prayer;
-pub mod quest_bosses;
 pub mod preparation;
+pub mod quest_bosses;
 pub mod raids;
 pub mod ranking;
 pub mod recommendation;

@@ -97,7 +97,9 @@ fn save(file: &str, data: &Value) -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let profiles = &serde_json::from_slice::<Vec<ironbound::quest_bosses::Profile>>(&fs::read("assets/quest-bosses.json")?)?;
+    let profiles = &serde_json::from_slice::<Vec<ironbound::quest_bosses::Profile>>(&fs::read(
+        "assets/quest-bosses.json",
+    )?)?;
     let mut mechanics: Value =
         serde_json::from_slice(&fs::read("assets/encounter-mechanics.json")?)?;
     let windows = mechanics["windows"].as_array_mut().ok_or("windows")?;

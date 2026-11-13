@@ -153,3 +153,15 @@ pub fn combined_bonus(value: i32, a: [i64; 2], b: [i64; 2]) -> i32 {
     let numerator = a[0] * b[1] + (b[0] - b[1]) * a[1];
     (i64::from(value) * numerator / (a[1] * b[1])) as i32
 }
+
+/// Pinned Wiki P2 shield formula: guaranteed accuracy, with accuracy roll
+/// contributing an integer 15–40% damage band and a further 20% upper range.
+pub fn wardens_p2_bounds(attack_roll: i64, defence_roll: i64, base_max: i32) -> (i32, i32) {
+    let delta = attack_roll.saturating_sub(defence_roll / 3).max(0);
+    let percent = (15 + delta.saturating_mul(25) / 42_000).clamp(15, 40);
+    let base_max = base_max.max(0);
+    (
+        (i64::from(base_max) * percent / 100) as i32,
+        (i64::from(base_max) * (percent + 20) / 100) as i32,
+    )
+}

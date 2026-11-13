@@ -55,6 +55,7 @@ struct State {
     raid_rooms_open: bool,
     switch_preferences_open: bool,
     combat_options_open: bool,
+    attack_budget_open: bool,
     budget_comparison_open: bool,
     budget_phases_open: bool,
     budget_window: Option<String>,
@@ -156,6 +157,7 @@ impl State {
             raid_rooms_open: false,
             switch_preferences_open: false,
             combat_options_open: false,
+            attack_budget_open: false,
             budget_comparison_open: comparison_query.is_some(),
             budget_phases_open: false,
             budget_window: None,
@@ -349,6 +351,7 @@ fn live_number(id: &str) -> bool {
         "budget-cap-right",
         "spell-casts",
         "ammo-shots",
+        "target-hp",
     ]
     .contains(&id)
         || id.starts_with("priority-")
@@ -361,6 +364,15 @@ fn apply_number(s: &mut State, id: &str, value: &str) -> bool {
         return false;
     }
     let target_id = comparison_monster(s).map(|m| m.id);
+    let target_max = comparison_monster(s)
+        .and_then(|m| {
+            crate::encounters::window(m.id)
+                .and_then(|w| w.start_hp)
+                .or_else(|| {
+                    combat::target_hitpoints(m, s.saved.options.raid_level).map(|hp| hp as u32)
+                })
+        })
+        .unwrap_or(100_000);
     if ["budget-cap-left", "budget-cap-right"].contains(&id) {
         let Ok(value) = value.parse::<usize>() else {
             return false;
@@ -369,6 +381,13 @@ fn apply_number(s: &mut State, id: &str, value: &str) -> bool {
         return true;
     }
     let o = &mut s.saved.options;
+    if id == "target-hp" && value.trim().is_empty() {
+        if let Some(target) = target_id {
+            o.combat.target_hp.remove(&target);
+        }
+        s.export_text = None;
+        return true;
+    }
     if id == "max-switches" && value.trim().is_empty() {
         o.max_switches = None;
         o.fewer_switches = false;
@@ -396,6 +415,11 @@ fn apply_number(s: &mut State, id: &str, value: &str) -> bool {
         }
         "raid-level" => o.raid_level = n.min(150),
         "spell-casts" => o.combat.spell_casts = n.clamp(1, 10_000),
+        "target-hp" => {
+            if let Some(target) = target_id {
+                o.combat.target_hp.insert(target, n.clamp(1, target_max));
+            }
+        }
         "ammo-shots" => {
             let shots = n.clamp(1, 10_000);
             if o.combat.ammo_shots != shots {
@@ -883,6 +907,9 @@ pub fn start() -> Result<(), JsValue> {
                 STATE.with(|state| {
                     state.borrow_mut().combat_options_open = el.has_attribute("open")
                 });
+            } else if el.id() == "attack-budget" {
+                STATE
+                    .with(|state| state.borrow_mut().attack_budget_open = el.has_attribute("open"));
             } else if el.id() == "budget-phases" {
                 STATE
                     .with(|state| state.borrow_mut().budget_phases_open = el.has_attribute("open"));
@@ -1618,6 +1645,10 @@ fn act(action: &str) {
                     let token = crate::preparation::token(&s.saved.snapshot, &s.saved.options);
                     s.saved.options.confirmations.insert(id.into(), token);
                 }
+            }
+        } else if action == "reset-target-hp" {
+            if let Some(target) = comparison_monster(&s).map(|m| m.id) {
+                s.saved.options.combat.target_hp.remove(&target);
             }
         } else if action == "reset-all-inventory" {
             s.saved.options.inventory_overrides.clear();
@@ -3331,11 +3362,20 @@ fn inventory_choices(s: &State) -> String {
 }
 
 fn encounter_targets(s: &State) -> Vec<i32> {
-    match s.saved.options.boss {
+    let mut targets = match s.saved.options.boss {
         Boss::Barrows => vec![1673, 1674, 1676, 1677, 1675, 1672],
-        Boss::Toa => vec![11778, 11719, 11730, 11789],
+        Boss::Toa => vec![
+            11778, 11719, 11730, 11789, 11751, 11753, 11756, 11755, 11758, 11761, 11762,
+        ],
         Boss::Custom => s.saved.options.targets.iter().map(|t| t.id).collect(),
+    };
+    if targets.contains(&8059) {
+        targets.push(100020);
     }
+    if targets.contains(&14176) || targets.contains(&100011) {
+        targets.push(100030);
+    }
+    targets
 }
 fn comparison_style(s: &State) -> &str {
     s.edit_style
@@ -4086,6 +4126,12 @@ fn combat_panel(s: &State, p: &Plan) -> String {
         .filter(|id| priority_ids.insert(*id))
     {
         if let Some(m) = planner::monsters().iter().find(|m| m.id == id) {
+            let name = crate::encounters::window(id)
+                .filter(|w| {
+                    id < 100_000 && w.damage_model != crate::encounters::DamageModel::Standard
+                })
+                .map(|w| w.phase.as_str())
+                .unwrap_or(&m.name);
             html.push_str(&format!(
                 r#"<button class="phase {}" data-action="compare-target:{id}" aria-pressed="{}">{}</button>"#,
                 if comparison_monster(s).is_some_and(|m| m.id == id) {
@@ -4094,12 +4140,18 @@ fn combat_panel(s: &State, p: &Plan) -> String {
                     ""
                 },
                 comparison_monster(s).is_some_and(|m| m.id == id),
-                esc(&m.name)
+                esc(name)
             ));
         }
     }
     html.push_str("</div></div>");
     if let (Some(m), Some(target)) = (s.saved.snapshot.selected(), comparison_monster(s)) {
+        if let Some(hp) = s.saved.options.combat.target_hp.get(&target.id) {
+            html.push_str(&format!(
+                "<p class=\"small-note\">Current target HP: {hp}. {}</p>",
+                button("reset-target-hp", "Reset target HP", "text-button")
+            ));
+        }
         let mut stock = s.saved.snapshot.available(s.saved.options.shared);
         for id in &s.saved.options.excluded {
             stock.remove(id);
@@ -4145,6 +4197,7 @@ fn combat_panel(s: &State, p: &Plan) -> String {
         ) {
             Ok(r) => {
                 html.push_str(&format!(r#"<dl class="combat-values"><div><dt>Outgoing DPS</dt><dd>{:.3}</dd></div><div><dt>Hit chance</dt><dd>{:.1}%</dd></div><div><dt>Max hit</dt><dd>{}</dd></div><div><dt>Attack speed</dt><dd>{} ticks</dd></div></dl><p>{} attacks · {:.1} seconds per attack</p>"#,r.dps,r.accuracy*100.0,r.max_hit,r.attack_ticks,esc(&r.attack_type),r.attack_ticks as f64*0.6));
+                html.push_str(&attack_window_budget(s, target, &set, &r));
                 html.push_str(&combat_breakdown(s, m, &set, target, &r));
             }
             Err(e) => html.push_str(&format!(
@@ -4203,7 +4256,41 @@ fn combat_panel(s: &State, p: &Plan) -> String {
         "<tr><th>Magic damage</th><td>{:.1}%</td></tr>",
         bonus.other.get("magic_str").copied().unwrap_or(0) as f64 / 10.0
     ));
-    html.push_str("</tbody></table></details><details><summary>DPS assumptions</summary><p class=\"small-note\">Selected current-level boosts and stat prayer; no boost decay, special-attack damage, venom or recoil. ToA assumes solo, path level 0, raid levels 0–150. Bolt effects use full target HP and the selected Kandarin diary setting. Outgoing DPS covers uninterrupted attacks while vulnerable. Incoming scenarios are separate and their coverage notes apply. Movement, special-phase uptime, curses and eating are not a full encounter simulation. Unsupported mechanics show no DPS.</p></details></div></section>");
+    html.push_str("</tbody></table></details><details><summary>DPS assumptions</summary><p class=\"small-note\">Selected current-level boosts and stat prayer; no boost decay, special-attack damage, venom or recoil. ToA assumes solo, path level 0, raid levels 0–150. Ruby bolts use selected target HP (full by default) and the selected Kandarin diary setting. Outgoing DPS covers uninterrupted attacks while vulnerable. Incoming scenarios are separate and their coverage notes apply. Movement, special-phase uptime, curses and eating are not a full encounter simulation. Unsupported mechanics show no DPS.</p></details></div></section>");
+    html
+}
+fn attack_window_budget(
+    s: &State,
+    target: &planner::Monster,
+    set: &[Option<i32>],
+    result: &combat::ResultStats,
+) -> String {
+    let max = crate::encounters::window(target.id)
+        .and_then(|w| w.start_hp)
+        .or_else(|| {
+            combat::target_hitpoints(target, s.saved.options.raid_level).map(|hp| hp as u32)
+        })
+        .unwrap_or(1);
+    let current = s
+        .saved
+        .options
+        .combat
+        .target_hp
+        .get(&target.id)
+        .map(u32::to_string)
+        .unwrap_or_default();
+    let mut html = format!(
+        "<details id=\"attack-budget\" class=\"attack-budget\" {}><summary>Attack window & supply budget</summary><label>Current target HP<input id=\"target-hp\" type=\"number\" min=\"1\" max=\"{max}\" placeholder=\"{max}\" value=\"{current}\"></label><p class=\"small-note\">Leave empty for this window's starting HP. Ruby bolts use this HP; the attack budget recalculates their procs as HP falls.</p>",
+        if s.attack_budget_open { "open" } else { "" }
+    );
+    if let Some(window) = crate::encounters::window(target.id) {
+        html.push_str(&format!("<p>{}</p>", esc(&window.description)));
+    }
+    match crate::attack_budget::for_window(target, result, &s.saved.options, set) {
+        Ok(budget) => html.push_str(&format!("<dl class=\"combat-values\"><div><dt>Expected attacks</dt><dd>{:.1}</dd></div><div><dt>Attack cooldown budget</dt><dd>{:.1}s</dd></div><div><dt>HP window · each of {} target(s)</dt><dd>{} → {}</dd></div></dl><p class=\"small-note\">Includes misses, overkill and the finishing cooldown. This is an expectation, not a safe supply minimum or kill-time prediction. Compare with your {}-cast / {}-projectile packing budgets; projectile recovery, ruby self-damage, movement, specials, regeneration and eating are excluded.</p>", budget.attacks, budget.seconds, budget.entities, budget.start_hp, budget.stop_hp, s.saved.options.combat.spell_casts, s.saved.options.combat.ammo_shots)),
+        Err(reason) => html.push_str(&format!("<p class=\"small-note\">{}</p>", esc(&reason))),
+    }
+    html.push_str("</details>");
     html
 }
 fn tier_table(s: &State) -> String {

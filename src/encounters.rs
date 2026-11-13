@@ -347,12 +347,15 @@ pub struct Entry {
     pub bank_equipment: bool,
 }
 impl Entry {
+    pub fn quest(&self) -> Option<&'static str> {
+        crate::quest_bosses::profile(&self.name).map(|p| p.quest.as_str())
+    }
     pub fn guide_url(&self) -> String {
         let page = match self.name.as_str() {
             "Sliske's wights" => "Desert_Treasure_II",
             name => name.strip_suffix(" (Quest)").unwrap_or(name),
         };
-        let suffix = if self.note.starts_with("Quest boss") { "" } else { "/Strategies" };
+        let suffix = if self.quest().is_some() { "" } else { "/Strategies" };
         format!("https://oldschool.runescape.wiki/w/{}{suffix}", page.replace(' ', "_"))
     }
 
@@ -364,6 +367,7 @@ impl Entry {
             && self.targets.iter().zip(targets).all(|(a, b)| a.id == b.id)
     }
     pub fn category(&self) -> &'static str {
+        if self.quest().is_some() { return "Quest bosses"; }
         let data = browser_catalog();
         if data.raids.iter().any(|raid| self.name.starts_with(raid)) {
             "Raids"

@@ -415,7 +415,9 @@ fn duke_uses_seventy_percent_demonbane_effectiveness_only_in_reviewed_awake_stat
     near(r.dps, 21962.0 / 61914.0 * (9.5 + 1.0 / 20.0) / 2.4);
     assert_eq!(encounters::demonbane_vulnerability(12191), 70);
     assert_eq!(encounters::demonbane_vulnerability(14176), 120);
-    assert!(encounters::limitation(planner::monster(12195).unwrap()).is_some());
+    assert!(encounters::limitation(planner::monster(12195).unwrap()).is_none());
+    assert_eq!(encounters::demonbane_vulnerability(12195), 70);
+    assert_eq!(planner::monster(12195).unwrap().skills["hp"], 330);
     assert_eq!(
         [5889, 5891, 5908]
             .iter()

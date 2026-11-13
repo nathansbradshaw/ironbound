@@ -271,6 +271,7 @@ pub fn calculate_configured(
     let requested_style = style;
     let style = rules::base_style(style);
     crate::monster_rules::check_weapon(monster.id, style, weapon)?;
+    crate::quest_bosses::check_loadout(monster.id, set, style, spell)?;
     if style == "Ranged" && !settings.ranged_type.permits_weapon(weapon) {
         return Err(format!(
             "Choose a {} ranged weapon for this plan.",
@@ -803,6 +804,7 @@ pub fn calculate_configured(
             attack = attack * i64::from(num) / i64::from(den);
         }
     }
+    attack = crate::quest_bosses::vampyre_accuracy(monster.id, weapon, set[12], attack);
     let always_max = always_max || crate::monster_rules::guaranteed_max(monster.id, attack_type);
     let mut hit = accuracy(attack, defence);
     let brimstone = style == "Magic" && rules::equipped_effect(set, "brimstone_accuracy");
@@ -974,8 +976,8 @@ pub fn calculate_configured(
         || rule.has(Effect::Scythe)
         || frostweaver
         || style == "Ranged" && rules::set_effect(set, "karil_damned");
-    let npc_transform =
-        crate::monster_rules::transform_for(monster.id, weapon, attack_type, &b, spell);
+    let npc_transform = crate::quest_bosses::damage_transform(monster.id, weapon, set[12])
+        .unwrap_or_else(|| crate::monster_rules::transform_for(monster.id, weapon, attack_type, &b, spell));
     let hit_effects = crate::effects::SetHitEffects {
         damage_rolls,
         accurate_min: if style == "Ranged"

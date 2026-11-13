@@ -1,0 +1,262 @@
+use ironbound::{
+    account::{self, Member},
+    bestiary::{self, Readiness},
+    combat, encounters,
+    monster_rules::{self, Transform},
+    planner::{self, Boss, Options},
+    quest_bosses, rules,
+};
+use std::collections::BTreeSet;
+fn member() -> Member {
+    let mut m = Member::default();
+    for s in account::SKILLS {
+        m.level_overrides.insert(s.into(), 99);
+    }
+    m
+}
+fn set(weapon: i32) -> Vec<Option<i32>> {
+    let mut s = vec![None; 14];
+    s[3] = Some(weapon);
+    s
+}
+fn calc(
+    id: i32,
+    s: &[Option<i32>],
+    style: &str,
+    spell: &str,
+) -> Result<combat::ResultStats, String> {
+    combat::calculate(&member(), s, style, planner::monster(id).unwrap(), spell)
+}
+fn strong() -> account::Snapshot {
+    let mut a = account::demo();
+    a.members[0] = member();
+    a.members[0].name = a.selected.clone();
+    // Public synthetic fixture: real weapons, four armour slots and sufficient
+    // ordinary runes/ammunition; includes stronger generic weapons as decoys.
+    a.members[0].bank = Some(vec![
+        33718, 1, 22398, 1, 24699, 1, 4151, 1, 1381, 1, 1383, 1, 1387, 1, 1401, 1, 11905, 1, 9185,
+        1, 9144, 1000, 9242, 1000, 892, 1000, 861, 1, 1580, 1, 21140, 1, 10828, 1, 6570, 1, 1725,
+        1, 6585, 1, 11832, 1, 11834, 1, 7462, 1, 11840, 1, 4708, 1, 4712, 1, 4714, 1, 2503, 1,
+        2497, 1, 4091, 1, 4093, 1, 556, 10000, 554, 10000, 555, 10000, 557, 10000, 558, 10000, 560,
+        10000, 565, 10000, 562, 10000,
+    ]);
+    a
+}
+#[test]
+fn all_quest_profiles_are_tagged_filterable_and_rating_is_available() {
+    let mut ids = BTreeSet::new();
+    let a = strong();
+    let rows = bestiary::assess_catalog(&a, &Options::default());
+    assert_eq!(quest_bosses::profiles().len(), 23);
+    for p in quest_bosses::profiles() {
+        let i = encounters::catalog()
+            .iter()
+            .position(|e| e.name == p.name)
+            .unwrap();
+        let e = &encounters::catalog()[i];
+        assert_eq!(e.quest(), Some(p.quest.as_str()));
+        assert_eq!(e.category(), "Quest bosses");
+        assert!(!quest_bosses::visible(e, true));
+        assert!(quest_bosses::visible(e, false));
+        for id in &p.ids {
+            assert!(ids.insert(*id));
+            assert!(
+                encounters::limitation(planner::monster(*id).unwrap()).is_none(),
+                "{id}"
+            );
+        }
+        assert_ne!(
+            rows[i].readiness,
+            Readiness::Unknown,
+            "{}: {}",
+            p.name,
+            rows[i].reason
+        );
+        assert!(
+            !rows[i].reason.contains("No usable"),
+            "{}: {}",
+            p.name,
+            rows[i].reason
+        );
+        let html = bestiary::card(e, i, &rows[i]);
+        assert!(html.contains("Quest boss ·"));
+        assert!(html.contains(&p.quest));
+    }
+    for name in ["Vorkath", "Duke Sucellus", "Vardorvis", "Scurrius"] {
+        let e = encounters::catalog()
+            .iter()
+            .find(|e| e.name == name)
+            .unwrap();
+        assert_eq!(e.quest(), None);
+        assert!(quest_bosses::visible(e, true));
+        assert_eq!(e.category(), "Bosses");
+    }
+}
+#[test]
+fn required_flails_apply_independent_roll_and_splat_arithmetic() {
+    for (id, weapon, style, n, d) in [
+        (8242, 22398, "Crush", 1, 1),
+        (9567, 24699, "Crush", 21, 20),
+        (16204, 33718, "Slash", 5, 4),
+    ] {
+        let result = calc(id, &set(weapon), style, "").unwrap();
+        let bonus = combat::stats(weapon).unwrap().offensive[&style.to_lowercase()];
+        assert_eq!(
+            result.attack_roll,
+            (99 + 8 + 3) * i64::from(bonus + 64) * n / d
+        );
+        assert!(result.dps > 0.0);
+        assert!((result.hit_distribution.iter().map(|(_, p)| p).sum::<f64>() - 1.0).abs() < 1e-9);
+        assert!(calc(id, &set(4151), "Slash", "").is_err());
+        let mut ring = set(weapon);
+        ring[12] = Some(21140);
+        let r = calc(id, &ring, style, "").unwrap();
+        assert_eq!(r.attack_roll, result.attack_roll * 23 / 20);
+    }
+    let flail = Transform::QuestVampyre {
+        numerator: 5,
+        denominator: 4,
+        efaritay: false,
+        drakan_cap: false,
+    };
+    assert_eq!(flail.outcomes(18, 1.0), vec![(22, 1.0)]);
+    let ring = Transform::QuestVampyre {
+        numerator: 5,
+        denominator: 4,
+        efaritay: true,
+        drakan_cap: false,
+    };
+    assert_eq!(ring.outcomes(18, 1.0), vec![(23, 1.0)]);
+}
+#[test]
+fn drakan_cap_is_after_vampyre_damage_and_preserves_misses_and_mass() {
+    let t = Transform::QuestVampyre {
+        numerator: 5,
+        denominator: 4,
+        efaritay: false,
+        drakan_cap: true,
+    };
+    assert_eq!(t.outcomes(0, 1.0), vec![(0, 1.0)]);
+    assert_eq!(t.outcomes(23, 1.0), vec![(28, 1.0)]);
+    assert_eq!(
+        t.outcomes(24, 1.0),
+        vec![(26, 1.0 / 3.0), (27, 1.0 / 3.0), (28, 1.0 / 3.0)]
+    );
+    let mut s = set(33718);
+    for (slot, id) in [
+        (0, 10828),
+        (1, 6570),
+        (2, 1725),
+        (4, 11832),
+        (7, 11834),
+        (9, 7462),
+        (10, 11840),
+        (12, 21140),
+    ] {
+        s[slot] = Some(id);
+    }
+    let r = calc(16204, &s, "Slash", "").unwrap();
+    assert_eq!(r.max_hit, 28);
+    assert!(r.hit_distribution.iter().all(|(d, _)| *d <= 28));
+}
+#[test]
+fn magic_immunities_gloves_and_flying_phases_are_enforced() {
+    let water = set(1383);
+    let mut gloves = water.clone();
+    gloves[9] = Some(1580);
+    assert!(
+        calc(3456, &water, "Magic", "Water Wave")
+            .unwrap_err()
+            .contains("ice gloves")
+    );
+    assert!(calc(3456, &gloves, "Magic", "Water Wave").unwrap().dps > 0.0);
+    assert!(calc(3456, &gloves, "Magic", "Fire Wave").is_err());
+    assert!(calc(3458, &set(1387), "Magic", "Fire Wave").unwrap().dps > 0.0);
+    assert!(calc(3458, &water, "Magic", "Water Wave").is_err());
+    assert!(calc(3458, &set(11905), "Magic", "").is_err());
+    assert!(calc(13482, &set(11905), "Magic", "").is_err());
+    assert!(calc(13482, &set(1387), "Magic", "Fire Wave").unwrap().dps > 0.0);
+    for id in [12215, 8097, 8096] {
+        assert!(calc(id, &set(4151), "Slash", "").is_err());
+    }
+}
+#[test]
+fn quest_vardorvis_uses_its_own_hp_curve_and_duke_has_partial_demonbane() {
+    let m = planner::monster(12224).unwrap();
+    assert_eq!(m.skills["def"], 180);
+    assert_eq!(m.skills["str"], 210);
+    for (hp, def, strength) in [(500, 180, 210), (250, 155, 245), (0, 130, 280)] {
+        let scaled = monster_rules::hp_scaled(m, hp).unwrap().unwrap();
+        assert_eq!(scaled.skills["def"], def);
+        assert_eq!(scaled.skills["str"], strength);
+    }
+    assert!(monster_rules::hp_scaled(m, 501).is_err());
+    assert_eq!(encounters::demonbane_vulnerability(12195), 70);
+}
+#[test]
+fn planner_and_readiness_select_required_owned_gear_and_respect_exclusions() {
+    let a = strong();
+    let mut options = Options {
+        boss: Boss::Custom,
+        ..Default::default()
+    };
+    for (name, id, style, weapon) in [
+        ("Lowerniel Drakan", 16204, "Slash", 33718),
+        ("Ranis Drakan", 8242, "Crush", 22398),
+        ("Vanstrom Klause", 9567, "Crush", 24699),
+    ] {
+        options.targets = vec![planner::Target {
+            id,
+            style: style.into(),
+        }];
+        let s = planner::equipment_for_style(&a, &options, style);
+        assert_eq!(s[3], Some(weapon), "{name}");
+        let i = encounters::catalog()
+            .iter()
+            .position(|e| e.name == name)
+            .unwrap();
+        assert!(
+            bestiary::assess_catalog(&a, &options)[i]
+                .reason
+                .contains(&planner::item_name(weapon)),
+            "{name}"
+        );
+        let mut excluded = options.clone();
+        excluded.excluded.insert(weapon);
+        assert_eq!(
+            bestiary::assess_catalog(&a, &excluded)[i].readiness,
+            Readiness::Struggle,
+            "{name}"
+        );
+        assert_ne!(
+            planner::equipment_for_style(&a, &excluded, style)[3],
+            Some(weapon)
+        );
+    }
+    options.targets = vec![planner::Target {
+        id: 3456,
+        style: "Magic".into(),
+    }];
+    let s = planner::equipment_for_style(&a, &options, "Magic");
+    assert_eq!(s[9], Some(1580));
+    let owned = a.available(false);
+    let spell = rules::spell_name_for_target(
+        a.selected().unwrap(),
+        &s,
+        &owned,
+        &options.combat,
+        planner::monster(3456).unwrap(),
+        0,
+    );
+    assert!(spell.starts_with("Water"));
+    options.targets = vec![planner::Target {
+        id: 13482,
+        style: "Magic".into(),
+    }];
+    let s = planner::equipment_for_style(&a, &options, "Magic");
+    assert_ne!(s[3], Some(11905));
+    assert_eq!(
+        quest_bosses::profile("Galvek").unwrap().ids,
+        [8094, 8097, 8096, 8098]
+    );
+}

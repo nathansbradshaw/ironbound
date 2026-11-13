@@ -24,6 +24,7 @@ pub mod ranking;
 pub mod recommendation;
 pub mod reference;
 pub mod rules;
+mod set_search;
 pub mod setups;
 pub mod share;
 pub mod slayer;

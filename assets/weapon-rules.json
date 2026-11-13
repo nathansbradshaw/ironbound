@@ -5,6 +5,14 @@
     {"ids":[30064],"element":"earth","rune":557,"damage_percent":10,"accuracy_percent":0}
   ],
   "families": {
+    "barrows_axe":{"attack_types":["slash","crush"],"formula":"standard","stances":{"crush":"aggressive"},"style":"Melee"},
+    "barrows_spear":{"attack_types":["stab","slash","crush"],"formula":"standard","stances":{"crush":"controlled","slash":"controlled","stab":"controlled"},"style":"Melee"},
+    "barrows_flail":{"attack_types":["crush","stab"],"formula":"standard","stances":{"stab":"controlled"},"style":"Melee"},
+    "barrows_hammers":{"attack_types":["crush"],"effects":["twin_hits"],"formula":"standard","style":"Melee"},
+    "bolt_rack":{"ammo":[4740],"attack_types":["heavy"],"formula":"standard","rapid":true,"style":"Ranged"},
+    "obsidian_sword":{"attack_types":["stab","slash"],"effects":["obsidian_weapon"],"formula":"standard","stances":{"slash":"aggressive"},"style":"Melee"},
+    "obsidian_dagger":{"attack_types":["slash","stab"],"effects":["obsidian_weapon"],"formula":"standard","stances":{"stab":"controlled"},"style":"Melee"},
+    "obsidian_crush":{"attack_types":["crush"],"effects":["obsidian_weapon"],"formula":"standard","style":"Melee"},
     "slash": {"style":"Melee","attack_types":["slash"],"formula":"standard"},
     "versatile": {"style":"Melee","attack_types":["stab","slash","crush"],"stances":{"stab":"controlled","slash":"controlled","crush":"controlled"},"formula":"standard"},
     "sword": {"style":"Melee","attack_types":["stab","slash"],"stances":{"slash":"aggressive"},"formula":"standard"},
@@ -30,6 +38,17 @@
     "wood_blowpipe": {"style":"Ranged","attack_types":["light"],"formula":"standard","rapid":true,"internal_ammo":[806,807,808,3093,809,810]}
   },
   "weapons": [
+    {"family":"barrows_axe","ids":[4886,4889,4888,4887,4718],"requirements":{"Attack":70,"Strength":70}},
+    {"family":"barrows_spear","ids":[4910,4913,4912,4911,4726],"requirements":{"Attack":70}},
+    {"family":"barrows_flail","ids":[4982,4985,4984,4983,4755],"requirements":{"Attack":70}},
+    {"family":"barrows_hammers","ids":[4958,4961,4960,4959,4747],"requirements":{"Attack":70,"Strength":70}},
+    {"family":"bolt_rack","ids":[4934,4937,4936,4935,4734],"requirements":{"Ranged":70}},
+    {"family":"wind","ids":[4862,4865,4864,4863,4710],"requirements":{"Attack":70,"Magic":70}},
+    {"family":"obsidian_sword","ids":[6523],"requirements":{"Attack":60}},
+    {"family":"obsidian_dagger","ids":[6525],"requirements":{"Attack":60}},
+    {"family":"obsidian_crush","ids":[6527],"requirements":{"Attack":60}},
+    {"family":"obsidian_crush","ids":[6528],"requirements":{"Strength":60}},
+    {"family":"crush","ids":[24417],"requirements":{"Attack":80}},
     {"ids":[4151,26482],"family":"slash","requirements":{"Attack":70}},
     {"ids":[12006],"family":"slash","requirements":{"Attack":75}},
     {"ids":[4587,20000,28031],"family":"slash_sword","requirements":{"Attack":60}},
@@ -85,6 +104,7 @@
     {"ids":[31583],"family":"wood_blowpipe","requirements":{"Ranged":65}}
   ],
   "ammunition": [
+    {"ids":[4740],"effect":"none"},
     {"ids":[892,890,877,878,6061,6062,879,9139,9286,9293,9300,9335,9140,9287,9294,9301,880,9145,9292,9299,9306,9141,9288,9295,9302,9336,9142,9289,9296,9303,9337,9338,9143,9290,9297,9304,9339,9340,9144,9291,9298,9305,11875,21316,9341,9342,21905,21924,21926,21928,21955,21957,21959,21961,21963,21965,21967,21969,21971,21973,882,884,886,888,21326,11212],"effect":"none"},
     {"ids":[9242,21944],"effect":"ruby","proc_chance":0.06},
     {"ids":[9243,21946],"effect":"diamond","proc_chance":0.1},
@@ -100,6 +120,10 @@
     {"ids":[8839,8840,8842,11663,11664,11665,13072,13073,24177,24178,24179,24180,24182,24183,24184,24185,26463,26465,26467,26469,26471,26473,26475,26477,27000,27001,27002,27003,27004,27005,27006,27007],"requirements":{"Attack":42,"Strength":42,"Defence":42,"Ranged":42,"Magic":42,"Hitpoints":42,"Prayer":22}}
   ],
   "equipment_effects": [
+    {"effect":"berserker_necklace","ids":[11128,23240],"slot":2},
+    {"effect":"inquisitor","ids":[24419],"slot":0,"weight":1},
+    {"effect":"inquisitor","ids":[24420],"slot":4,"weight":2},
+    {"effect":"inquisitor","ids":[24421],"slot":7,"weight":2},
     {"ids":[23971,27777,27753,27765,27705,27729,27717,27741],"effect":"crystal_armour","weight":1,"slot":0},
     {"ids":[23975,27769,27745,27757,27697,27721,27709,27733],"effect":"crystal_armour","weight":3,"slot":4},
     {"ids":[23979,27773,27749,27761,27701,27725,27713,27737],"effect":"crystal_armour","weight":2,"slot":7},
@@ -114,9 +138,25 @@
     {"effect":"slayer_imbued","slot":0,"ids":[29822,29818,29820,11783,25275,26780,11774,25266,26771,11782,25274,26779,11781,25273,26778,11780,25272,26777,11779,25271,26776,11778,25270,26775,11777,25269,26774,11776,25268,26773,11775,25267,26772,11784,25276,26781,26675,19641,25179,26676,19645,25181,33072,33068,33070,26680,23075,25189,33443,33439,33441,26678,21266,25185,33449,33445,33447,26677,19649,25183,26674,11865,25177,26679,21890,25187,26681,24444,25191,26684,25912,25914,26682,25900,25902,26683,25906,25908]}
   ],
   "equipment_sets": [
-    {"effect":"void_melee","pieces":[{"slot":0,"ids":[11665,24185,26477,27007]},{"slot":4,"ids":[8839,13072,24177,24178,26463,26469,27000,27003]},{"slot":7,"ids":[8840,13073,24179,24180,26465,26471,27001,27004]},{"slot":9,"ids":[8842,24182,26467,27002]}]},
-    {"effect":"void_ranged","pieces":[{"slot":0,"ids":[11664,24184,26475,27006]},{"slot":4,"ids":[8839,13072,24177,24178,26463,26469,27000,27003]},{"slot":7,"ids":[8840,13073,24179,24180,26465,26471,27001,27004]},{"slot":9,"ids":[8842,24182,26467,27002]}]},
-    {"effect":"void_magic","pieces":[{"slot":0,"ids":[11663,24183,26473,27005]},{"slot":4,"ids":[8839,13072,24177,24178,26463,26469,27000,27003]},{"slot":7,"ids":[8840,13073,24179,24180,26465,26471,27001,27004]},{"slot":9,"ids":[8842,24182,26467,27002]}]},
+    {"effect":"dharok","pieces":[{"ids":[4880,4883,4882,4881,4716],"slot":0},{"ids":[4892,4895,4894,4893,4720],"slot":4},{"ids":[4898,4901,4900,4899,4722],"slot":7},{"ids":[4886,4889,4888,4887,4718],"slot":3}],"search_style":"Melee"},
+    {"effect":"dharok_damned","pieces":[{"ids":[4880,4883,4882,4881,4716],"slot":0},{"ids":[4892,4895,4894,4893,4720],"slot":4},{"ids":[4898,4901,4900,4899,4722],"slot":7},{"ids":[4886,4889,4888,4887,4718],"slot":3},{"ids":[12851,12853],"slot":2}],"search_style":"Melee"},
+    {"effect":"guthan","pieces":[{"ids":[4904,4907,4906,4905,4724],"slot":0},{"ids":[4916,4919,4918,4917,4728],"slot":4},{"ids":[4922,4925,4924,4923,4730],"slot":7},{"ids":[4910,4913,4912,4911,4726],"slot":3}],"search_style":"Melee"},
+    {"effect":"guthan_damned","pieces":[{"ids":[4904,4907,4906,4905,4724],"slot":0},{"ids":[4916,4919,4918,4917,4728],"slot":4},{"ids":[4922,4925,4924,4923,4730],"slot":7},{"ids":[4910,4913,4912,4911,4726],"slot":3},{"ids":[12851,12853],"slot":2}],"search_style":"Melee"},
+    {"effect":"verac","pieces":[{"ids":[4976,4979,4978,4977,4753],"slot":0},{"ids":[4988,4991,4990,4989,4757],"slot":4},{"ids":[4994,4997,4996,4995,4759],"slot":7},{"ids":[4982,4985,4984,4983,4755],"slot":3}],"search_style":"Melee"},
+    {"effect":"verac_damned","pieces":[{"ids":[4976,4979,4978,4977,4753],"slot":0},{"ids":[4988,4991,4990,4989,4757],"slot":4},{"ids":[4994,4997,4996,4995,4759],"slot":7},{"ids":[4982,4985,4984,4983,4755],"slot":3},{"ids":[12851,12853],"slot":2}],"search_style":"Melee"},
+    {"effect":"torag","pieces":[{"ids":[4952,4955,4954,4953,4745],"slot":0},{"ids":[4964,4967,4966,4965,4749],"slot":4},{"ids":[4970,4973,4972,4971,4751],"slot":7},{"ids":[4958,4961,4960,4959,4747],"slot":3}],"search_style":"Melee"},
+    {"effect":"torag_damned","pieces":[{"ids":[4952,4955,4954,4953,4745],"slot":0},{"ids":[4964,4967,4966,4965,4749],"slot":4},{"ids":[4970,4973,4972,4971,4751],"slot":7},{"ids":[4958,4961,4960,4959,4747],"slot":3},{"ids":[12851,12853],"slot":2}],"search_style":"Melee"},
+    {"effect":"karil","pieces":[{"ids":[4928,4931,4930,4929,4732],"slot":0},{"ids":[4940,4943,4942,4941,4736],"slot":4},{"ids":[4946,4949,4948,4947,4738],"slot":7},{"ids":[4934,4937,4936,4935,4734],"slot":3}],"search_style":"Ranged"},
+    {"effect":"karil_damned","pieces":[{"ids":[4928,4931,4930,4929,4732],"slot":0},{"ids":[4940,4943,4942,4941,4736],"slot":4},{"ids":[4946,4949,4948,4947,4738],"slot":7},{"ids":[4934,4937,4936,4935,4734],"slot":3},{"ids":[12851,12853],"slot":2}],"search_style":"Ranged"},
+    {"effect":"ahrim","pieces":[{"ids":[4856,4859,4858,4857,4708],"slot":0},{"ids":[4868,4871,4870,4869,4712],"slot":4},{"ids":[4874,4877,4876,4875,4714],"slot":7},{"ids":[4862,4865,4864,4863,4710],"slot":3}],"search_style":"Magic"},
+    {"effect":"ahrim_damned","pieces":[{"ids":[4856,4859,4858,4857,4708],"slot":0},{"ids":[4868,4871,4870,4869,4712],"slot":4},{"ids":[4874,4877,4876,4875,4714],"slot":7},{"ids":[4862,4865,4864,4863,4710],"slot":3},{"ids":[12851,12853],"slot":2}],"search_style":"Magic"},
+    {"effect":"crystal_loadout","partial":true,"pieces":[{"ids":[23971,27777,27753,27765,27705,27729,27717,27741],"slot":0},{"ids":[23975,27769,27745,27757,27697,27721,27709,27733],"slot":4},{"ids":[23979,27773,27749,27761,27701,27725,27713,27737],"slot":7}],"search_style":"Ranged","weapon_families":["crystal_bow"]},
+    {"effect":"obsidian_armour","pieces":[{"ids":[21298],"slot":0},{"ids":[21301],"slot":4},{"ids":[21304],"slot":7}],"search_style":"Melee","weapon_families":["obsidian_sword","obsidian_dagger","obsidian_crush"]},
+    {"effect":"obsidian_necklace_loadout","pieces":[{"ids":[21298],"slot":0},{"ids":[21301],"slot":4},{"ids":[21304],"slot":7},{"ids":[11128],"slot":2}],"search_style":"Melee","weapon_families":["obsidian_sword","obsidian_dagger","obsidian_crush"]},
+    {"effect":"inquisitor_loadout","partial":true,"pieces":[{"ids":[24419],"slot":0},{"ids":[24420],"slot":4},{"ids":[24421],"slot":7}],"search_style":"Crush"},
+    {"effect":"void_melee","search_style":"Melee","pieces":[{"slot":0,"ids":[11665,24185,26477,27007]},{"slot":4,"ids":[8839,13072,24177,24178,26463,26469,27000,27003]},{"slot":7,"ids":[8840,13073,24179,24180,26465,26471,27001,27004]},{"slot":9,"ids":[8842,24182,26467,27002]}]},
+    {"effect":"void_ranged","search_style":"Ranged","pieces":[{"slot":0,"ids":[11664,24184,26475,27006]},{"slot":4,"ids":[8839,13072,24177,24178,26463,26469,27000,27003]},{"slot":7,"ids":[8840,13073,24179,24180,26465,26471,27001,27004]},{"slot":9,"ids":[8842,24182,26467,27002]}]},
+    {"effect":"void_magic","search_style":"Magic","pieces":[{"slot":0,"ids":[11663,24183,26473,27005]},{"slot":4,"ids":[8839,13072,24177,24178,26463,26469,27000,27003]},{"slot":7,"ids":[8840,13073,24179,24180,26465,26471,27001,27004]},{"slot":9,"ids":[8842,24182,26467,27002]}]},
     {"effect":"elite_void_ranged","pieces":[{"slot":0,"ids":[11664,24184,26475,27006]},{"slot":4,"ids":[13072,24178,26469,27003]},{"slot":7,"ids":[13073,24180,26471,27004]},{"slot":9,"ids":[8842,24182,26467,27002]}]},
     {"effect":"elite_void_magic","pieces":[{"slot":0,"ids":[11663,24183,26473,27005]},{"slot":4,"ids":[13072,24178,26469,27003]},{"slot":7,"ids":[13073,24180,26471,27004]},{"slot":9,"ids":[8842,24182,26467,27002]}]}
   ],

@@ -32,6 +32,8 @@ pub enum Effect {
     Zaryte,
     Demonbane,
     DemonbaneSpell,
+    TwinHits,
+    ObsidianWeapon,
 }
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -167,6 +169,12 @@ pub struct SetPiece {
 pub struct EquipmentSet {
     pub effect: String,
     pub pieces: Vec<SetPiece>,
+    #[serde(default)]
+    pub search_style: Option<String>,
+    #[serde(default)]
+    pub partial: bool,
+    #[serde(default)]
+    pub weapon_families: Vec<String>,
 }
 #[derive(Debug, Deserialize)]
 pub struct EquipmentEffect {
@@ -348,6 +356,14 @@ impl Registry {
             let mut slots = std::collections::BTreeSet::new();
             if set.effect.is_empty()
                 || set.pieces.is_empty()
+                || set
+                    .search_style
+                    .as_ref()
+                    .is_some_and(|s| !STYLES.contains(&s.as_str()))
+                || set
+                    .weapon_families
+                    .iter()
+                    .any(|f| !self.families.contains_key(f))
                 || set.pieces.iter().any(|piece| {
                     piece.slot >= 14 || piece.ids.is_empty() || !slots.insert(piece.slot)
                 })

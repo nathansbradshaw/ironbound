@@ -65,11 +65,11 @@ pub fn drain_per_minute(bonus: i32, settings: &Settings) -> f64 {
     base * 30.0 / (30 + bonus).max(1) as f64
 }
 pub fn bonus(set: &[Option<i32>]) -> i32 {
-    set.iter()
-        .flatten()
-        .filter_map(|id| combat::stats(*id))
-        .map(|item| item.bonuses.get("prayer").copied().unwrap_or(0))
-        .sum()
+    combat::bonuses(set)
+        .other
+        .get("prayer")
+        .copied()
+        .unwrap_or(0)
 }
 /// Ordinary potion restoration only: no Holy wrench, imbued Ring of the gods,
 /// prayer cape, prayer regeneration or encounter-specific drain.

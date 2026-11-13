@@ -353,6 +353,7 @@ fn live_number(id: &str) -> bool {
         "spell-casts",
         "ammo-shots",
         "target-hp",
+        "current-hitpoints",
     ]
     .contains(&id)
         || id.starts_with("priority-")
@@ -406,6 +407,11 @@ fn apply_number(s: &mut State, id: &str, value: &str) -> bool {
         s.export_text = None;
         return true;
     }
+    if id == "current-hitpoints" && value.trim().is_empty() {
+        o.combat.current_hitpoints = None;
+        s.export_text = None;
+        return true;
+    }
     if id == "max-switches" && value.trim().is_empty() {
         o.max_switches = None;
         o.fewer_switches = false;
@@ -438,6 +444,7 @@ fn apply_number(s: &mut State, id: &str, value: &str) -> bool {
                 o.combat.target_hp.insert(target, n.clamp(1, target_max));
             }
         }
+        "current-hitpoints" => o.combat.current_hitpoints = Some(n.clamp(1, 255)),
         "ammo-shots" => {
             let shots = n.clamp(1, 10_000);
             if o.combat.ammo_shots != shots {
@@ -3550,6 +3557,8 @@ fn combat_assumptions(
         }
         html.push_str("</select></label>");
     }
+    html.push_str(&format!("<label>Current Hitpoints (Dharok's)<input id=\"current-hitpoints\" type=\"number\" min=\"1\" max=\"255\" placeholder=\"Full health\" value=\"{}\"></label>",
+        settings.current_hitpoints.map(|hp|hp.to_string()).unwrap_or_default()));
     let owned = s.saved.snapshot.available(s.saved.options.shared);
     let internal = set[3]
         .and_then(crate::rules::weapon)
@@ -4222,6 +4231,12 @@ fn combat_panel(s: &State, p: &Plan) -> String {
                 html.push_str(&format!(r#"<dl class="combat-values"><div><dt>Outgoing DPS</dt><dd>{:.3}</dd></div><div><dt>Hit chance</dt><dd>{:.1}%</dd></div><div><dt>Max hit</dt><dd>{}</dd></div><div><dt>Attack speed</dt><dd>{} ticks</dd></div></dl><p>{} attacks · {:.1} seconds per attack</p>"#,r.dps,r.accuracy*100.0,r.max_hit,r.attack_ticks,esc(&r.attack_type),r.attack_ticks as f64*0.6));
                 html.push_str(&attack_window_budget(s, target, &set, &r));
                 html.push_str(&combat_breakdown(s, m, &set, target, &r));
+                if r.potential_healing_per_second > 0.0 {
+                    html.push_str(&format!("<p>Guthan's potential healing: {:.3} HP/s before overheal and remaining-target-HP limits. This is not subtracted from damage taken.</p>", r.potential_healing_per_second));
+                }
+                if crate::rules::set_effect(&set, "dharok") {
+                    html.push_str(&format!("<p>Dharok's uses {} current Hitpoints. Change this under Boosts, darts &amp; debuffs.</p>", s.saved.options.combat.current_hitpoints.map(|hp|hp.to_string()).unwrap_or_else(||"full-health".into())));
+                }
             }
             Err(e) => html.push_str(&format!(
                 "<p class=\"combat-unavailable\">DPS unavailable: {}</p>",

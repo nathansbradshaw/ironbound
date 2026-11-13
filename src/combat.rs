@@ -72,6 +72,9 @@ fn bonuses_in_context(set: &[Option<i32>], toa: bool) -> Bonuses {
             }
         }
     }
+    if rules::set_effect(set, "verac_damned") {
+        *result.other.entry("prayer".into()).or_default() += 7;
+    }
     result
 }
 #[derive(Clone, Debug)]
@@ -80,6 +83,8 @@ pub struct ResultStats {
     pub hit_distribution: Vec<(i32, f64)>,
     pub hp_dependent: Option<HpDependentHit>,
     pub dps: f64,
+    /// Proc potential before overhealing and target remaining-HP caps.
+    pub potential_healing_per_second: f64,
     pub accuracy: f64,
     pub max_hit: i32,
     pub attack_ticks: i32,
@@ -347,6 +352,7 @@ pub fn calculate_configured(
             .ok_or_else(|| format!("Enter your {s} level."))
     };
     let mut elemental = None;
+    let mut obsidian_accuracy = 0;
     let (attack_type, attack, max_hit, ticks, def_level, def_bonus) = match style {
         "Melee" => {
             let kind = if requested_style == "Melee" {
@@ -369,7 +375,11 @@ pub fn calculate_configured(
                 effective_strength = effective_strength * 11 / 10;
             }
             let a = effective_attack * (get(&b.offensive, kind) as i64 + 64);
-            let max = (effective_strength * (get(&b.other, "str") as i64 + 64) + 320) / 640;
+            let mut max = (effective_strength * (get(&b.other, "str") as i64 + 64) + 320) / 640;
+            if rule.has(Effect::ObsidianWeapon) && rules::set_effect(set, "obsidian_armour") {
+                obsidian_accuracy = a / 10;
+                max = max * damage_bonus[0] / damage_bonus[1] + max / 10;
+            }
             (
                 kind,
                 a,
@@ -544,11 +554,15 @@ pub fn calculate_configured(
     }
     if style != "Magic" {
         attack = attack * accuracy_bonus[0] / accuracy_bonus[1];
+        attack += obsidian_accuracy;
         // Shared additive groups are combined in the multiplier stage below.
-        if !target_bonus.is_some_and(|b| b.slayer_task)
-            || !rule.weapon.multipliers.iter().any(|m| {
-                m.damage && m.additive_with_task_damage && monster.attributes.contains(&m.attribute)
-            })
+        if !(rule.has(Effect::ObsidianWeapon) && rules::set_effect(set, "obsidian_armour"))
+            && (!target_bonus.is_some_and(|b| b.slayer_task)
+                || !rule.weapon.multipliers.iter().any(|m| {
+                    m.damage
+                        && m.additive_with_task_damage
+                        && monster.attributes.contains(&m.attribute)
+                }))
         {
             max_hit = (i64::from(max_hit) * damage_bonus[0] / damage_bonus[1]) as i32;
         }
@@ -606,6 +620,20 @@ pub fn calculate_configured(
             }
         }
     }
+    if style == "Melee" && attack_type == "crush" {
+        let weight: i64 = rules::registry()
+            .equipment_effects
+            .iter()
+            .filter(|e| {
+                e.effect == "inquisitor"
+                    && e.slot
+                        .is_some_and(|slot| set[slot].is_some_and(|id| e.ids.contains(&id)))
+            })
+            .map(|e| e.weight)
+            .sum();
+        attack = attack * (200 + weight) / 200;
+        max_hit = (i64::from(max_hit) * (200 + weight) / 200) as i32;
+    }
     let mut hit = accuracy(attack, defence);
     let brimstone = style == "Magic" && rules::equipped_effect(set, "brimstone_accuracy");
     if brimstone {
@@ -641,7 +669,36 @@ pub fn calculate_configured(
         (min_hit, max_hit) = crate::effects::wardens_p2_bounds(attack, defence, max_hit);
         hit = 1.0;
     }
-    let (_mean, ceiling, hits) = if always_max {
+    let mut damage_factor = [1, 1];
+    if style == "Melee" && rules::set_effect(set, "dharok") {
+        let hp = member
+            .level("Hitpoints")
+            .filter(|hp| (1..=99).contains(hp))
+            .ok_or("Enter your base Hitpoints level for Dharok's set (1–99).")?;
+        let current = settings.current_hitpoints.unwrap_or(hp);
+        damage_factor = [
+            (10_000 + (i64::from(hp) - i64::from(current)) * i64::from(hp)).max(0),
+            10_000,
+        ];
+    }
+    if rule.has(Effect::ObsidianWeapon) && rules::equipped_effect(set, "berserker_necklace") {
+        damage_factor = [6, 5];
+    }
+    let hit_effects = crate::effects::SetHitEffects {
+        damage_factor,
+        critical: style == "Magic" && rules::set_effect(set, "ahrim_damned"),
+        extra_half: style == "Ranged" && rules::set_effect(set, "karil_damned"),
+        final_divisor: if damage_model == crate::encounters::DamageModel::HalfDamage
+            && style == "Ranged"
+            && rules::set_effect(set, "karil_damned")
+        {
+            2
+        } else {
+            1
+        },
+    };
+    let distribution_max = max_hit;
+    let (_mean, ceiling, mut hits) = if always_max {
         hit = 1.0;
         conditional_hit(
             max_hit,
@@ -650,6 +707,7 @@ pub fn calculate_configured(
             &rule.family.procs,
             monster,
             mark_bonus.filter(|_| hit_rule.is_some_and(|rule| rule.mark_damage)),
+            &hit_effects,
         )
     } else {
         conditional_hit(
@@ -659,6 +717,7 @@ pub fn calculate_configured(
             &rule.family.procs,
             monster,
             mark_bonus,
+            &hit_effects,
         )
     };
     let mut distribution: Vec<_> = hits.iter().map(|(damage, p)| (*damage, p * hit)).collect();
@@ -667,6 +726,82 @@ pub fn calculate_configured(
         distribution.push((0, 1.0 - hit));
     }
     max_hit = ceiling;
+    if style == "Melee" && rules::set_effect(set, "verac") {
+        let (_, proc_max, proc_hits) = conditional_hit(
+            if always_max { distribution_max + 1 } else { 1 },
+            distribution_max + 1,
+            flat_armour,
+            &[],
+            monster,
+            None,
+            &Default::default(),
+        );
+        for (_, p) in &mut distribution {
+            *p *= 0.75;
+        }
+        distribution.extend(proc_hits.iter().map(|(d, p)| (*d, *p * 0.25)));
+        hit = hit * 0.75 + 0.25;
+        max_hit = proc_max.max(max_hit);
+        for (_, p) in &mut hits {
+            *p *= 0.75;
+        }
+        hits.extend(proc_hits.into_iter().map(|(d, p)| (d, p * 0.25)));
+    }
+    if rule.has(Effect::TwinHits) {
+        let mut parts = Vec::new();
+        let twin_effects = crate::effects::SetHitEffects {
+            final_divisor: if damage_model == crate::encounters::DamageModel::HalfDamage {
+                2
+            } else {
+                1
+            },
+            ..Default::default()
+        };
+        max_hit = 0;
+        for max in [
+            distribution_max / 2,
+            distribution_max - distribution_max / 2,
+        ] {
+            let (_, ceiling, outcomes) = conditional_hit(
+                if always_max { max } else { 0 },
+                max,
+                flat_armour,
+                &[],
+                monster,
+                None,
+                &twin_effects,
+            );
+            max_hit += ceiling;
+            let mut part: Vec<_> = outcomes.into_iter().map(|(d, p)| (d, p * hit)).collect();
+            if hit < 1.0 {
+                part.push((0, 1.0 - hit));
+            }
+            parts.push(part);
+        }
+        distribution = parts[0]
+            .iter()
+            .flat_map(|(a, p)| parts[1].iter().map(move |(b, q)| (a + b, p * q)))
+            .collect();
+        if always_max {
+            hits = distribution.clone();
+        }
+        hit = 1.0 - (1.0 - hit).powi(2);
+    }
+    if always_max
+        && (hit_effects.critical || hit_effects.extra_half || rules::set_effect(set, "verac"))
+    {
+        // These encounter windows replace the attack distribution with its
+        // maximum after equipment procs, as in the reference calculator.
+        distribution = vec![(max_hit, 1.0)];
+        hits = vec![(max_hit, 1.0)];
+    }
+    // Collapse equal totals before finite-HP planning. In particular, two
+    // independent hammers have many roll pairs but few distinct damage totals.
+    let mut totals = BTreeMap::new();
+    for (damage, p) in distribution {
+        *totals.entry(damage).or_insert(0.0) += p;
+    }
+    distribution = totals.into_iter().collect();
     if style == "Ranged" && !rule.family.ammo.is_empty() {
         let zcb = rule.has(Effect::Zaryte);
         let chance = rules::bolt_proc_chance(set[13].unwrap_or(0), settings.kandarin_diary);
@@ -700,7 +835,8 @@ pub fn calculate_configured(
                 for (_, p) in &mut distribution {
                     *p *= 1.0 - chance;
                 }
-                let (_, _, proc_hits) = conditional_hit(0, diamond, 0, &[], monster, None);
+                let (_, _, proc_hits) =
+                    conditional_hit(0, diamond, 0, &[], monster, None, &Default::default());
                 distribution.extend(
                     proc_hits
                         .into_iter()
@@ -711,7 +847,10 @@ pub fn calculate_configured(
             _ => {}
         }
     }
-    if damage_model == crate::encounters::DamageModel::HalfDamage {
+    if damage_model == crate::encounters::DamageModel::HalfDamage
+        && hit_effects.final_divisor == 1
+        && !rule.has(Effect::TwinHits)
+    {
         for (damage, _) in &mut distribution {
             *damage /= 2;
         }
@@ -728,6 +867,11 @@ pub fn calculate_configured(
         hit_distribution: distribution,
         hp_dependent,
         dps: expected / (ticks as f64 * 0.6),
+        potential_healing_per_second: if style == "Melee" && rules::set_effect(set, "guthan") {
+            expected / (ticks as f64 * 0.6) / 4.0
+        } else {
+            0.0
+        },
         accuracy: hit,
         max_hit,
         attack_ticks: ticks,
@@ -751,6 +895,7 @@ fn conditional_hit(
     procs: &[rules::HitProc],
     monster: &Monster,
     mark_bonus: Option<(i64, i64)>,
+    set_effects: &crate::effects::SetHitEffects,
 ) -> (f64, i32, Vec<(i32, f64)>) {
     if max <= 0 {
         return (0.0, 0, vec![(0, 1.0)]);
@@ -786,16 +931,22 @@ fn conditional_hit(
                 .collect();
         }
     }
+    let hits = crate::effects::set_hit_outcomes(&hits, set_effects);
     let mut mean = 0.0;
     let mut ceiling = 0;
     let mut outcomes = vec![];
-    for (damage, probability) in hits {
-        let damage = if let Some((percent, vulnerability)) = mark_bonus {
-            damage + (i64::from(damage) * percent / 100 * vulnerability / 100) as i32
-        } else {
-            damage
-        };
-        let damage = (damage - armour).max(0);
+    for (splats, probability) in hits {
+        let damage: i32 = splats
+            .into_iter()
+            .map(|damage| {
+                let damage = if let Some((percent, vulnerability)) = mark_bonus {
+                    damage + (i64::from(damage) * percent / 100 * vulnerability / 100) as i32
+                } else {
+                    damage
+                };
+                (damage - armour).max(0) / set_effects.final_divisor
+            })
+            .sum();
         mean += damage as f64 * probability;
         if probability > 0.0 {
             ceiling = ceiling.max(damage);

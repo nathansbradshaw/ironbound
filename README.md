@@ -31,6 +31,7 @@ If browser saving fails, a persistent warning offers a private backup and retry.
 - **Compare switch limits:** choose any two caps in **Compare switches**. The encounter overview shows effective DPS, attack time, prayer used and drain alongside bag space. Expand phase details only when needed; apply either plan.
 - **Pack fewer switches:** automatically suggests the smallest bag within 3% of the fastest tested attack time and prayer use, with known incoming damage guarded. Apply it or compare against the fastest. Your switch ceiling stays respected; partial coverage is labelled.
 - **Compare gear:** outgoing DPS, supported incoming damage, defence and prayer drain.
+- **Slayer task:** choose **On task / Off task** beside the encounter controls for each eligible target. Recommendations and comparisons include helmet/mask bonuses; Combat explains whether your gear receives them. Ranged/Magic require an imbued helmet or mask, and Salve bonuses do not stack with Slayer.
 - **Check the maths:** [live Wiki comparisons and update guide](docs/combat-validation.md). Run `cargo run --locked --bin validate_combat` to check the pinned reference loadouts.
 - **Model your fight:** Combat → **Boosts, darts & debuffs**. Choose active boosts, loaded blowpipe darts and successful reductions for each target.
 - **See weaknesses:** Combat breaks ranged defence into Light / Standard / Heavy and magic into Air / Water / Earth / Fire. Compare supported owned spells, hit chance, max hit and DPS; the selected spell shows its base and elemental bonuses.

@@ -408,6 +408,10 @@ fn live_number(id: &str) -> bool {
         "ammo-shots",
         "target-hp",
         "current-hitpoints",
+        "rotation-surge-tick",
+        "rotation-surge-ready",
+        "rotation-transfer-tick",
+        "rotation-death-expiry",
     ]
     .contains(&id)
         || id.starts_with("priority-")
@@ -418,6 +422,9 @@ fn live_number(id: &str) -> bool {
 fn apply_number(s: &mut State, id: &str, value: &str) -> bool {
     if s.shared_setup.is_some() && !id.starts_with("skill-") {
         return false;
+    }
+    if let Some(key) = id.strip_prefix("rotation-") {
+        return s.saved.options.combat.rotation.update_time(key, value);
     }
     if let Some(key) = id.strip_prefix("sailing-") {
         return s.saved.options.sailing.update(key, value);
@@ -1567,26 +1574,6 @@ pub fn start() -> Result<(), JsValue> {
                         _ => &mut cfg.death_charge,
                     };
                     *field = checked.then_some(value);
-                }
-                "rotation-surge-tick"
-                | "rotation-surge-ready"
-                | "rotation-transfer-tick"
-                | "rotation-death-expiry" => {
-                    if let Some(value) = el
-                        .dyn_ref::<HtmlInputElement>()
-                        .and_then(|e| e.value().parse::<u32>().ok())
-                    {
-                        let cfg = &mut s.saved.options.combat.rotation;
-                        if value <= 500 {
-                            match id.as_str() {
-                                "rotation-surge-tick" => cfg.surge_tick = Some(value),
-                                "rotation-surge-ready" => cfg.surge_ready = value,
-                                "rotation-transfer-tick" => cfg.transfer_tick = Some(value),
-                                _ if (1..=100).contains(&value) => cfg.death_charge = Some(value),
-                                _ => {}
-                            }
-                        }
-                    }
                 }
                 "rotation-swap-weapon" | "rotation-swap-style" | "rotation-swap-delay" => {
                     if let Some(sel) = el.dyn_ref::<HtmlSelectElement>() {

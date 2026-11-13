@@ -68,6 +68,34 @@ impl Default for Settings {
     }
 }
 impl Settings {
+    pub fn update_time(&mut self, key: &str, value: &str) -> bool {
+        let Ok(value) = value.parse::<u32>() else {
+            return false;
+        };
+        if value > 500 {
+            return false;
+        }
+        let field = match key {
+            "surge-tick" if self.surge_tick.is_some() => &mut self.surge_tick,
+            "transfer-tick" if self.transfer_tick.is_some() => &mut self.transfer_tick,
+            "death-expiry" if self.death_charge.is_some() && (1..=100).contains(&value) => {
+                &mut self.death_charge
+            }
+            "surge-ready" if self.surge_tick.is_some() => {
+                if self.surge_ready == value {
+                    return false;
+                }
+                self.surge_ready = value;
+                return true;
+            }
+            _ => return false,
+        };
+        if *field == Some(value) {
+            return false;
+        }
+        *field = Some(value);
+        true
+    }
     pub fn valid(&self) -> bool {
         (1..=500).contains(&self.window_ticks)
             && self.next_pulse <= 50

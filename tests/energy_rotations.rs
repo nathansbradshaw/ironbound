@@ -683,3 +683,33 @@ fn stateful_fillers_are_withheld_instead_of_crediting_stationary_effects_across_
             .contains("delayed damage")
     );
 }
+
+#[test]
+fn restore_time_edits_use_bounded_live_inputs_without_reenabling_disabled_effects() {
+    let mut cfg = rotation::Settings::default();
+    assert!(!cfg.update_time("surge-tick", "3"));
+    cfg.surge_tick = Some(0);
+    cfg.transfer_tick = Some(0);
+    cfg.death_charge = Some(100);
+    assert!(cfg.update_time("surge-tick", "3"));
+    assert_eq!(cfg.surge_tick, Some(3));
+    assert!(cfg.update_time("surge-ready", "2"));
+    assert_eq!(cfg.surge_ready, 2);
+    assert!(cfg.update_time("transfer-tick", "20"));
+    assert_eq!(cfg.transfer_tick, Some(20));
+    assert!(cfg.update_time("death-expiry", "30"));
+    assert_eq!(cfg.death_charge, Some(30));
+    let before = cfg.clone();
+    for (key, v) in [
+        ("surge-tick", "-1"),
+        ("transfer-tick", "501"),
+        ("death-expiry", "0"),
+        ("death-expiry", "101"),
+        ("death-expiry", ""),
+        ("unknown", "5"),
+    ] {
+        assert!(!cfg.update_time(key, v));
+    }
+    assert_eq!(cfg, before);
+    assert!(!cfg.update_time("surge-tick", "3"));
+}

@@ -22,7 +22,16 @@ pub const FILTERS: [&str; 12] = [
     "Groups",
     "All",
 ];
-pub const CATEGORY_FILTERS: [&str; 8] = ["For you", "Bosses", "Quest bosses", "Raids", "Groups", "Sailing", "All", "Popular"];
+pub const CATEGORY_FILTERS: [&str; 8] = [
+    "For you",
+    "Bosses",
+    "Quest bosses",
+    "Raids",
+    "Groups",
+    "Sailing",
+    "All",
+    "Popular",
+];
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum GearFilter {
@@ -194,13 +203,27 @@ struct Profile {
 }
 fn profile(name: &str) -> Option<Profile> {
     if let Some(quest) = crate::quest_bosses::profile(name) {
-        let styles: &'static [&'static str] = match quest.styles.iter().map(String::as_str).collect::<Vec<_>>().as_slice() {
-            ["Melee"] => &["Melee"], ["Magic"] => &["Magic"], ["Ranged"] => &["Ranged"],
+        let styles: &'static [&'static str] = match quest
+            .styles
+            .iter()
+            .map(String::as_str)
+            .collect::<Vec<_>>()
+            .as_slice()
+        {
+            ["Melee"] => &["Melee"],
+            ["Magic"] => &["Magic"],
+            ["Ranged"] => &["Ranged"],
             ["Melee", "Ranged"] | ["Ranged", "Melee"] => &["Melee", "Ranged"],
             ["Ranged", "Magic"] => &["Ranged", "Magic"],
             _ => &["Melee", "Ranged", "Magic"],
         };
-        return Some(Profile { level: quest.level, prayer: 43, styles, slayer: 0, note: &quest.note });
+        return Some(Profile {
+            level: quest.level,
+            prayer: 43,
+            styles,
+            slayer: 0,
+            note: &quest.note,
+        });
     }
     let (level, styles, slayer, note): (_, &[&str], _, _) = match name {
         "Doom of Mokhaiotl" => (
@@ -786,7 +809,15 @@ pub fn card(entry: &Entry, index: usize, a: &Assessment) -> String {
     } else {
         "Recorded target · base stats"
     };
-    let quest_tag = entry.quest().map(|quest| format!("<span class=\"quest-tag\">Quest boss · {}</span>", esc(quest))).unwrap_or_default();
+    let quest_tag = entry
+        .quest()
+        .map(|quest| {
+            format!(
+                "<span class=\"quest-tag\">Quest boss · {}</span>",
+                esc(quest)
+            )
+        })
+        .unwrap_or_default();
     let location = match crate::wilderness::exposure(&entry.name) {
         crate::wilderness::Exposure::Combat => "<span class=\"wild-tag\">Wilderness</span>",
         crate::wilderness::Exposure::Route => "<span class=\"wild-tag\">Wilderness route</span>",

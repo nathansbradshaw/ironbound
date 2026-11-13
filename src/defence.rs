@@ -31,6 +31,7 @@ pub struct Settings {
     pub obligator_style: String,
     pub special_energy: u32,
     pub zorya_empowered_hits: u32,
+    pub rotation: crate::rotation::Settings,
 }
 impl Default for Settings {
     fn default() -> Self {
@@ -60,6 +61,7 @@ impl Default for Settings {
             obligator_style: "Thrust accurate".into(),
             special_energy: 50,
             zorya_empowered_hits: 0,
+            rotation: Default::default(),
         }
     }
 }
@@ -75,6 +77,7 @@ impl Settings {
             && self.soulreaper_stacks <= 5
             && self.special_energy <= 100
             && self.zorya_empowered_hits <= 3
+            && self.rotation.valid()
             && self.spell_selection.valid()
             && (1..=10_000).contains(&self.ammo_shots)
             && self.target_hp.len() <= crate::rules::MAX_TARGETS
@@ -225,7 +228,9 @@ pub fn estimate(
     attack: &str,
     settings: &Settings,
 ) -> Result<Estimate, String> {
-    if crate::sailing::is_sea(target.id) { return Err("Sea creatures attack the boat. Use Boat setup for hull HP and keel damage reduction; personal defence and protection prayers do not protect the hull.".into()); }
+    if crate::sailing::is_sea(target.id) {
+        return Err("Sea creatures attack the boat. Use Boat setup for hull HP and keel damage reduction; personal defence and protection prayers do not protect the hull.".into());
+    }
     if crate::encounters::window(target.id)
         .is_some_and(|w| w.damage_model != crate::encounters::DamageModel::Standard)
         && !profile(target.id).is_some_and(|p| p.kind == "standard" && !p.attacks.is_empty())

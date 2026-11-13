@@ -119,7 +119,11 @@ pub fn guaranteed_max(id: i32, attack_type: &str) -> bool {
 }
 pub fn style_limitation(id: i32, style: &str) -> Option<&'static str> {
     let style = rules::base_style(style);
-    if crate::sailing::is_sea(id) && style == "Melee" { return Some("Sea creatures cannot be reached with ordinary melee attacks from a boat. Choose ranged or magic. Salamander scorch is not modelled."); }
+    if crate::sailing::is_sea(id) && style == "Melee" {
+        return Some(
+            "Sea creatures cannot be reached with ordinary melee attacks from a boat. Choose ranged or magic. Salamander scorch is not modelled.",
+        );
+    }
     if encounters::hit_rule(id).is_some_and(|r| !r.allowed_styles.iter().any(|s| s == style)) {
         return Some(
             "Outgoing mechanics are not verified for this style in the selected attack window.",
@@ -169,7 +173,12 @@ pub enum Transform {
     Zulrah,
     /// min(rolled damage, uniform 22..24), as in the pinned calculator.
     Seren,
-    QuestVampyre { numerator: i32, denominator: i32, efaritay: bool, drakan_cap: bool },
+    QuestVampyre {
+        numerator: i32,
+        denominator: i32,
+        efaritay: bool,
+        drakan_cap: bool,
+    },
     Divide {
         divisor: i32,
     },
@@ -198,12 +207,19 @@ pub enum Transform {
 impl Transform {
     pub fn outcomes(self, damage: i32, probability: f64) -> Vec<(i32, f64)> {
         match self {
-            Self::QuestVampyre { numerator, denominator, efaritay, drakan_cap } => {
+            Self::QuestVampyre {
+                numerator,
+                denominator,
+                efaritay,
+                drakan_cap,
+            } => {
                 let damage = if efaritay { damage * 11 / 10 } else { damage };
                 let damage = damage * numerator / denominator;
                 if drakan_cap && damage > 28 {
                     (26..=28).map(|d| (d, probability / 3.0)).collect()
-                } else { vec![(damage, probability)] }
+                } else {
+                    vec![(damage, probability)]
+                }
             }
             Self::Zulrah if damage > 50 => (45..=50).map(|d| (d, probability / 6.0)).collect(),
             Self::Seren => (22..=24)

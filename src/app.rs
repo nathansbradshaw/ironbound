@@ -383,7 +383,7 @@ thread_local! {
 
 fn live_number(id: &str) -> bool {
     if let Some(key) = id.strip_prefix("sailing-") {
-        return ["visible","balls","kits","reserved","minutes","uptime"].contains(&key);
+        return ["visible", "balls", "kits", "reserved", "minutes", "uptime"].contains(&key);
     }
     if id.starts_with("risk-") {
         return true;
@@ -418,7 +418,7 @@ fn apply_number(s: &mut State, id: &str, value: &str) -> bool {
         return false;
     }
     if let Some(key) = id.strip_prefix("sailing-") {
-        return s.saved.options.sailing.update(key,value);
+        return s.saved.options.sailing.update(key, value);
     }
     if let Some(key) = id.strip_prefix("risk-") {
         if let Some((field, item)) = key
@@ -1219,9 +1219,34 @@ pub fn start() -> Result<(), JsValue> {
         };
         let id = el.id();
         if let Some(key) = id.strip_prefix("sailing-") {
-            let value = el.dyn_ref::<HtmlSelectElement>().map(|e| e.value()).or_else(|| el.dyn_ref::<HtmlInputElement>().map(|e| if e.type_()=="checkbox" { e.checked().to_string() } else { e.value() })).unwrap_or_default();
-            let changed=STATE.with(|state| {let mut s=state.borrow_mut(); if s.shared_setup.is_some() {return false;} let changed=s.saved.options.sailing.update(key,&value); if changed {s.persist();} changed });
-            if changed {render();} return;
+            let value = el
+                .dyn_ref::<HtmlSelectElement>()
+                .map(|e| e.value())
+                .or_else(|| {
+                    el.dyn_ref::<HtmlInputElement>().map(|e| {
+                        if e.type_() == "checkbox" {
+                            e.checked().to_string()
+                        } else {
+                            e.value()
+                        }
+                    })
+                })
+                .unwrap_or_default();
+            let changed = STATE.with(|state| {
+                let mut s = state.borrow_mut();
+                if s.shared_setup.is_some() {
+                    return false;
+                }
+                let changed = s.saved.options.sailing.update(key, &value);
+                if changed {
+                    s.persist();
+                }
+                changed
+            });
+            if changed {
+                render();
+            }
+            return;
         }
         if id.starts_with("rank-") || id.starts_with("plan-rank-") {
             let value = el
@@ -1335,6 +1360,11 @@ pub fn start() -> Result<(), JsValue> {
             "obligator-style",
             "special-energy",
             "zorya-followups",
+            "rotation-enabled",
+            "rotation-window",
+            "rotation-pulse",
+            "rotation-trials",
+            "rotation-policy",
             "allow-void",
             "safety",
             "prayer-weight",
@@ -1498,6 +1528,33 @@ pub fn start() -> Result<(), JsValue> {
                         }
                     }
                 }
+                "rotation-enabled" => {
+                    s.saved.options.combat.rotation.enabled = el
+                        .dyn_ref::<HtmlInputElement>()
+                        .is_some_and(|e| e.checked());
+                }
+                "rotation-window" | "rotation-pulse" | "rotation-trials" | "rotation-policy" => {
+                    if let Ok(sel) = el.dyn_into::<HtmlSelectElement>() {
+                        let cfg = &mut s.saved.options.combat.rotation;
+                        if id == "rotation-policy" {
+                            cfg.policy = if sel.value() == "normal_only" {
+                                crate::rotation::Policy::NormalOnly
+                            } else {
+                                crate::rotation::Policy::SpecialsWhenReady
+                            };
+                        } else if let Ok(value) = sel.value().parse::<u32>() {
+                            if id == "rotation-window" && (1..=500).contains(&value) {
+                                cfg.window_ticks = value;
+                            }
+                            if id == "rotation-pulse" && value <= 50 {
+                                cfg.next_pulse = value;
+                            }
+                            if id == "rotation-trials" && (1..=4096).contains(&value) {
+                                cfg.trials = value;
+                            }
+                        }
+                    }
+                }
                 "allow-void" => {
                     s.saved.options.exclude_void = !el
                         .dyn_ref::<HtmlInputElement>()
@@ -1652,15 +1709,28 @@ fn focus_inventory(slot: usize) {
     }
 }
 fn act(action: &str) {
-    if let Some(slot)=action.strip_prefix("sailing-slot:") {
+    if let Some(slot) = action.strip_prefix("sailing-slot:") {
         if crate::sailing_view::valid_slot(slot) {
-            STATE.with(|state| state.borrow_mut().sailing_slot=slot.into());
+            STATE.with(|state| state.borrow_mut().sailing_slot = slot.into());
             render();
-            if let Ok(Some(picker))=document().query_selector(".ship-picker") {picker.scroll_into_view();}
-        } return;
+            if let Ok(Some(picker)) = document().query_selector(".ship-picker") {
+                picker.scroll_into_view();
+            }
+        }
+        return;
     }
-    if let Some((key,value))=action.strip_prefix("sailing:").and_then(|v|v.split_once(':')) {
-        STATE.with(|state| {let mut s=state.borrow_mut();if s.shared_setup.is_none() && s.saved.options.sailing.update(key,value) {s.persist();}});render();return;
+    if let Some((key, value)) = action
+        .strip_prefix("sailing:")
+        .and_then(|v| v.split_once(':'))
+    {
+        STATE.with(|state| {
+            let mut s = state.borrow_mut();
+            if s.shared_setup.is_none() && s.saved.options.sailing.update(key, value) {
+                s.persist();
+            }
+        });
+        render();
+        return;
     }
 
     if action.starts_with("risk-") {
@@ -3618,7 +3688,9 @@ fn bestiary_assessments(s: &State) -> Vec<crate::bestiary::Assessment> {
 }
 fn extra_filter_label(s: &State) -> String {
     let mut labels = vec!["Gear & requirements"];
-    if s.hide_quest_bosses { labels.push("Quest bosses hidden"); }
+    if s.hide_quest_bosses {
+        labels.push("Quest bosses hidden");
+    }
     if s.gear_filter != crate::bestiary::GearFilter::Any {
         labels.push(s.gear_filter.label());
     }
@@ -3669,7 +3741,11 @@ fn encounter_catalog(s: &State) -> String {
         ));
     }
     html.push_str("</nav></fieldset><fieldset class=\"bestiary-filter-group\"><legend>Quest bosses</legend><nav class=\"encounter-filters\" aria-label=\"Quest boss filters\">");
-    html.push_str(&encounter_filter_button("quest-filter", "Hide quest bosses", s.hide_quest_bosses));
+    html.push_str(&encounter_filter_button(
+        "quest-filter",
+        "Hide quest bosses",
+        s.hide_quest_bosses,
+    ));
     html.push_str("</nav></fieldset><p class=\"bestiary-filter-note\">Known levels met checks recorded Slayer requirements only. Quest, key and task access remain unverified. Gear, requirements and quest filters apply together.</p>");
     let location = match s.wilderness_location.as_str() {
         "safe" => " · avoiding Wilderness",
@@ -3697,7 +3773,9 @@ fn encounter_results(s: &State) -> String {
         .iter()
         .enumerate()
         .filter(|(index, e)| {
-            if !crate::quest_bosses::visible(e, s.hide_quest_bosses) { return false; }
+            if !crate::quest_bosses::visible(e, s.hide_quest_bosses) {
+                return false;
+            }
             let exposed = crate::wilderness::exposure(&e.name) != crate::wilderness::Exposure::None;
             if s.wilderness_location == "safe" && exposed
                 || s.wilderness_location == "wild" && !exposed
@@ -3800,7 +3878,10 @@ fn refresh_encounter_browser(s: &State) {
                     )
                 }),
         );
-    for (id, active) in buttons.chain(std::iter::once(("quest-filter-Hide-quest-bosses".into(), s.hide_quest_bosses))) {
+    for (id, active) in buttons.chain(std::iter::once((
+        "quest-filter-Hide-quest-bosses".into(),
+        s.hide_quest_bosses,
+    ))) {
         if let Some(el) = document().get_element_by_id(&id) {
             el.set_class_name(if active {
                 "encounter-filter active"
@@ -4897,7 +4978,139 @@ fn special_attack_panel(
             esc(&reason)
         )),
     }
-    html.push_str("<p class=\"small-note\">Includes misses, overkill and the finishing cooldown in one target window. No energy recovery, chained activations, movement, projectile travel or phase transitions. Verify charges and the held-buff state in game.</p></section>");
+    html.push_str("<p class=\"small-note\">Single-burst values include misses, overkill and the finishing cooldown. Use the rotation comparison below for recovery and repeated activations. Verify charges and held buffs in game.</p>");
+    html.push_str(&rotation_panel(s, member, set, style, target));
+    html.push_str("</section>");
+    html
+}
+
+fn rotation_panel(
+    s: &State,
+    member: &account::Member,
+    set: &[Option<i32>],
+    style: &str,
+    target: &planner::Monster,
+) -> String {
+    let settings = &s.saved.options.combat;
+    let cfg = &settings.rotation;
+    let period = crate::rotation::interval(crate::rotation::lightbearer(set));
+    let mut html = format!(
+        "<section aria-label=\"Energy recovery and rotations\"><h3>Energy recovery &amp; rotations</h3><p>Worn ring: restores 10% every {:.1} seconds. Recovery pauses at full energy.</p><p><label><input id=\"rotation-enabled\" type=\"checkbox\" {}> Compare a timed rotation</label></p>",
+        period as f64 * 0.6,
+        if cfg.enabled { "checked" } else { "" }
+    );
+    if !cfg.enabled {
+        html.push_str("<p class=\"small-note\">Uses normal attacks between affordable specials with this weapon and fixed equipment.</p></section>");
+        return html;
+    }
+    html.push_str("<label>Rotation window<select id=\"rotation-window\">");
+    let mut windows = vec![25, 50, 100, 250, 500, cfg.window_ticks];
+    windows.sort();
+    windows.dedup();
+    for value in windows {
+        html.push_str(&format!(
+            "<option value=\"{value}\" {}>{:.1} seconds</option>",
+            if value == cfg.window_ticks {
+                "selected"
+            } else {
+                ""
+            },
+            value as f64 * 0.6
+        ));
+    }
+    html.push_str("</select></label><label>Next energy pulse<select id=\"rotation-pulse\">");
+    html.push_str(&format!(
+        "<option value=\"0\" {}>Fresh interval</option>",
+        if cfg.next_pulse == 0 { "selected" } else { "" }
+    ));
+    for value in 1..=50 {
+        html.push_str(&format!(
+            "<option value=\"{value}\" {}>{:.1} seconds</option>",
+            if value == cfg.next_pulse {
+                "selected"
+            } else {
+                ""
+            },
+            value as f64 * 0.6
+        ));
+    }
+    html.push_str("</select></label><label>Rotation policy<select id=\"rotation-policy\">");
+    for (value, label, policy) in [
+        (
+            "specials_when_ready",
+            "Specials when ready",
+            crate::rotation::Policy::SpecialsWhenReady,
+        ),
+        (
+            "normal_only",
+            "Normal attacks only",
+            crate::rotation::Policy::NormalOnly,
+        ),
+    ] {
+        html.push_str(&format!(
+            "<option value=\"{value}\" {}>{label}</option>",
+            if cfg.policy == policy { "selected" } else { "" }
+        ));
+    }
+    html.push_str("</select></label><label>Rotation trials<select id=\"rotation-trials\">");
+    let mut trials = vec![128, 512, 2048, cfg.trials];
+    trials.sort();
+    trials.dedup();
+    for value in trials {
+        html.push_str(&format!(
+            "<option value=\"{value}\" {}>{value}</option>",
+            if cfg.trials == value { "selected" } else { "" }
+        ));
+    }
+    html.push_str("</select></label>");
+    match crate::rotation::evaluate(
+        member,
+        set,
+        style,
+        target,
+        s.saved.options.raid_level,
+        settings,
+    ) {
+        Err(reason) => html.push_str(&format!("<p>Rotation unavailable: {}</p>", esc(&reason))),
+        Ok(report) => {
+            html.push_str(&format!("<dl class=\"combat-values\"><div><dt>Estimated effective damage</dt><dd>{:.2}</dd></div><div><dt>Estimated defeat chance</dt><dd>{:.1}%</dd></div><div><dt>Mean special activations</dt><dd>{:.2}</dd></div><div><dt>Mean energy remaining</dt><dd>{:.1}%</dd></div></dl><p>Mean attacks: {:.2} normal, {:.2} empowered. Mean energy: {:.1}% restored, {:.1}% spent. Defeat chance 95% sampling interval: {:.1}–{:.1}%. Damage standard error: {:.3}.</p>",report.effective_damage,report.kill_chance*100.0,report.special_activations,report.energy_remaining,report.normal_attacks,report.empowered_attacks,report.energy_restored,report.energy_spent,report.kill_interval_95.0*100.0,report.kill_interval_95.1*100.0,report.damage_standard_error));
+            if !crate::rotation::lightbearer(set) {
+                let stock = s.saved.snapshot.available(s.saved.options.shared);
+                let ring = crate::rules::registry()
+                    .equipment_effects
+                    .iter()
+                    .filter(|e| e.effect == "lightbearer")
+                    .flat_map(|e| e.ids.iter().copied())
+                    .find(|id| {
+                        stock.get(id).copied().unwrap_or(0) > 0
+                            && !s.saved.options.item_excluded(*id)
+                            && planner::can_use(*id, member)
+                    });
+                if let Some(ring) = ring {
+                    if let Ok((gear, with_ring)) =
+                        crate::rotation::equip_at_start(settings, set, ring)
+                    {
+                        if let Ok(other) = crate::rotation::evaluate(
+                            member,
+                            &gear,
+                            style,
+                            target,
+                            s.saved.options.raid_level,
+                            &with_ring,
+                        ) {
+                            html.push_str(&format!("<table class=\"bonus-table\"><caption>Equip owned Lightbearer at start · includes lost ring stats</caption><thead><tr><th>Ring</th><th>Effective damage</th><th>Defeat chance</th><th>Specials</th></tr></thead><tbody><tr><th>Equipped ring</th><td>{:.2}</td><td>{:.1}%</td><td>{:.2}</td></tr><tr><th>Owned Lightbearer</th><td>{:.2}</td><td>{:.1}%</td><td>{:.2}</td></tr></tbody></table><p class=\"small-note\">Comparison only; choose the ring in Gear to use it. The initial equip preserves a pulse already less than 15 seconds away.</p>",report.effective_damage,report.kill_chance*100.0,report.special_activations,other.effective_damage,other.kill_chance*100.0,other.special_activations));
+                        }
+                    }
+                }
+            }
+            html.push_str("<details><summary>Example rotation · first seeded trial</summary><table class=\"bonus-table\"><thead><tr><th>Time</th><th>Attack</th><th>Energy</th><th>Damage</th><th>HP left</th><th>Buff left</th></tr></thead><tbody>");
+            for event in &report.trace {
+                html.push_str(&format!("<tr><td>{:.1}s</td><td>{}</td><td>{}→{}%</td><td>{}</td><td>{}</td><td>{}</td></tr>",event.tick as f64*0.6,esc(&event.attack),event.energy_before,event.energy_after,event.damage,event.remaining_hp,event.empowered_hits));
+            }
+            html.push_str("</tbody></table></details>");
+        }
+    }
+    html.push_str(&format!("<p class=\"small-note\">{} reproducible trials in one fixed target window. Uses held Zorya attacks before another paid opener, normal attacks while energy recovers, and stops at target death. Attacks start before the window ends; recovery at that end boundary cannot fund another attack. No incoming damage, survival, projectile travel, phase transitions, other restores or mid-rotation gear switches. Sampling intervals describe simulation noise, not gameplay calibration.</p></section>",cfg.trials));
     html
 }
 
@@ -4913,7 +5126,9 @@ fn combat_panel(s: &State, p: &Plan) -> String {
     );
     let results_index = html.len();
     let mut headline = String::new();
-    if crate::sailing::active(&s.saved.options) { html.push_str("<p class=\"notice\">Personal weapon comparison only. Cannon and crew damage are not included. The player cannot use a weapon while operating a cannon or steering.</p>"); }
+    if crate::sailing::active(&s.saved.options) {
+        html.push_str("<p class=\"notice\">Personal weapon comparison only. Cannon and crew damage are not included. The player cannot use a weapon while operating a cannon or steering.</p>");
+    }
     html.push_str(&combat_style_controls(s, &set, style));
     html.push_str(r#"<div class="target-choices" role="group" aria-label="Against"><h4>Against</h4><div class="combat-subtype-options">"#);
     let mut priority_ids = std::collections::BTreeSet::new();
@@ -6716,5 +6931,11 @@ fn death_risk_panel(s: &State, plan: &Plan) -> String {
 }
 
 fn sailing_panel(s: &State) -> String {
-    crate::sailing_view::render(&s.saved.options.sailing,s.saved.snapshot.selected(),&s.saved.options.targets,&s.sailing_slot,s.shared_setup.is_some())
+    crate::sailing_view::render(
+        &s.saved.options.sailing,
+        s.saved.snapshot.selected(),
+        &s.saved.options.targets,
+        &s.sailing_slot,
+        s.shared_setup.is_some(),
+    )
 }

@@ -219,6 +219,7 @@
     {"ids":[26245],"requirements":{"Defence":75,"Magic":78}}
   ],
   "equipment_effects": [
+    {"effect":"lightbearer","ids":[25975],"slot":12},
     {"effect":"charged_quiver","ids":[28951,28953,28955,28957,28902,28906],"slot":1},
     {"effect":"berserker_necklace","ids":[11128,23240],"slot":2},
     {"effect":"inquisitor","ids":[24419],"slot":0,"weight":1},

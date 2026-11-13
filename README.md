@@ -132,6 +132,8 @@ Defaults use unboosted levels. Selected boosts use peak current levels; wear req
 
 **Combat → Attack window & supply budget** lets you set current target HP and inspect finite-HP attack expectations, including misses, overkill and changing ruby-bolt procs. Vorkath has an optional acid attack window; normal Yama has a separate 71-HP final flare. These estimates exclude movement, specials, regeneration and supply recovery. Packing budgets and the overview's HP/DPS comparison are separate assumptions, not kills-per-trip predictions.
 
+**Combat → Special attack burst → Compare a timed rotation** adds Zorya/kisten specials, normal fillers and natural energy recovery. Compare an owned Lightbearer with its real ring-stat cost. [Timing, assumptions and remaining limits](docs/energy-rotations.md). This opt-in comparison does not alter normal gear ranking or full-fight survival estimates.
+
 **Combat → Full-fight & consumption simulation** runs complete Vorkath, normal Yama and Wardens scenarios with editable execution assumptions. Compare median/tail demand and the fights covered by your carried supplies; download a replayable report. [Model assumptions and verification](docs/full-fight-simulation.md) explain the scenario inputs, excluded effects and outstanding gameplay calibration.
 
 **Compare with recorded gameplay** downloads a setup-matched worksheet and compares your annotated recordings locally, with separate training/holdout errors and measured-input suggestions. [Recording guide](docs/gameplay-calibration.md). Actual gameplay calibration remains open for all three; public guide text and synthetic tests do not validate consumption or survival.

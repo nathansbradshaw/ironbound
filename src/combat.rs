@@ -245,7 +245,7 @@ pub fn calculate_configured(
         AttackMode::Normal,
     )
 }
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub(crate) enum AttackMode {
     Normal,
     Special,
@@ -1021,7 +1021,9 @@ pub(crate) fn calculate_mode(
         || frostweaver
         || style == "Ranged" && rules::set_effect(set, "karil_damned");
     let npc_transform = crate::quest_bosses::damage_transform(monster.id, weapon, set[12])
-        .unwrap_or_else(|| crate::monster_rules::transform_for(monster.id, weapon, attack_type, &b, spell));
+        .unwrap_or_else(|| {
+            crate::monster_rules::transform_for(monster.id, weapon, attack_type, &b, spell)
+        });
     let hit_effects = crate::effects::SetHitEffects {
         damage_rolls,
         accurate_min: if style == "Ranged"

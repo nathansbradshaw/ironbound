@@ -342,6 +342,7 @@ fn ensure_efficient(s: &State) {
             let current = STATE.with(|state| {
                 let s = state.borrow();
                 s.tab == "bossing"
+                    && s.compact_open
                     && s.shared_setup.is_none()
                     && efficient_key(&s.saved.snapshot, &s.saved.options) == key
             }) && EFFICIENT
@@ -628,6 +629,49 @@ fn image(id: i32) -> String {
     crate::tooltip::item_icon(id)
 }
 
+fn load_item_icons() {
+    // Fetch the same complete public pack for everyone, never bank-derived URLs.
+    // It must not block Wasm initialization or recalculate the user's plan.
+    spawn_local(async {
+        let load = async {
+            let url = document()
+                .get_element_by_id("item-icon-pack")
+                .and_then(|el| el.get_attribute("content"))
+                .ok_or(JsValue::NULL)?;
+            let response = JsFuture::from(window().fetch_with_str(&url))
+                .await?
+                .dyn_into::<web_sys::Response>()?;
+            if !response.ok() {
+                return Err(JsValue::NULL);
+            }
+            let raw = JsFuture::from(response.text()?)
+                .await?
+                .as_string()
+                .ok_or(JsValue::NULL)?;
+            crate::tooltip::install_icons(&raw).map_err(|_| JsValue::NULL)?;
+            let pending = document().query_selector_all("[data-item-icon]")?;
+            for index in 0..pending.length() {
+                if let Some(el) = pending
+                    .item(index)
+                    .and_then(|node| node.dyn_into::<Element>().ok())
+                {
+                    if let Some(id) = el
+                        .get_attribute("data-item-icon")
+                        .and_then(|id| id.parse().ok())
+                    {
+                        el.set_outer_html(&image(id));
+                    }
+                }
+            }
+            Ok::<_, JsValue>(())
+        }
+        .await;
+        if load.is_err() {
+            web_sys::console::warn_1(&JsValue::from_str("Item artwork could not load; the planner is still available. Reload to retry."));
+        }
+    });
+}
+
 fn button(action: &str, label: &str, class: &str) -> String {
     format!(
         "<button type=\"button\" data-action=\"{}\" class=\"{}\">{}</button>",
@@ -849,6 +893,7 @@ fn show_item_tooltip(item: &Element) {
 #[wasm_bindgen(start)]
 pub fn start() -> Result<(), JsValue> {
     render();
+    load_item_icons();
     let explain = Closure::<dyn FnMut(web_sys::Event)>::new(|event: web_sys::Event| {
         if event
             .target()
@@ -999,7 +1044,16 @@ pub fn start() -> Result<(), JsValue> {
             if el.id() == "death-risk-details" {
                 STATE.with(|state| state.borrow_mut().risk_open = el.has_attribute("open"));
             } else if el.id() == "boss-bestiary" {
-                STATE.with(|state| state.borrow_mut().bestiary_open = el.has_attribute("open"));
+                let open = el.has_attribute("open");
+                let changed = STATE.with(|state| {
+                    let mut s = state.borrow_mut();
+                    let changed = s.bestiary_open != open;
+                    s.bestiary_open = open;
+                    changed
+                });
+                if changed && open {
+                    render();
+                }
             } else if el.id() == "raid-room-picker" {
                 STATE.with(|state| state.borrow_mut().raid_rooms_open = el.has_attribute("open"));
             } else if el.id() == "switch-preferences" {
@@ -1007,7 +1061,16 @@ pub fn start() -> Result<(), JsValue> {
                     state.borrow_mut().switch_preferences_open = el.has_attribute("open")
                 });
             } else if el.id() == "compact-setup" {
-                STATE.with(|state| state.borrow_mut().compact_open = el.has_attribute("open"));
+                let open = el.has_attribute("open");
+                let changed = STATE.with(|state| {
+                    let mut s = state.borrow_mut();
+                    let changed = s.compact_open != open;
+                    s.compact_open = open;
+                    changed
+                });
+                if changed && open {
+                    render();
+                }
             } else if el.id() == "encounter-extra-filters" {
                 STATE.with(|state| {
                     state.borrow_mut().encounter_filters_open = el.has_attribute("open")
@@ -2839,10 +2902,12 @@ fn render_with_edit(edit: Option<&str>) {
         html.push_str("<div class=\"encounter-actions\">");
         html.push_str(&format!("<details class=\"encounter-picker\" id=\"boss-bestiary\" {}><summary aria-label=\"Change encounter\">Change<span class=\"wide-label\"> encounter</span></summary>",if s.bestiary_open||s.building_group||(options.boss==Boss::Custom&&options.targets.is_empty()){"open"}else{""}));
         html.push_str(&encounter_catalog(&s));
+        if s.bestiary_open||s.building_group||(options.boss==Boss::Custom&&options.targets.is_empty()) {
         html.push_str(&format!("<details class=\"custom-builder\" {}><summary>Build a custom group</summary>",if s.building_group{"open"}else{""}));
         html.push_str(&custom_group(&s));
         html.push_str(&button("custom-done","Done","button ghost"));
         html.push_str("</details>");
+        }
         html.push_str("</details>");
         html.push_str(&raid_rooms(&s));
         html.push_str("</div></div>");
@@ -3514,6 +3579,12 @@ fn encounter_filter_button(prefix: &str, label: &str, active: bool) -> String {
     )
 }
 fn encounter_catalog(s: &State) -> String {
+    if !s.bestiary_open
+        && !s.building_group
+        && !(s.saved.options.boss == Boss::Custom && s.saved.options.targets.is_empty())
+    {
+        return String::new();
+    }
     let mut html = format!(
         r#"<section class="encounter-browser"><h2>Choose your fight</h2><p>Based on your bank and levels.</p><label><span class="slot-caption">Search encounters</span><input id="encounter-search" type="search" placeholder="Search bosses or raids" value="{}" autocomplete="off"></label><nav class="encounter-filters" aria-label="Encounter categories">"#,
         esc(&s.encounter_query)
@@ -5285,6 +5356,9 @@ fn switch_controls(s: &State, p: &Plan) -> String {
 }
 
 fn efficient_panel(s: &State, _plan: &Plan) -> String {
+    if !s.compact_open {
+        return "<details id=\"compact-setup\" class=\"panel efficient-panel\" aria-label=\"Compact setup recommendation\"><summary><h3>Save bag space</h3></summary></details>".into();
+    }
     ensure_efficient(s);
     let limits = crate::efficient::Tolerances::from_options(&s.saved.options);
     let mut html = format!(

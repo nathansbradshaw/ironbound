@@ -26,8 +26,16 @@ pub fn notes(set: &[Option<i32>], settings: &Settings) -> Vec<String> {
         if weapon.has(rules::Effect::Ascension) {
             notes.push("Ascension crossbows: one bolt per attack, two ticks on Rapid and three on Accurate. Ascension bolts only; diamond/onyx proc rates are halved, with the Kandarin multiplier applied. Onyx healing and ammunition recovery are excluded.".into());
         }
-        if ["ayak", "zorya"].contains(&weapon.weapon.family.as_str()) {
+        if weapon.weapon.family == "ayak" {
             notes.push("Charged powered weapon: normal attacks only. Verify loaded charges; special attacks, empowered follow-ups and energy rotations are excluded.".into());
+        }
+        if let Some(special) = &weapon.weapon.special {
+            notes.push(format!("Special burst: {}% energy available; one activation costs {}%. Normal gear scores and full-fight simulation exclude specials, recovery and rotations.",settings.special_energy,special.energy));
+            if special.kind == rules::SpecialKind::Zorya {
+                notes.push(format!("Zorya: {} empowered attacks held. A successful opener grants three two-tick attacks at +150% accuracy and +60% damage. Normal attacks remain three ticks. Verify charges; no pre-stacking or reset assumption is inferred.",settings.zorya_empowered_hits));
+            } else {
+                notes.push("Crimson kisten: Brutal Swing rolls accuracy four times against crush defence, then makes one damage hit in the matching 70–110% through 130–170% band. Attack bonus and stance use the selected attack style.".into());
+            }
         }
         if weapon.weapon.family == "dragon_wand" {
             notes.push("Dragon hunter wand: standard and supported Ice casts; dragonbane applies before elemental weakness. Spell rune costs are packed normally; no free runes are inferred.".into());

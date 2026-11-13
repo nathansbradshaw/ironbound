@@ -152,6 +152,8 @@ fn one() -> i64 {
 }
 #[derive(Debug, Deserialize)]
 pub struct Weapon {
+    #[serde(default)]
+    pub special: Option<SpecialAttack>,
     pub ids: Vec<i32>,
     pub family: String,
     #[serde(default)]
@@ -173,6 +175,18 @@ pub struct Weapon {
     pub demonbane_percent: Option<i64>,
     #[serde(default)]
     pub demonbane_spell_factor: Option<i64>,
+}
+#[derive(Clone, Copy, Debug, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum SpecialKind {
+    Zorya,
+    Kisten,
+}
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct SpecialAttack {
+    pub kind: SpecialKind,
+    pub energy: u32,
 }
 #[derive(Debug, Deserialize)]
 pub struct SetPiece {
@@ -319,6 +333,13 @@ impl Registry {
             }
         }
         for weapon in &self.weapons {
+            if weapon
+                .special
+                .as_ref()
+                .is_some_and(|s| s.energy == 0 || s.energy > 100)
+            {
+                return Err("Invalid special attack energy".into());
+            }
             if weapon
                 .multipliers
                 .iter()

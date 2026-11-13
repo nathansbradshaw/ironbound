@@ -72,3 +72,16 @@ and [2025 dragon-wand changes](https://oldschool.runescape.wiki/w/Update:Summer_
 probability checks, finite-HP timing, elemental/Salve/task ordering, rune packing,
 variant/skill boundaries, quiver exclusions, cosmetic equivalence and Moon-set
 isolation. These fixtures are not gameplay or additional live-calculator captures.
+
+Release verification (2026-11-13): all 624 Rust tests passed, including 16 new
+recent-equipment tests and the existing Eclipse burn, Blue Moon follow-up,
+Hueycoatl and Royal Titans suites. The independent reference comparator passed
+all 24 fixtures. Optimized WebAssembly, formatting and whitespace checks passed.
+
+Disposable browser checks confirmed automatic Twinflame and Eye of Ayak selection,
+Water Wave's 37-cast rune packing/export and Twinflame's 4.030 DPS / 30 combined
+max / six-tick cycle against Zombie (26). With Scorching bow and dragon arrows,
+charged versus uncharged quivers produced 5.694 versus 5.686 DPS (97.4% versus
+97.2% accuracy). Oathplate chest was excluded at 77 Defence and selected at 78.
+The browser reported no application errors. These checks used synthetic accounts;
+they do not establish in-game charge consumption or gameplay calibration.

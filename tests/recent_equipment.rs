@@ -536,3 +536,26 @@ fn recent_weapons_compete_with_moon_sets_without_borrowing_their_passives() {
     let off = calc(&blue, "Magic", "Wind Wave", &target(), &Settings::default());
     close(on.dps, off.dps);
 }
+
+#[test]
+fn new_multi_hit_weapons_respect_huey_tail_and_pillar_limits_per_splat() {
+    for (id, earth_max, air_max) in [(14014, 18, 8), (100161, 22, 10)] {
+        let t = planner::monster(id).unwrap();
+        let s = set(&[(3, 30634)]);
+        let earth = calc(&s, "Magic", "Earth Wave", t, &Settings::default());
+        let air = calc(&s, "Magic", "Wind Wave", t, &Settings::default());
+        assert_eq!(earth.max_hit, earth_max);
+        assert_eq!(air.max_hit, air_max);
+        distribution(&earth);
+        distribution(&air);
+        let glacial = calc(&set(&[(3, 29889)]), "Crush", "", t, &Settings::default());
+        assert!(glacial.hit_distribution.iter().all(|(d, _)| *d >= 2));
+    }
+    let snapshot = bank(&[(29889, 1), (1434, 1), (8007, 1)]);
+    let mut o = options("Crush");
+    o.targets[0].id = 14014;
+    assert_eq!(
+        planner::equipment_for_style(&snapshot, &o, "Crush")[3],
+        Some(29889)
+    );
+}

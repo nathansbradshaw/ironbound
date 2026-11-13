@@ -667,7 +667,9 @@ fn load_item_icons() {
         }
         .await;
         if load.is_err() {
-            web_sys::console::warn_1(&JsValue::from_str("Item artwork could not load; the planner is still available. Reload to retry."));
+            web_sys::console::warn_1(&JsValue::from_str(
+                "Item artwork could not load; the planner is still available. Reload to retry.",
+            ));
         }
     });
 }

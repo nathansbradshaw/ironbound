@@ -137,8 +137,12 @@ independent references, browser verification, then gameplay verification.
   windows are merged.
 - [ ] Moons: curses, special phases, camp boosts and movement; normal chains,
   flat armour and Blood healing are implemented.
-- [ ] Barrows: Dharok's changing incoming damage, Verac's bypass distribution,
-  remaining set effects, prayer drain and tunnels; Guthan healing is partial.
+- [x] Barrows selected incoming: normal Dharok's current-NPC-HP maximum and
+  ordinary rolls, plus Verac's 75/25 accuracy/protection-bypass mixture with
+  its separate protected maximum. NPC and player current HP stay independent.
+- [ ] Barrows full trip: remaining set effects, prayer drain, tunnels, timing
+  and actual supplies. Verac's defensive-equipment passive ordering stays gated;
+  Guthan healing is partial. Quest/event variants need separate validation.
 - [ ] Zilyana / Graardor / Sarachnis: complete basic attack mixtures, adds,
   movement and specials; retain the existing selected incoming scenarios.
 - [ ] Fragment of Seren, Slagilith and Tormented Demons: their damage limiters,

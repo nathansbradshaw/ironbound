@@ -165,3 +165,185 @@ fn every_catalog_entry_has_a_real_portrait() {
         );
     }
 }
+
+fn strong_account() -> account::Snapshot {
+    let mut account = account::demo();
+    for skill in account::SKILLS {
+        account.members[0].level_overrides.insert(skill.into(), 99);
+    }
+    account
+}
+
+#[test]
+fn all_reviewed_bank_combat_entries_have_a_readiness_guideline() {
+    let rows = bestiary::assess_catalog(&strong_account(), &Options::default());
+    for (entry, row) in encounters::catalog().iter().zip(&rows) {
+        if entry.bank_equipment
+            && !entry.targets.is_empty()
+            && entry.targets.iter().all(|t| {
+                ironbound::planner::monster(t.id)
+                    .is_some_and(|m| encounters::limitation(m).is_none())
+            })
+        {
+            assert_ne!(
+                row.readiness,
+                Readiness::Unknown,
+                "{}: {}",
+                entry.name,
+                row.reason
+            );
+        }
+    }
+    for name in [
+        "Brutus",
+        "Corporeal Beast",
+        "Dagannoth Kings",
+        "Dagannoth Prime",
+        "Dagannoth Supreme",
+        "Fight Caves",
+        "Lunar Chests",
+        "Mimic",
+        "Skotizo",
+        "Tombs of Amascut",
+        "TzTok-Jad",
+        "Yama",
+    ] {
+        let index = encounters::catalog()
+            .iter()
+            .position(|e| e.name == name)
+            .unwrap();
+        assert_ne!(rows[index].readiness, Readiness::Unknown, "{name}");
+        assert!(!rows[index].detail.is_empty());
+    }
+}
+
+#[test]
+fn tribrid_and_yama_ratings_require_every_mandatory_style() {
+    let account = strong_account();
+    for (style, bosses) in [
+        ("Ranged", vec!["Dagannoth Kings", "Tombs of Amascut"]),
+        ("Magic", vec!["Dagannoth Kings", "Tombs of Amascut", "Yama"]),
+        ("Melee", vec!["Dagannoth Kings", "Tombs of Amascut", "Yama"]),
+    ] {
+        let mut options = Options::default();
+        for id in account.available(false).keys() {
+            if ironbound::rules::weapon(*id).is_some_and(|w| w.family.style == style) {
+                options.excluded.insert(*id);
+            }
+        }
+        let rows = bestiary::assess_catalog(&account, &options);
+        for name in bosses {
+            let index = encounters::catalog()
+                .iter()
+                .position(|e| e.name == name)
+                .unwrap();
+            assert_eq!(rows[index].readiness, Readiness::Struggle, "{name}/{style}");
+            assert!(
+                rows[index]
+                    .reason
+                    .contains(&format!("No usable owned {style}")),
+                "{name}: {}",
+                rows[index].reason
+            );
+        }
+    }
+}
+
+#[test]
+fn jad_and_waves_check_prayer_and_real_ammunition() {
+    let mut account = strong_account();
+    account.members[0]
+        .level_overrides
+        .insert("Prayer".into(), 42);
+    let rows = bestiary::assess_catalog(&account, &Options::default());
+    for name in ["TzTok-Jad", "Fight Caves"] {
+        let index = encounters::catalog()
+            .iter()
+            .position(|e| e.name == name)
+            .unwrap();
+        assert_eq!(rows[index].readiness, Readiness::Struggle);
+        assert!(rows[index].reason.contains("43 Prayer"));
+    }
+    let account = strong_account();
+    let options = Options {
+        excluded: account
+            .available(false)
+            .keys()
+            .filter(|id| {
+                ironbound::inventory::category(**id, &ironbound::planner::item_name(**id))
+                    == ironbound::inventory::Category::Ammunition
+            })
+            .copied()
+            .collect(),
+        ..Default::default()
+    };
+    let jad = result("TzTok-Jad", &account, &options);
+    assert_eq!(jad.readiness, Readiness::Struggle);
+    assert!(jad.reason.contains("No usable owned setup"));
+}
+
+#[test]
+fn excluded_runes_are_unavailable_to_new_magic_roles() {
+    let account = strong_account();
+    let mut options = Options::default();
+    for id in account.available(false).keys() {
+        if ironbound::inventory::category(*id, &ironbound::planner::item_name(*id))
+            == ironbound::inventory::Category::Runes
+            || ironbound::rules::weapon(*id)
+                .is_some_and(|w| w.family.formula == ironbound::rules::Formula::Powered)
+        {
+            options.excluded.insert(*id);
+        }
+    }
+    let toa = result("Tombs of Amascut", &account, &options);
+    assert_eq!(toa.readiness, Readiness::Struggle);
+    assert!(
+        toa.reason.contains("No usable owned Magic"),
+        "{}",
+        toa.reason
+    );
+}
+
+#[test]
+fn aliases_agree_and_unreviewed_modes_explain_the_blocker() {
+    let account = strong_account();
+    let rows = bestiary::assess_catalog(&account, &Options::default());
+    let row = |name| {
+        &rows[encounters::catalog()
+            .iter()
+            .position(|e| e.name == name)
+            .unwrap()]
+    };
+    assert_eq!(
+        row("Lunar Chests").readiness,
+        row("Moons of Peril").readiness
+    );
+    assert_eq!(row("Lunar Chests").reason, row("Moons of Peril").reason);
+    for name in [
+        "The Royal Titans",
+        "Nex",
+        "Theatre of Blood",
+        "The Fractured Archive",
+        "Phantom Muspah",
+    ] {
+        assert_eq!(row(name).readiness, Readiness::Unknown, "{name}");
+        assert!(row(name).reason.contains("Unreviewed phases"));
+        assert!(
+            row(name)
+                .detail
+                .contains("Readiness needs reviewed calculations")
+        );
+    }
+    assert!(row("The Gauntlet").reason.contains("equipment or skilling"));
+    assert!(
+        row("Tombs of Amascut: Expert Mode")
+            .reason
+            .contains("scaling")
+    );
+    assert!(row("Tombs of Amascut").detail.contains("raid-level-0"));
+    assert!(row("Tombs of Amascut").reason.contains("Solo · raid level 0"));
+    assert!(row("Fight Caves").detail.contains("63 waves"));
+    assert!(row("Yama").detail.contains("Hybrid baseline"));
+    assert!(row("Yama").reason.contains("Melee-boss hybrid"));
+    assert!(bestiary::FILTERS.contains(&"Not assessed"));
+}

@@ -277,7 +277,7 @@ fn efficient_result(s: &State) -> Option<crate::efficient::Suggestion> {
         .map(|rows| {
             crate::efficient::choose(
                 rows,
-                s.saved.options.switch_tolerance,
+                crate::efficient::Tolerances::from_options(&s.saved.options),
                 s.saved.options.max_switches.unwrap_or(11),
             )
         })
@@ -344,6 +344,8 @@ fn live_number(id: &str) -> bool {
     [
         "max-switches",
         "switch-tolerance",
+        "damage-tolerance",
+        "prayer-tolerance",
         "switch-slots",
         "food",
         "potions",
@@ -383,12 +385,16 @@ fn apply_number(s: &mut State, id: &str, value: &str) -> bool {
         return true;
     }
     let o = &mut s.saved.options;
-    if id == "switch-tolerance" {
+    if ["switch-tolerance", "damage-tolerance", "prayer-tolerance"].contains(&id) {
         let Ok(number) = value.parse::<i64>() else {
             return false;
         };
         let bounded = number.clamp(0, crate::efficient::MAX_TOLERANCE_PERCENT as i64) as u32;
-        o.switch_tolerance = bounded;
+        match id {
+            "switch-tolerance" => o.switch_tolerance = bounded,
+            "damage-tolerance" => o.damage_tolerance = bounded,
+            _ => o.prayer_tolerance = bounded,
+        }
         if number != bounded as i64 {
             if let Some(input) = document()
                 .get_element_by_id(id)
@@ -1122,6 +1128,8 @@ pub fn start() -> Result<(), JsValue> {
             "reduction-accursed",
             "reduction-vulnerability",
             "kandarin-diary",
+            "soulreaper-stacks",
+            "bulwark-block",
             "allow-void",
             "safety",
             "prayer-weight",
@@ -1243,6 +1251,17 @@ pub fn start() -> Result<(), JsValue> {
                     s.saved.options.combat.kandarin_diary = el
                         .dyn_ref::<HtmlInputElement>()
                         .is_some_and(|e| e.checked())
+                }
+                "soulreaper-stacks" => {
+                    if let Ok(sel) = el.dyn_into::<HtmlSelectElement>() {
+                        s.saved.options.combat.soulreaper_stacks =
+                            sel.value().parse::<u32>().unwrap_or(0).min(5);
+                    }
+                }
+                "bulwark-block" => {
+                    s.saved.options.combat.bulwark_block = el
+                        .dyn_ref::<HtmlInputElement>()
+                        .is_some_and(|e| e.checked());
                 }
                 "allow-void" => {
                     s.saved.options.exclude_void = !el
@@ -3592,6 +3611,32 @@ fn combat_assumptions(
     html.push_str(&format!("<label>Current Hitpoints (Dharok's)<input id=\"current-hitpoints\" type=\"number\" min=\"1\" max=\"255\" placeholder=\"Full health\" value=\"{}\"></label>",
         settings.current_hitpoints.map(|hp|hp.to_string()).unwrap_or_default()));
     let owned = s.saved.snapshot.available(s.saved.options.shared);
+    if owned.keys().any(|id| {
+        crate::rules::weapon(*id).is_some_and(|r| r.has(crate::rules::Effect::Soulreaper))
+    }) {
+        html.push_str("<label>Soulreaper held stacks<select id=\"soulreaper-stacks\">");
+        for stacks in 0..=5 {
+            html.push_str(&format!(
+                "<option value=\"{stacks}\" {}>{stacks}</option>",
+                if settings.soulreaper_stacks == stacks {
+                    "selected"
+                } else {
+                    ""
+                }
+            ));
+        }
+        html.push_str("</select></label>");
+    }
+    if owned
+        .keys()
+        .any(|id| crate::rules::equipment_effect(*id, "bulwark"))
+    {
+        html.push_str(&format!("<label><input id=\"bulwark-block\" type=\"checkbox\" {}> Dinh's Block active · prevents attacks</label>", if settings.bulwark_block { "checked" } else { "" }));
+    }
+    for note in crate::equipment_effects::notes(set, settings) {
+        html.push_str(&format!("<p class=\"small-note\">{}</p>", esc(&note)));
+    }
+    html.push_str("<p class=\"small-note\">Normal attacks only. Special-attack damage, energy recovery and rotations are excluded; selected defence reductions assume successful effects already applied.</p>");
     let internal = set[3]
         .and_then(crate::rules::weapon)
         .filter(|r| !r.family.internal_ammo.is_empty())
@@ -4260,7 +4305,7 @@ fn combat_panel(s: &State, p: &Plan) -> String {
             &s.saved.options.combat,
         ) {
             Ok(r) => {
-                html.push_str(&format!(r#"<dl class="combat-values"><div><dt>Outgoing DPS</dt><dd>{:.3}</dd></div><div><dt>Hit chance</dt><dd>{:.1}%</dd></div><div><dt>Max hit</dt><dd>{}</dd></div><div><dt>Attack speed</dt><dd>{} ticks</dd></div></dl><p>{} attacks · {:.1} seconds per attack</p>"#,r.dps,r.accuracy*100.0,r.max_hit,r.attack_ticks,esc(&r.attack_type),r.attack_ticks as f64*0.6));
+                html.push_str(&format!(r#"<dl class="combat-values"><div><dt>Outgoing DPS</dt><dd>{:.3}</dd></div><div><dt>Hit chance</dt><dd>{:.1}%</dd></div><div><dt>Max hit</dt><dd>{}</dd></div><div><dt>Attack speed</dt><dd>{:.2} ticks</dd></div></dl><p>{} attacks · {:.2} seconds per attack (expected)</p>"#,r.dps,r.accuracy*100.0,r.max_hit,r.expected_attack_ticks,esc(&r.attack_type),r.expected_attack_ticks*0.6));
                 html.push_str(&attack_window_budget(s, target, &set, &r));
                 html.push_str(&combat_breakdown(s, m, &set, target, &r));
                 if r.potential_healing_per_second > 0.0 {
@@ -4548,11 +4593,27 @@ fn switch_controls(s: &State, p: &Plan) -> String {
 
 fn efficient_panel(s: &State, _plan: &Plan) -> String {
     ensure_efficient(s);
-    let tolerance = s.saved.options.switch_tolerance;
+    let limits = crate::efficient::Tolerances::from_options(&s.saved.options);
     let mut html = String::from(
         "<section class=\"panel efficient-panel\" aria-label=\"Compact setup recommendation\"><h3>Pack fewer switches</h3>",
     );
-    html.push_str(&format!("<label class=\"tolerance-control\">Tradeoff tolerance <span><input id=\"switch-tolerance\" type=\"number\" min=\"0\" max=\"{}\" step=\"1\" inputmode=\"numeric\" value=\"{tolerance}\" aria-describedby=\"tolerance-help\">%</span></label><p id=\"tolerance-help\" class=\"small-note\">Up to {tolerance}% more attack time, prayer use and known incoming damage.</p>",crate::efficient::MAX_TOLERANCE_PERCENT));
+    html.push_str("<div class=\"tradeoff-limits\">");
+    for (id, label, value) in [
+        ("switch-tolerance", "DPS loss", limits.dps_loss),
+        (
+            "damage-tolerance",
+            "Extra damage taken",
+            limits.damage_taken,
+        ),
+        (
+            "prayer-tolerance",
+            "Extra prayer drain",
+            limits.prayer_drain,
+        ),
+    ] {
+        html.push_str(&format!("<label class=\"tolerance-control\">{label}<span><input id=\"{id}\" type=\"number\" min=\"0\" max=\"{}\" step=\"1\" inputmode=\"numeric\" value=\"{value}\" aria-describedby=\"tolerance-help\">%</span></label>",crate::efficient::MAX_TOLERANCE_PERCENT));
+    }
+    html.push_str("</div><p id=\"tolerance-help\" class=\"small-note\">Effective encounter DPS. Prayer drain is points per minute; longer fights can use more prayer overall.</p>");
     let Some(result) = efficient_result(s) else {
         html.push_str("<p role=\"status\">Checking switch limits…</p></section>");
         return html;
@@ -4571,25 +4632,30 @@ fn efficient_panel(s: &State, _plan: &Plan) -> String {
     let benchmark = &result.candidates[best];
     let a = chosen.totals.as_ref().unwrap();
     let b = benchmark.totals.as_ref().unwrap();
-    let slower = (a.seconds / b.seconds - 1.0) * 100.0;
-    let time = if slower.abs() < 0.05 {
-        "Same attack time".into()
+    let loss = (1.0 - b.seconds / a.seconds) * 100.0;
+    let dps_change = if loss.abs() < 0.05 {
+        "Same DPS".into()
     } else {
-        format!("{slower:.1}% slower")
+        format!("{loss:.1}% less DPS")
     };
     let saving =
         benchmark.budget.max_inventory_space as i32 - chosen.budget.max_inventory_space as i32;
     let prayer = a.prayer_points - b.prayer_points;
     let prayer_cost = if prayer.abs() < 0.05 {
-        "same prayer use".into()
+        "same total prayer use".into()
     } else {
         format!(
-            "{:.1} {} prayer points",
+            "{:.1} {} prayer points total",
             prayer.abs(),
             if prayer > 0.0 { "more" } else { "fewer" }
         )
     };
-    html.push_str(&format!("<p class=\"efficient-choice\">{} switch item{} · up to {} change{}</p><p>{time}; {prayer_cost}.</p><p class=\"small-note\">Peak bag {}/28 · {}{} compared with fastest.</p>",chosen.budget.carried_gear,if chosen.budget.carried_gear==1 {""}else{"s"},chosen.budget.max_pair,if chosen.budget.max_pair==1 {""}else{"s"},chosen.budget.max_inventory_space,saving.abs(),if saving>=0 {" fewer slots"}else{" more slots"}));
+    html.push_str(&format!("<p class=\"efficient-choice\">{} switch item{} · up to {} change{}</p><p>{dps_change}; {prayer_cost}.</p><p class=\"small-note\">Peak bag {}/28 · {}{} compared with fastest.</p>",chosen.budget.carried_gear,if chosen.budget.carried_gear==1 {""}else{"s"},chosen.budget.max_pair,if chosen.budget.max_pair==1 {""}else{"s"},chosen.budget.max_inventory_space,saving.abs(),if saving>=0 {" fewer slots"}else{" more slots"}));
+    html.push_str(&format!(
+        "<p class=\"small-note\">Prayer drain: {:.2}/min ({:+.2} vs fastest).</p>",
+        a.prayer_per_minute,
+        a.prayer_per_minute - b.prayer_per_minute
+    ));
     if !chosen.omissions.is_empty() {
         html.push_str(&format!(
             "<p class=\"efficient-unknown\">Partial recommendation: {}</p>",
@@ -4608,7 +4674,7 @@ fn efficient_panel(s: &State, _plan: &Plan) -> String {
         && s.saved.options.inventory_overrides.is_empty()
         && s.saved.options.inventory_quantities.is_empty();
     html.push_str(&format!("<div class=\"efficient-actions\"><button class=\"phase\" data-action=\"efficient-apply\" {}>{}</button>{}</div>",if using {"disabled"}else{""},if using {"Using compact setup"}else if edited_inventory {"Repack & use compact setup"}else{"Use compact setup"},button("efficient-compare","Compare with fastest","text-button")));
-    html.push_str(&format!("<details><summary>Within {tolerance}% · how we choose</summary><p>Tests every cap from 0 to 11 using your bank, pins, combat settings and supply counts. Your current switch ceiling still limits the suggestion. The fastest tested setup remains the benchmark after applying a smaller cap.</p><p>Allows up to {tolerance}% more attack time, prayer use and known incoming damage. Keeps identical workload coverage. Prioritizes peak bag space, then carried gear and actual changes. Applying restores automatic packing, including manual inventory slots. This bounded search does not prove a global BIS.</p><p>Fastest tested: {}-change cap · {} gear pieces · {:.1}s · {:.1} prayer points. Suggested cap: {}.</p></details></section>",benchmark.budget.cap,benchmark.budget.carried_gear,b.seconds,b.prayer_points,chosen.budget.cap));
+    html.push_str(&format!("<details><summary>How we choose</summary><p>Limits: {limits}. DPS loss uses effective encounter DPS, not a percentage increase in attack time. Damage checks include known incoming rates and total exposure where modelled. Prayer checks use drain rates, not total points consumed.</p><p>Tests caps 0–11 with the same bank, gear pins, combat settings and supply counts. Keeps identical workload coverage and your switch ceiling. Prioritizes peak bag space, then carried gear and actual changes. Applying restores automatic inventory packing. This bounded search does not prove a global BIS.</p><p>Fastest tested: {}-change cap · {} gear pieces · {:.1}s · {:.1} prayer points. Suggested cap: {}.</p></details></section>",benchmark.budget.cap,benchmark.budget.carried_gear,b.seconds,b.prayer_points,chosen.budget.cap));
     html
 }
 

@@ -29,7 +29,7 @@ If browser saving fails, a persistent warning offers a private backup and retry.
 - **Yama:** packs melee/magic switches, spell runes, poison control and boosts. Combat shows Purging staff/Demonbane damage, Void Flare maximum hits and the alternating Judge cycle. Toggle **Mark of Darkness active** to match your play. Normal fight only; movement, specials and contract mechanics are outside the estimate.
 - **Plan a trip:** boss and raid templates, or your own group of monsters. Select your CoX rooms or choose each Fractured Archive fork.
 - **Compare switch limits:** choose any two caps in **Compare switches**. The encounter overview shows effective DPS, attack time, prayer used and drain alongside bag space. Expand phase details only when needed; apply either plan.
-- **Pack fewer switches:** adjust **Tradeoff tolerance** from 0–10% (default 3%) to trade performance for bag space. Suggestions update automatically; the setting saves locally and travels with setup links. Your switch ceiling stays respected, known incoming damage stays guarded, and partial coverage is labelled.
+- **Pack fewer switches:** set **DPS loss**, **Extra damage taken** and **Extra prayer drain** independently (0–10% each; defaults 3%, 0%, 0%). Suggestions update automatically and the limits travel with setup links. A longer fight can use more total prayer even at the same drain rate. Unknown damage stays labelled.
 - **Compare gear:** outgoing DPS, supported incoming damage, defence and prayer drain.
 - **Compare armour sets:** Void, crystal bow/Bowfa, Barrows and Obsidian combinations compete as full loadouts. Set Dharok's current Hitpoints in **Combat → Boosts, darts & debuffs**; blank means full health. [Supported bonuses and limits](docs/armour-sets.md).
 - **Slayer task:** choose **On task / Off task** beside the encounter controls for each eligible target. Recommendations and comparisons include helmet/mask bonuses; Combat explains whether your gear receives them. Ranged/Magic require an imbued helmet or mask, and Salve bonuses do not stack with Slayer.
@@ -58,6 +58,14 @@ Coverage notes distinguish packing templates from supported calculations. CoX su
 
 Moons includes defence-aware normal attacks, chained hits, flat armour and Blood Moon healing. Its curses, special phases, camp boosts and movement are not fully simulated. Unknown damage mechanics show **unavailable**, rather than zero.
 
+Zulrah, emerged Kraken/cave kraken, Corporeal Beast, Dagannoth Kings, Kalphite
+Queen, Kree'arra and vulnerable Grotesque Guardians have reviewed outgoing attack
+windows. Their notes explain hit caps, reductions, reach and immunity rules.
+Awake Duke uses reduced Demonbane effectiveness; exposed Sire vents use their
+minimum-hit and successful Demonbane finisher rules, with separate body stages.
+Incoming damage and full-fight mechanics remain partial; see the
+[monster backlog](docs/monster-backlog.md).
+
 Recommendations use a bounded search. They are **not a proof of global BIS** or a prediction of successful kills.
 
 ## Your bank stays private
@@ -77,7 +85,9 @@ Defaults use unboosted levels. Selected boosts use peak current levels; wear req
 
 Blowpipes preload your chosen ammunition budget from owned compatible darts, or you can explicitly confirm at least that many darts are already loaded. Changing the budget requires confirming the contents again. These occupy no bag or worn ammo slot. Projectile recovery, charges and actual consumption need your check. Boost decay, potion timing, venom and special-attack damage are outside these estimates.
 
-Incoming values describe an explicitly selected attack scenario, not a full-fight average. Unknown prayer interactions, special attacks, chip damage and defensive passives remain unverified. Automatic defence priority uses your selected defence bonuses; incoming scenarios remain separate estimates.
+Scythe uses target-size hits. Soulreaper uses **Boosts, darts & debuffs → Soulreaper held stacks**. Initial Moon support includes Dual macuahuitl, expected Blood Moon timing, Atlatl Strength-based damage and Blue Moon elemental casts. Full Eclipse burns and Blue Moon follow-ups remain unavailable. [Equipment coverage and remaining work](docs/equipment-backlog.md).
+
+Incoming values describe an explicitly selected attack scenario, not a full-fight average. Elysian, full Justiciar, settled Dinh's Block and Rondache reductions cover ordinary unprotected hits. Their interactions with chains, boss healing, prayer chip and specials remain unavailable. **Dinh's Block active** prevents attacks. Automatic defence priority uses your selected defence bonuses; incoming scenarios remain separate estimates.
 
 Prayer duration assumes full starting prayer, continuous use and carried ordinary prayer/restore doses. It excludes flicking, regeneration, restoration modifiers and encounter-imposed drains. It is not a whole-trip or kills-per-trip prediction.
 

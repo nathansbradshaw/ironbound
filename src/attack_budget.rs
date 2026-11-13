@@ -15,7 +15,8 @@ pub struct Budget {
 }
 
 /// E[h] = (1 + sum(p[d] E[max(stop,h-d)])) / (1-p[0]).
-/// A ruby proc is the final distribution entry and is recomputed at each HP.
+/// A ruby proc contributes the final entries and is recomputed at each HP,
+/// including NPC reductions/rerolls.
 pub fn expected_attacks(
     hits: &[(i32, f64)],
     start: u32,
@@ -35,7 +36,17 @@ pub fn expected_attacks(
                 || p.percent <= 0
                 || p.cap <= 0
                 || p.divisor <= 0
-                || (hits.last().unwrap().1 - p.chance).abs() > 1e-8
+                || p.distribution_entries == 0
+                || p.distribution_entries > hits.len()
+                || (hits
+                    .iter()
+                    .rev()
+                    .take(p.distribution_entries)
+                    .map(|(_, q)| q)
+                    .sum::<f64>()
+                    - p.chance)
+                    .abs()
+                    > 1e-8
         })
     {
         return Err(
@@ -55,16 +66,14 @@ pub fn expected_attacks(
                     probability * expected[hp.saturating_sub(damage as u32).max(stop) as usize];
             }
         };
-        let count = hits.len() - usize::from(proc.is_some());
+        let count = hits.len() - proc.map(|p| p.distribution_entries).unwrap_or(0);
         for (damage, probability) in &hits[..count] {
             add(*damage, *probability);
         }
         if let Some(proc) = proc {
-            add(
-                ((hp as i64 * i64::from(proc.percent) / 100).min(i64::from(proc.cap)) as i32)
-                    / proc.divisor,
-                proc.chance,
-            );
+            for (damage, probability) in proc.outcomes(hp) {
+                add(damage, probability);
+            }
         }
         if zero >= 1.0 {
             return Err("This window cannot make damage progress.".into());
@@ -124,7 +133,7 @@ pub fn for_window(
         * f64::from(entities);
     Ok(Budget {
         attacks,
-        seconds: attacks * f64::from(result.attack_ticks) * 0.6,
+        seconds: attacks * result.expected_attack_ticks * 0.6,
         start_hp: start,
         stop_hp: stop,
         entities,

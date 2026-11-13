@@ -13,12 +13,13 @@ pub struct Window {
 pub fn windows(options: &Options) -> Vec<Window> {
     let mut rows: Vec<_> = crate::recommendation::targets(options).into_iter().map(|(id, style)| {
         let target = planner::monster(id);
-        let reason = target.and_then(crate::encounters::limitation);
+        let reason = target.and_then(crate::encounters::limitation)
+            .or_else(|| crate::monster_rules::style_limitation(id, style));
         Window {
             name: target.map(|m| m.name.clone()).unwrap_or_else(|| format!("Unknown target {id}")),
             style: style.into(),
             supported: target.is_some() && reason.is_none(),
-            reason: reason.unwrap_or(if target.is_some() { "Basic attack model available; this loadout still needs compatible gear, skills and spells." } else { "Target mapping missing." }).into(),
+            reason: reason.unwrap_or_else(|| crate::encounters::window(id).map(|w| w.description.as_str()).unwrap_or(if target.is_some() { "Basic attack model available; this loadout still needs compatible gear, skills and spells." } else { "Target mapping missing." })).into(),
         }
     }).collect();
     if options.boss == Boss::Toa {

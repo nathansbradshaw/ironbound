@@ -131,6 +131,14 @@ pub fn inventory_setup(plan: &Plan, options: &Options, _account: &str) -> Result
         notes.push_str(&format!(" Dharok's current Hitpoints assumption: {}. Guthan's healing potential excludes overheal and is not credited as damage reduction; recoil and NPC stat-drain effects are not included.", options.combat.current_hitpoints.map(|hp|hp.to_string()).unwrap_or_else(||"full health".into())));
     }
     notes.push_str(&format!(" Spell budget: {} casts total across selected attack spells; rune stacks cover the worst-case mix. Ammunition budget: {} projectiles per ranged weapon. These are packing counts, not a duration or kill-count prediction; recovered projectiles and remaining charges need manual verification. {} User confirmations stay private and must be repeated by the recipient.", options.combat.spell_casts, plan.ammo_shots, crate::coverage::export_note(options)));
+    let equipment_notes: std::collections::BTreeSet<_> = std::iter::once(&plan.equipment)
+        .chain(plan.phases.iter().map(|phase| &phase.equipment))
+        .flat_map(|set| crate::equipment_effects::notes(set, &options.combat))
+        .collect();
+    for note in equipment_notes {
+        notes.push(' ');
+        notes.push_str(&note);
+    }
     let buffs = [
         &options.combat.boosts.melee,
         &options.combat.boosts.ranged,

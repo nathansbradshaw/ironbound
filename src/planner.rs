@@ -224,6 +224,10 @@ pub struct Options {
     pub max_switches: Option<usize>,
     #[serde(skip_serializing_if = "crate::efficient::is_default_tolerance")]
     pub switch_tolerance: u32,
+    #[serde(skip_serializing_if = "crate::efficient::is_zero_tolerance")]
+    pub damage_tolerance: u32,
+    #[serde(skip_serializing_if = "crate::efficient::is_zero_tolerance")]
+    pub prayer_tolerance: u32,
     pub switch_slots: usize,
     pub focus_style: String,
     pub phase_priorities: BTreeMap<i32, u32>,
@@ -252,6 +256,8 @@ impl Default for Options {
             inventory_quantities: BTreeMap::new(),
             max_switches: None,
             switch_tolerance: crate::efficient::DEFAULT_TOLERANCE_PERCENT,
+            damage_tolerance: 0,
+            prayer_tolerance: 0,
             switch_slots: 12,
             focus_style: "Balanced".into(),
             phase_priorities: BTreeMap::new(),
@@ -1294,6 +1300,8 @@ pub fn plan(snapshot: &Snapshot, options: &Options) -> Plan {
     options.confirmations.clear();
     // Tolerance selects among plans; it does not change an individual plan.
     options.switch_tolerance = crate::efficient::DEFAULT_TOLERANCE_PERCENT;
+    options.damage_tolerance = 0;
+    options.prayer_tolerance = 0;
     let key = serde_json::to_string(&(snapshot, &options)).unwrap_or_default();
     thread_local! {static CACHE:std::cell::RefCell<std::collections::VecDeque<(String,Plan)>>=const{std::cell::RefCell::new(std::collections::VecDeque::new())};}
     if let Some(p) = CACHE.with(|c| {

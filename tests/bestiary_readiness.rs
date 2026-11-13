@@ -513,7 +513,7 @@ fn unknown_slayer_does_not_hide_a_supported_gear_rating() {
     assert!(jad.reason.contains("recommended"));
     assert_eq!(
         jad.requirements.status,
-        bestiary::RequirementStatus::Unverified
+        bestiary::RequirementStatus::NoLevelGate
     );
 }
 

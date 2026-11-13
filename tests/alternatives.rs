@@ -45,6 +45,7 @@ fn options(style: &str, target: i32) -> Options {
 }
 fn plan(o: &Options, set: Vec<Option<i32>>) -> Plan {
     Plan {
+        ammo_shots: o.combat.ammo_shots,
         loaded_ammo: None,
         optimization: None,
         equipment: set.clone(),

@@ -84,19 +84,19 @@ fn context<'a>(o: &Options, p: &'a Plan, phase: Option<usize>) -> Option<Context
     .unwrap_or(0);
     Some(Context { set, style, target })
 }
-fn equipped(set: &[Option<i32>]) -> BTreeMap<i32, u32> {
+fn equipped(set: &[Option<i32>], shots: u32) -> BTreeMap<i32, u32> {
     let mut quantities = BTreeMap::new();
     for (slot, id) in set.iter().enumerate() {
         if let Some(id) = id {
-            *quantities.entry(*id).or_default() += if slot == 13 { 100 } else { 1 };
+            *quantities.entry(*id).or_default() += planner::equipped_quantity(slot, *id, shots);
         }
     }
     quantities
 }
-fn maximum_gear(sets: &[Vec<Option<i32>>]) -> BTreeMap<i32, u32> {
+fn maximum_gear(sets: &[Vec<Option<i32>>], shots: u32) -> BTreeMap<i32, u32> {
     let mut need = BTreeMap::new();
     for set in sets {
-        for (id, q) in equipped(set) {
+        for (id, q) in equipped(set, shots) {
             need.entry(id)
                 .and_modify(|n: &mut u32| *n = (*n).max(q))
                 .or_insert(q);
@@ -128,7 +128,8 @@ fn compatible(
     if rule.family.style == "Ranged" {
         if !rule.family.ammo.is_empty()
             && !set[13].is_some_and(|id| {
-                rule.family.ammo.contains(&id) && owned.get(&id).copied().unwrap_or(0) >= 100
+                rule.family.ammo.contains(&id)
+                    && owned.get(&id).copied().unwrap_or(0) >= o.combat.ammo_shots
             })
         {
             return false;
@@ -139,7 +140,7 @@ fn compatible(
             };
             if !planner::can_use(dart, m)
                 || !(o.combat.loaded_ammo_confirmed && o.combat.loaded_dart == Some(dart))
-                    && owned.get(&dart).copied().unwrap_or(0) < rules::DEFAULT_LOADED_SHOTS
+                    && owned.get(&dart).copied().unwrap_or(0) < o.combat.ammo_shots
             {
                 return false;
             }
@@ -226,9 +227,9 @@ fn budget(
     if (o.max_switches.is_some() || p.optimization.is_some()) && extra.len() > o.switch_slots {
         notes.push(format!("Needs {} carried gear slots.", extra.len()));
     }
-    let old_gear = maximum_gear(&before);
-    let new_gear = maximum_gear(&after);
-    let mut pool = equipped(&p.equipment);
+    let old_gear = maximum_gear(&before, o.combat.ammo_shots);
+    let new_gear = maximum_gear(&after, o.combat.ammo_shots);
+    let mut pool = equipped(&p.equipment, p.ammo_shots);
     for item in p.inventory.iter().filter(|p| p.id > 0 && p.quantity > 0) {
         *pool.entry(item.id).or_default() += item.quantity;
     }
@@ -252,7 +253,7 @@ fn budget(
     let mut maximum = 0;
     for set in &after {
         let mut bag = pool.clone();
-        for (id, q) in equipped(set) {
+        for (id, q) in equipped(set, o.combat.ammo_shots) {
             let Some(n) = bag.get_mut(&id) else { continue };
             *n = n.saturating_sub(q);
         }
@@ -284,7 +285,7 @@ fn budget(
     for weapon in &loaded_weapons {
         if let Some(dart) = rules::internal_ammo(m, *weapon, &o.combat) {
             if !(o.combat.loaded_ammo_confirmed && o.combat.loaded_dart == Some(dart)) {
-                *load.entry(dart).or_default() += rules::DEFAULT_LOADED_SHOTS;
+                *load.entry(dart).or_default() += o.combat.ammo_shots;
             }
         }
     }
@@ -488,7 +489,7 @@ pub fn equipment(
             if allowed.is_empty() {
                 vec![trial[13]]
             } else if trial[13].is_some_and(|id| {
-                allowed.contains(&id) && owned.get(&id).copied().unwrap_or(0) >= 100
+                allowed.contains(&id) && owned.get(&id).copied().unwrap_or(0) >= o.combat.ammo_shots
             }) {
                 vec![trial[13]]
             } else {
@@ -496,7 +497,8 @@ pub fn equipment(
                     .iter()
                     .copied()
                     .filter(|id| {
-                        owned.get(id).copied().unwrap_or(0) >= 100 && planner::can_use(*id, &member)
+                        owned.get(id).copied().unwrap_or(0) >= o.combat.ammo_shots
+                            && planner::can_use(*id, &member)
                     })
                     .take(24)
                     .map(Some)
@@ -512,7 +514,7 @@ pub fn equipment(
             trial[13] = ammunition;
             if slot == 13
                 && (!rules::ammo_ids(trial[3].unwrap_or(0)).contains(&gear.id)
-                    || owned.get(&gear.id).copied().unwrap_or(0) < 100)
+                    || owned.get(&gear.id).copied().unwrap_or(0) < o.combat.ammo_shots)
             {
                 continue;
             }

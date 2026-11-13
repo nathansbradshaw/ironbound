@@ -209,7 +209,7 @@ enrage/debuff scope, distinct shield/charge counters, totem effects, crush minio
 variant gates, exports and unverified burn-pulse interactions. An additional
 readiness regression requires both melee and Magic for the Nightmare screens.
 Integrated with the current burn, calibration, public-recording, death-risk and
-requirements work: 585 Rust tests and all 24 standalone references pass.
+requirements work: 586 Rust tests and all 24 standalone references pass.
 
 Browser preview: Leviathan stunned-front ruby maximum 10 and blocked melee;
 Whisperer example Magic maximum 20 becomes 6 outside or 8 inside the realm,

@@ -69,6 +69,8 @@ pub struct AlternatingCycle {
 /// `npc_id` is the real source NPC; `id` is a shareable internal attack-window key.
 #[derive(Debug, Deserialize)]
 pub struct Window {
+    #[serde(default)]
+    pub damage_model: DamageModel,
     pub id: i32,
     pub npc_id: i32,
     #[serde(default)]
@@ -81,6 +83,8 @@ pub struct Window {
     #[serde(default)]
     pub progress_group: Option<String>,
     #[serde(default)]
+    pub start_hp: Option<u32>,
+    #[serde(default)]
     pub comparison_probe: bool,
     #[serde(default = "supported")]
     pub outgoing_supported: bool,
@@ -92,6 +96,16 @@ pub struct Window {
     pub cycle: Option<String>,
     #[serde(default = "one_entity")]
     pub entity_count: u32,
+}
+#[derive(Clone, Copy, Debug, Default, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum DamageModel {
+    #[default]
+    Standard,
+    VerifiedStandard,
+    WardensP2,
+    WardenCore,
+    HalfDamage,
 }
 #[derive(Debug, Deserialize)]
 pub struct HitRule {
@@ -152,6 +166,11 @@ pub fn limitation(target: &Monster) -> Option<&'static str> {
         return Some(
             "This attack window needs reactive protection, guaranteed-hit or contract mechanics. Its equipment packing is available; outgoing DPS is not verified.",
         );
+    }
+    if window(target.id)
+        .is_some_and(|w| w.outgoing_supported && w.damage_model != DamageModel::Standard)
+    {
+        return None;
     }
     let data = mechanics();
     if target

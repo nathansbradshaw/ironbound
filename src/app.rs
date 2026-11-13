@@ -55,6 +55,7 @@ struct State {
     raid_rooms_open: bool,
     switch_preferences_open: bool,
     combat_options_open: bool,
+    attack_budget_open: bool,
     budget_comparison_open: bool,
     budget_phases_open: bool,
     budget_window: Option<String>,
@@ -156,6 +157,7 @@ impl State {
             raid_rooms_open: false,
             switch_preferences_open: false,
             combat_options_open: false,
+            attack_budget_open: false,
             budget_comparison_open: comparison_query.is_some(),
             budget_phases_open: false,
             budget_window: None,
@@ -350,6 +352,7 @@ fn live_number(id: &str) -> bool {
         "budget-cap-right",
         "spell-casts",
         "ammo-shots",
+        "target-hp",
     ]
     .contains(&id)
         || id.starts_with("priority-")
@@ -362,6 +365,15 @@ fn apply_number(s: &mut State, id: &str, value: &str) -> bool {
         return false;
     }
     let target_id = comparison_monster(s).map(|m| m.id);
+    let target_max = comparison_monster(s)
+        .and_then(|m| {
+            crate::encounters::window(m.id)
+                .and_then(|w| w.start_hp)
+                .or_else(|| {
+                    combat::target_hitpoints(m, s.saved.options.raid_level).map(|hp| hp as u32)
+                })
+        })
+        .unwrap_or(100_000);
     if ["budget-cap-left", "budget-cap-right"].contains(&id) {
         let Ok(value) = value.parse::<usize>() else {
             return false;
@@ -383,6 +395,13 @@ fn apply_number(s: &mut State, id: &str, value: &str) -> bool {
             {
                 input.set_value(&bounded.to_string());
             }
+        }
+        s.export_text = None;
+        return true;
+    }
+    if id == "target-hp" && value.trim().is_empty() {
+        if let Some(target) = target_id {
+            o.combat.target_hp.remove(&target);
         }
         s.export_text = None;
         return true;
@@ -414,6 +433,11 @@ fn apply_number(s: &mut State, id: &str, value: &str) -> bool {
         }
         "raid-level" => o.raid_level = n.min(150),
         "spell-casts" => o.combat.spell_casts = n.clamp(1, 10_000),
+        "target-hp" => {
+            if let Some(target) = target_id {
+                o.combat.target_hp.insert(target, n.clamp(1, target_max));
+            }
+        }
         "ammo-shots" => {
             let shots = n.clamp(1, 10_000);
             if o.combat.ammo_shots != shots {
@@ -901,6 +925,9 @@ pub fn start() -> Result<(), JsValue> {
                 STATE.with(|state| {
                     state.borrow_mut().combat_options_open = el.has_attribute("open")
                 });
+            } else if el.id() == "attack-budget" {
+                STATE
+                    .with(|state| state.borrow_mut().attack_budget_open = el.has_attribute("open"));
             } else if el.id() == "budget-phases" {
                 STATE
                     .with(|state| state.borrow_mut().budget_phases_open = el.has_attribute("open"));
@@ -1088,7 +1115,6 @@ pub fn start() -> Result<(), JsValue> {
             "reduction-accursed",
             "reduction-vulnerability",
             "kandarin-diary",
-            "slayer-task",
             "safety",
             "prayer-weight",
             "member",
@@ -1209,18 +1235,6 @@ pub fn start() -> Result<(), JsValue> {
                     s.saved.options.combat.kandarin_diary = el
                         .dyn_ref::<HtmlInputElement>()
                         .is_some_and(|e| e.checked())
-                }
-                "slayer-task" => {
-                    if let Some(id) = comparison_monster(&s).map(|m| m.id) {
-                        if el
-                            .dyn_ref::<HtmlInputElement>()
-                            .is_some_and(|e| e.checked())
-                        {
-                            s.saved.options.combat.slayer_targets.insert(id);
-                        } else {
-                            s.saved.options.combat.slayer_targets.remove(&id);
-                        }
-                    }
                 }
                 "safety" => {
                     if let Ok(sel) = el.dyn_into::<HtmlSelectElement>() {
@@ -1650,6 +1664,10 @@ fn act(action: &str) {
                     s.saved.options.confirmations.insert(id.into(), token);
                 }
             }
+        } else if action == "reset-target-hp" {
+            if let Some(target) = comparison_monster(&s).map(|m| m.id) {
+                s.saved.options.combat.target_hp.remove(&target);
+            }
         } else if action == "reset-all-inventory" {
             s.saved.options.inventory_overrides.clear();
             s.saved.options.inventory_quantities.clear();
@@ -1702,6 +1720,16 @@ fn act(action: &str) {
                     s.view = "loadout".into();
                     s.budget_comparison_open = false;
                     s.notice(&format!("Applied the {cap}-item switch cap."), false);
+                }
+            }
+        } else if let Some(selection) = action.strip_prefix("slayer-task:") {
+            if s.shared_setup.is_none() {
+                if let Some((id, value)) = selection.split_once(':') {
+                    if let Ok(id) = id.parse::<i32>() {
+                        if encounter_targets(&s).contains(&id) && ["on", "off"].contains(&value) {
+                            crate::slayer::set_task(&mut s.saved.options.combat, id, value == "on");
+                        }
+                    }
                 }
             }
         } else if let Some(selection) = action.strip_prefix("raid-room:") {
@@ -2026,6 +2054,13 @@ fn act(action: &str) {
                 .any(|recipe| recipe.name == name)
             {
                 choose_plan_spell(&mut s, crate::rules::SpellSelection::Spell(name.into()));
+            }
+        } else if let Some(kind) = action.strip_prefix("ranged-type:") {
+            use crate::rules::RangedType;
+            if let Some(selection) = [RangedType::Auto, RangedType::Light, RangedType::Standard, RangedType::Heavy]
+                .into_iter().find(|t| t.key().unwrap_or("auto") == kind)
+            {
+                choose_plan_ranged(&mut s, selection);
             }
         } else if let Some(stance) = action.strip_prefix("ranged-stance:") {
             if ["Rapid", "Accurate"].contains(&stance) {
@@ -2504,6 +2539,7 @@ fn render_with_edit(edit: Option<&str>) {
         html.push_str("</details>");
         html.push_str(&raid_rooms(&s));
         html.push_str("</div>");
+        if s.shared_setup.is_none(){html.push_str(&slayer_tasks(&s));}
         if s.shared_setup.is_some(){html.push_str(&format!("<p class=\"notice\">Viewing a shared setup. Your saved bank is unchanged. {}</p>",button("use-bank","Rebuild using my items","text-button")));}
         if s.shared_setup.is_none(){html.push_str(&switch_controls(&s,&plan));html.push_str(&efficient_panel(&s,&plan));html.push_str(&budget_comparison(&s));}
         html.push_str("<nav class=\"planner-tabs\" aria-label=\"Planner sections\">");
@@ -3344,11 +3380,20 @@ fn inventory_choices(s: &State) -> String {
 }
 
 fn encounter_targets(s: &State) -> Vec<i32> {
-    match s.saved.options.boss {
+    let mut targets = match s.saved.options.boss {
         Boss::Barrows => vec![1673, 1674, 1676, 1677, 1675, 1672],
-        Boss::Toa => vec![11778, 11719, 11730, 11789],
+        Boss::Toa => vec![
+            11778, 11719, 11730, 11789, 11751, 11753, 11756, 11755, 11758, 11761, 11762,
+        ],
         Boss::Custom => s.saved.options.targets.iter().map(|t| t.id).collect(),
+    };
+    if targets.contains(&8059) {
+        targets.push(100020);
     }
+    if targets.contains(&14176) || targets.contains(&100011) {
+        targets.push(100030);
+    }
+    targets
 }
 fn comparison_style(s: &State) -> &str {
     s.edit_style
@@ -3910,48 +3955,105 @@ fn magic_spell_book(s: &State, set: &[Option<i32>]) -> String {
     html.push_str("<p class=\"small-note\">Your spell choice is used for Magic phases, rune packing and exported setups. Auto restores automatic spell selection.</p></section>");
     html
 }
+fn choose_plan_ranged(s: &mut State, selection: crate::rules::RangedType) {
+    s.saved.options.combat.ranged_type = selection;
+    s.saved.options.gear_overrides.remove("Ranged:3");
+    s.saved.options.gear_overrides.remove("Ranged:13");
+    if selection.key().is_some()
+        && s.saved.options.boss == Boss::Custom
+        && !s.saved.options.targets.iter().any(|t| t.style == "Ranged")
+    {
+        let id = comparison_monster(s).map(|t| t.id);
+        if let Some(target) = s
+            .saved
+            .options
+            .targets
+            .iter_mut()
+            .find(|t| Some(t.id) == id)
+        {
+            target.style = "Ranged".into();
+            s.phase = None;
+        }
+    }
+    s.edit_style = Some("Ranged".into());
+}
 fn ranged_ammunition_card(s: &State, set: &[Option<i32>]) -> String {
     let weapon = set.get(3).copied().flatten();
     let rule = weapon.and_then(crate::rules::weapon);
-    let selected = rule
+    let equipped = rule
         .as_ref()
         .filter(|r| r.family.style == "Ranged")
         .and_then(|r| r.family.attack_types.first());
-    let mut html = String::from(
-        "<section class=\"combat-subtypes ranged-ammunition\" aria-label=\"Ranged ammunition\"><h4>Ammunition type</h4><div class=\"ranged-type-grid\">",
+    let selection = s.saved.options.combat.ranged_type;
+    let mut html = format!(
+        "<section class=\"combat-subtypes ranged-ammunition\" aria-label=\"Ranged ammunition\"><div class=\"ranged-type-heading\"><h4>Ammunition type</h4><button class=\"phase {}\" data-action=\"ranged-type:auto\" aria-pressed=\"{}\">Auto</button></div><div class=\"ranged-type-grid\" role=\"group\" aria-label=\"Ranged ammunition type\">",
+        if selection.key().is_none() {
+            "active"
+        } else {
+            ""
+        },
+        selection.key().is_none()
     );
     for (kind, label, detail, icon) in [
         ("light", "Light", "Darts & thrown", 811),
         ("standard", "Standard", "Arrows & crystal", 892),
         ("heavy", "Heavy", "Bolts & javelins", 9144),
     ] {
-        let active = selected.is_some_and(|s| s == kind);
-        html.push_str(&format!("<div class=\"ranged-type {}\" {}>{}<strong>{label}</strong><small>{detail}</small><span class=\"ranged-type-state\">{}</span></div>", if active {"active"} else {""}, if active {"aria-current=\"true\""} else {""}, image(icon), if active {"✓ In use"} else {""}));
+        let chosen = selection.key() == Some(kind);
+        let active = chosen || selection.key().is_none() && equipped.is_some_and(|s| s == kind);
+        html.push_str(&format!("<button type=\"button\" class=\"ranged-type {}\" data-action=\"ranged-type:{kind}\" aria-label=\"{label}\" aria-pressed=\"{chosen}\">{}<strong>{label}</strong><small>{detail}</small><span class=\"ranged-type-state\">{}</span></button>", if active {"active"}else{""}, image(icon), if chosen {"✓ Selected"}else if active {"In use"}else{""}));
     }
     html.push_str("</div><div class=\"ranged-equipped\">");
-    if let Some(id) = weapon.filter(|_| selected.is_some()) {
+    if let Some(id) = weapon.filter(|_| equipped.is_some()) {
         html.push_str(&format!(
             "<span>{}<span>{}</span></span>",
             image(id),
             esc(&planner::item_name(id))
         ));
         let ammo = set.get(13).copied().flatten().or_else(|| {
-            s.saved
-                .snapshot
-                .selected()
-                .and_then(|m| crate::rules::internal_ammo(m, id, &s.saved.options.combat))
+            s.saved.snapshot.selected().and_then(|m| {
+                let mut owned = s.saved.snapshot.available(s.saved.options.shared);
+                owned.retain(|id, _| !s.saved.options.excluded.contains(id));
+                let member = planner::member_with_stock(m, &owned);
+                crate::rules::internal_ammo(&member, id, &s.saved.options.combat)
+            })
         });
         if let Some(id) = ammo {
             html.push_str(&format!(
-                "<span>{}<span>{}</span></span>",
+                "<span>{}<span>{} × {}{}</span></span>",
                 image(id),
-                esc(&planner::item_name(id))
+                esc(&planner::item_name(id)),
+                planner::equipped_quantity(13, id, s.saved.options.combat.ammo_shots),
+                if set.get(13).copied().flatten().is_none() {
+                    " · loaded"
+                } else {
+                    ""
+                }
             ));
+        } else if rule
+            .as_ref()
+            .is_some_and(|r| !r.family.ammo.is_empty() || !r.family.internal_ammo.is_empty())
+        {
+            html.push_str(&format!("<p class=\"spell-requirement\" role=\"status\">Needs compatible ammunition for {} shots. Check Preparation.</p>", s.saved.options.combat.ammo_shots));
         }
     } else {
-        html.push_str("<span>Equip a ranged weapon to see its ammunition type.</span>");
+        html.push_str(&format!(
+            "<span>No usable owned {}ranged weapon. Check your bank and Ranged level.</span>",
+            if selection.key().is_some() {
+                format!("{} ", selection.label())
+            } else {
+                String::new()
+            }
+        ));
     }
-    html.push_str("</div><p class=\"small-note\">Your equipped weapon determines the type used against ranged defence.</p></section>");
+    html.push_str("</div>");
+    if weapon.is_some()
+        && selection.key().is_some()
+        && !weapon.is_some_and(|id| selection.permits_weapon(id))
+    {
+        html.push_str("<p class=\"spell-requirement\">This weapon does not match the selected type. Pick the type again to rebuild the weapon and ammo.</p>");
+    }
+    html.push_str(&format!("<p class=\"small-note\">Choose a type to plan with compatible owned gear. Uses your {}-shot budget. Auto restores automatic selection.</p></section>",s.saved.options.combat.ammo_shots));
     html
 }
 fn combat_style_controls(s: &State, set: &[Option<i32>], style: &str) -> String {
@@ -3990,6 +4092,40 @@ fn combat_style_controls(s: &State, set: &[Option<i32>], style: &str) -> String 
     html.push_str("</div>");
     html
 }
+fn task_buttons(s: &State, target: &planner::Monster) -> String {
+    let on_task = s.saved.options.combat.slayer_targets.contains(&target.id);
+    let mut html = format!(
+        "<div class=\"slayer-target\" role=\"group\" aria-label=\"Slayer task for {}\"><strong>{}</strong><div class=\"combat-subtype-options\">",
+        esc(&target.name),
+        esc(&target.name)
+    );
+    for (value, label, active) in [("off", "Off task", !on_task), ("on", "On task", on_task)] {
+        html.push_str(&format!("<button class=\"phase {}\" data-action=\"slayer-task:{}:{value}\" aria-pressed=\"{active}\">{label}</button>", if active {"active"} else {""}, target.id));
+    }
+    html.push_str("</div></div>");
+    html
+}
+
+fn slayer_tasks(s: &State) -> String {
+    let mut seen = std::collections::BTreeSet::new();
+    let targets: Vec<_> = encounter_targets(s)
+        .into_iter()
+        .filter(|id| seen.insert(*id) && crate::encounters::slayer_eligible(*id))
+        .filter_map(planner::monster)
+        .collect();
+    if targets.is_empty() {
+        return String::new();
+    }
+    let mut html = String::from(
+        "<section class=\"slayer-tasks\" aria-label=\"Slayer task settings\"><h3>Slayer task</h3><p class=\"small-note\">Set each assigned target on task. Gear recommendations and combat comparisons include eligible Slayer bonuses.</p>",
+    );
+    for target in targets {
+        html.push_str(&task_buttons(s, target));
+    }
+    html.push_str("</section>");
+    html
+}
+
 fn combat_panel(s: &State, p: &Plan) -> String {
     if s.shared_setup.is_some() {
         return String::new();
@@ -4008,6 +4144,12 @@ fn combat_panel(s: &State, p: &Plan) -> String {
         .filter(|id| priority_ids.insert(*id))
     {
         if let Some(m) = planner::monsters().iter().find(|m| m.id == id) {
+            let name = crate::encounters::window(id)
+                .filter(|w| {
+                    id < 100_000 && w.damage_model != crate::encounters::DamageModel::Standard
+                })
+                .map(|w| w.phase.as_str())
+                .unwrap_or(&m.name);
             html.push_str(&format!(
                 r#"<button class="phase {}" data-action="compare-target:{id}" aria-pressed="{}">{}</button>"#,
                 if comparison_monster(s).is_some_and(|m| m.id == id) {
@@ -4016,12 +4158,18 @@ fn combat_panel(s: &State, p: &Plan) -> String {
                     ""
                 },
                 comparison_monster(s).is_some_and(|m| m.id == id),
-                esc(&m.name)
+                esc(name)
             ));
         }
     }
     html.push_str("</div></div>");
     if let (Some(m), Some(target)) = (s.saved.snapshot.selected(), comparison_monster(s)) {
+        if let Some(hp) = s.saved.options.combat.target_hp.get(&target.id) {
+            html.push_str(&format!(
+                "<p class=\"small-note\">Current target HP: {hp}. {}</p>",
+                button("reset-target-hp", "Reset target HP", "text-button")
+            ));
+        }
         let mut stock = s.saved.snapshot.available(s.saved.options.shared);
         for id in &s.saved.options.excluded {
             stock.remove(id);
@@ -4030,8 +4178,12 @@ fn combat_panel(s: &State, p: &Plan) -> String {
         let m = &stock_member;
         html.push_str(&combat_assumptions(s, p, m, target, &set));
         if crate::encounters::slayer_eligible(target.id) {
-            html.push_str(&format!("<label><input id=\"slayer-task\" type=\"checkbox\" {}> This target is my Slayer task</label>", if s.saved.options.combat.slayer_targets.contains(&target.id) { "checked" } else { "" }));
+            html.push_str(&task_buttons(s, target));
         }
+        html.push_str(&format!(
+            "<p class=\"small-note slayer-bonus\">{}</p>",
+            crate::slayer::bonus_note(&s.saved.options.combat, target, &set, style)
+        ));
         if style == "Ranged" {
             html.push_str("<div class=\"ranged-stances\" role=\"group\" aria-label=\"Ranged stance\"><h4>Ranged stance</h4><div class=\"combat-subtype-options\">");
             for stance in ["Rapid", "Accurate"] {
@@ -4063,6 +4215,7 @@ fn combat_panel(s: &State, p: &Plan) -> String {
         ) {
             Ok(r) => {
                 html.push_str(&format!(r#"<dl class="combat-values"><div><dt>Outgoing DPS</dt><dd>{:.3}</dd></div><div><dt>Hit chance</dt><dd>{:.1}%</dd></div><div><dt>Max hit</dt><dd>{}</dd></div><div><dt>Attack speed</dt><dd>{} ticks</dd></div></dl><p>{} attacks · {:.1} seconds per attack</p>"#,r.dps,r.accuracy*100.0,r.max_hit,r.attack_ticks,esc(&r.attack_type),r.attack_ticks as f64*0.6));
+                html.push_str(&attack_window_budget(s, target, &set, &r));
                 html.push_str(&combat_breakdown(s, m, &set, target, &r));
             }
             Err(e) => html.push_str(&format!(
@@ -4121,7 +4274,41 @@ fn combat_panel(s: &State, p: &Plan) -> String {
         "<tr><th>Magic damage</th><td>{:.1}%</td></tr>",
         bonus.other.get("magic_str").copied().unwrap_or(0) as f64 / 10.0
     ));
-    html.push_str("</tbody></table></details><details><summary>DPS assumptions</summary><p class=\"small-note\">Selected current-level boosts and stat prayer; no boost decay, special-attack damage, venom or recoil. ToA assumes solo, path level 0, raid levels 0–150. Bolt effects use full target HP and the selected Kandarin diary setting. Outgoing DPS covers uninterrupted attacks while vulnerable. Incoming scenarios are separate and their coverage notes apply. Movement, special-phase uptime, curses and eating are not a full encounter simulation. Unsupported mechanics show no DPS.</p></details></div></section>");
+    html.push_str("</tbody></table></details><details><summary>DPS assumptions</summary><p class=\"small-note\">Selected current-level boosts and stat prayer; no boost decay, special-attack damage, venom or recoil. ToA assumes solo, path level 0, raid levels 0–150. Ruby bolts use selected target HP (full by default) and the selected Kandarin diary setting. Outgoing DPS covers uninterrupted attacks while vulnerable. Incoming scenarios are separate and their coverage notes apply. Movement, special-phase uptime, curses and eating are not a full encounter simulation. Unsupported mechanics show no DPS.</p></details></div></section>");
+    html
+}
+fn attack_window_budget(
+    s: &State,
+    target: &planner::Monster,
+    set: &[Option<i32>],
+    result: &combat::ResultStats,
+) -> String {
+    let max = crate::encounters::window(target.id)
+        .and_then(|w| w.start_hp)
+        .or_else(|| {
+            combat::target_hitpoints(target, s.saved.options.raid_level).map(|hp| hp as u32)
+        })
+        .unwrap_or(1);
+    let current = s
+        .saved
+        .options
+        .combat
+        .target_hp
+        .get(&target.id)
+        .map(u32::to_string)
+        .unwrap_or_default();
+    let mut html = format!(
+        "<details id=\"attack-budget\" class=\"attack-budget\" {}><summary>Attack window & supply budget</summary><label>Current target HP<input id=\"target-hp\" type=\"number\" min=\"1\" max=\"{max}\" placeholder=\"{max}\" value=\"{current}\"></label><p class=\"small-note\">Leave empty for this window's starting HP. Ruby bolts use this HP; the attack budget recalculates their procs as HP falls.</p>",
+        if s.attack_budget_open { "open" } else { "" }
+    );
+    if let Some(window) = crate::encounters::window(target.id) {
+        html.push_str(&format!("<p>{}</p>", esc(&window.description)));
+    }
+    match crate::attack_budget::for_window(target, result, &s.saved.options, set) {
+        Ok(budget) => html.push_str(&format!("<dl class=\"combat-values\"><div><dt>Expected attacks</dt><dd>{:.1}</dd></div><div><dt>Attack cooldown budget</dt><dd>{:.1}s</dd></div><div><dt>HP window · each of {} target(s)</dt><dd>{} → {}</dd></div></dl><p class=\"small-note\">Includes misses, overkill and the finishing cooldown. This is an expectation, not a safe supply minimum or kill-time prediction. Compare with your {}-cast / {}-projectile packing budgets; projectile recovery, ruby self-damage, movement, specials, regeneration and eating are excluded.</p>", budget.attacks, budget.seconds, budget.entities, budget.start_hp, budget.stop_hp, s.saved.options.combat.spell_casts, s.saved.options.combat.ammo_shots)),
+        Err(reason) => html.push_str(&format!("<p class=\"small-note\">{}</p>", esc(&reason))),
+    }
+    html.push_str("</details>");
     html
 }
 fn tier_table(s: &State) -> String {

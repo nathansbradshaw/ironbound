@@ -22,7 +22,19 @@ pub fn windows(options: &Options) -> Vec<Window> {
         }
     }).collect();
     if options.boss == Boss::Toa {
-        rows.push(Window { name: "Wardens".into(), style: "Multiple styles".into(), supported: false, reason: "Packing only. Wardens phase mechanics are not verified; no outgoing DPS is enabled.".into() });
+        for (id, style) in [
+            (11751, "Ranged"),
+            (11753, "Magic"),
+            (11753, "Ranged"),
+            (11755, "Melee"),
+            (11761, "Ranged"),
+        ] {
+            if let Some(target) = planner::monster(id) {
+                let reason = crate::encounters::limitation(target);
+                rows.push(Window { name: target.name.clone(), style: style.into(), supported: reason.is_none(), reason: reason.unwrap_or("Reviewed outgoing attack window; timing, incoming specials and full-phase workloads remain partial.").into() });
+            }
+        }
+        rows.push(Window { name: "Wardens".into(), style: "Full encounter".into(), supported: false, reason: "Full-cycle timing is unverified. Use the explicit outgoing windows above; prayer rotations, core exposure/transfer, skulls and enrage are not simulated.".into() });
     }
     rows
 }

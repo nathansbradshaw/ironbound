@@ -5,9 +5,11 @@ use serde::{Deserialize, Serialize};
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(default, deny_unknown_fields)]
 pub struct Settings {
+    pub ranged_type: crate::rules::RangedType,
     pub spell_selection: crate::rules::SpellSelection,
     pub spell_casts: u32,
     pub ammo_shots: u32,
+    pub target_hp: std::collections::BTreeMap<i32, u32>,
     pub boosts: crate::modifiers::Boosts,
     pub reductions: std::collections::BTreeMap<i32, crate::modifiers::Reductions>,
     pub loaded_dart: Option<i32>,
@@ -26,9 +28,11 @@ pub struct Settings {
 impl Default for Settings {
     fn default() -> Self {
         Self {
+            ranged_type: Default::default(),
             spell_selection: Default::default(),
             spell_casts: crate::rules::DEFAULT_CASTS,
             ammo_shots: crate::rules::DEFAULT_LOADED_SHOTS,
+            target_hp: Default::default(),
             boosts: Default::default(),
             reductions: Default::default(),
             loaded_dart: None,
@@ -50,6 +54,11 @@ impl Settings {
         (1..=10_000).contains(&self.spell_casts)
             && self.spell_selection.valid()
             && (1..=10_000).contains(&self.ammo_shots)
+            && self.target_hp.len() <= crate::rules::MAX_TARGETS
+            && self
+                .target_hp
+                .iter()
+                .all(|(id, hp)| *id > 0 && (1..=100_000).contains(hp))
             && self.safety <= 3
             && self.boosts.valid()
             && self.reductions.len() <= crate::rules::MAX_TARGETS
@@ -179,6 +188,11 @@ pub fn estimate(
     attack: &str,
     settings: &Settings,
 ) -> Result<Estimate, String> {
+    if crate::encounters::window(target.id)
+        .is_some_and(|w| w.damage_model != crate::encounters::DamageModel::Standard)
+    {
+        return Err("Incoming specials and attack frequencies are unverified for this window; outgoing support does not establish incoming damage.".into());
+    }
     crate::prayer::eligible_settings(member, settings)?;
     let original = target;
     let reduced = settings

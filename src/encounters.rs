@@ -77,6 +77,11 @@ pub struct Window {
     pub description: String,
     #[serde(default)]
     pub progress_hp: BTreeMap<String, f64>,
+    /// Alternative states share this workload instead of each counting a kill.
+    #[serde(default)]
+    pub progress_group: Option<String>,
+    #[serde(default)]
+    pub comparison_probe: bool,
     #[serde(default = "supported")]
     pub outgoing_supported: bool,
     #[serde(default)]

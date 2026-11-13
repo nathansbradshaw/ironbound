@@ -760,6 +760,11 @@ footer{font-size:10px;padding:9px 4px 0}footer>span:last-child{display:none}
 .budget-stat>span,.budget-stat>strong,.budget-stat>small{display:block}
 .budget-stat>strong{font:24px Scape,monospace;color:#ffdf00;margin:5px 0}
 .budget-stat .gain{color:#a8d888}.budget-stat .loss{color:#ffb580}.budget-stat .same,.budget-stat .unknown{color:#ddd1b8}
+.encounter-overview{border-top:1px solid #89744b;margin-top:14px;padding-top:12px}
+.encounter-overview h3{font:24px ScapeBold,monospace;color:#ffdf00;margin:0 0 6px}
+.encounter-overview .encounter-verdict{font:20px/1.35 Scape,monospace;color:#ffe5a2;margin:8px 0 12px}
+.encounter-overview>details{margin:12px 0}.encounter-overview .bonus-table{width:100%}
+.encounter-omissions{color:#ffb580}.encounter-incoming strong{overflow-wrap:anywhere}
 .budget-body>details{margin:12px 0}.budget-body>details>summary{line-height:1.3}
 .budget-gear p{display:flex;align-items:center;flex-wrap:wrap;gap:4px}.budget-gear img{vertical-align:middle}
 .budget-defence .bonus-table{width:100%}.budget-defence .bonus-table td{text-align:right;white-space:nowrap}

@@ -8,7 +8,7 @@
     "crush": {"style":"Melee","attack_types":["crush"],"formula":"standard"},
     "fang": {"style":"Melee","attack_types":["stab","slash"],"stances":{"slash":"aggressive"},"formula":"standard","effects":["fang"]},
     "partisan": {"style":"Melee","attack_types":["stab","crush"],"stances":{"crush":"aggressive"},"formula":"standard","effects":["kalphite_damage"],"procs":[{"attribute":"kalphite","numerator":1,"denominator":51,"amount":3,"operation":"multiply","before_accurate_zero":true}]},
-    "bow": {"style":"Ranged","attack_types":["standard"],"formula":"standard","ammo":[892,890],"rapid":true},
+    "bow": {"style":"Ranged","attack_types":["standard"],"formula":"standard","ammo":[882,884,886,888,890,892,21326],"rapid":true},
     "crystal_bow": {"style":"Ranged","attack_types":["standard"],"formula":"standard","rapid":true,"equipment_scaling":[{"effect":"crystal_armour","accuracy_denominator":20,"damage_denominator":40}]},
     "crossbow": {"style":"Ranged","attack_types":["heavy"],"formula":"standard","ammo":[877,878,6061,6062,879,9236,9139,9286,9293,9300,9335,9237,9140,9287,9294,9301,880,9238,9145,9292,9299,9306,9141,9288,9295,9302,9336,9239,9142,9289,9296,9303,9337,9240,9338,9241,9143,9290,9297,9304,9339,9242,9340,9243,9144,9291,9298,9305,11875,21316,9341,9244,9342,9245],"rapid":true},
     "dragon_crossbow": {"style":"Ranged","attack_types":["heavy"],"formula":"standard","ammo":[877,878,6061,6062,879,9236,9139,9286,9293,9300,9335,9237,9140,9287,9294,9301,880,9238,9145,9292,9299,9306,9141,9288,9295,9302,9336,9239,9142,9289,9296,9303,9337,9240,9338,9241,9143,9290,9297,9304,9339,9242,9340,9243,9144,9291,9298,9305,11875,21316,9341,9244,9342,9245,21905,21924,21926,21928,21955,21932,21957,21934,21959,21936,21961,21938,21963,21940,21965,21942,21967,21944,21969,21946,21971,21948,21973,21950],"rapid":true},
@@ -19,7 +19,8 @@
     "sanguinesti": {"style":"Magic","attack_types":["magic"],"formula":"powered","numerator":1,"denominator":3,"accuracy_bonus":11,"ticks":4,"procs":[{"numerator":1,"denominator":5,"amount":8,"operation":"add"}]},
     "shadow": {"style":"Magic","attack_types":["magic"],"formula":"powered","numerator":1,"denominator":3,"offset":1,"accuracy_bonus":11,"ticks":5,"effects":["shadow"]},
     "warped": {"style":"Magic","attack_types":["magic"],"formula":"powered","numerator":8,"denominator":37,"offset":96,"offset_before_division":true,"accuracy_bonus":11,"ticks":4},
-    "demonbane": {"style":"Magic","attack_types":["magic"],"formula":"spell","accuracy_bonus":9,"ticks":5,"effects":["demonbane_spell"]}
+    "demonbane": {"style":"Magic","attack_types":["magic"],"formula":"spell","accuracy_bonus":9,"ticks":5,"effects":["demonbane_spell"]},
+    "target_bow": {"style":"Ranged","attack_types":["standard"],"formula":"standard","rapid":true,"ammo":[882,884,886,888,890,892,21326,11212],"target_scaling":{"skill":"magic","offensive":"magic","cap":250,"attribute_caps":{"xerician":350},"accuracy":{"base":140,"linear_numerator":3,"linear_offset":10,"linear_divisor":100,"inner_numerator":3,"inner_divisor":10,"inner_offset":100,"square_divisor":100,"cap":140},"damage":{"base":250,"linear_numerator":3,"linear_offset":14,"linear_divisor":100,"inner_numerator":3,"inner_divisor":10,"inner_offset":140,"square_divisor":100,"cap":250}}}
   },
   "weapons": [
     {"ids":[4151,26482],"family":"slash","requirements":{"Attack":70}},
@@ -47,7 +48,7 @@
     {"ids":[9185,26486],"family":"crossbow","requirements":{"Ranged":61}},
     {"ids":[21902,28053],"family":"dragon_crossbow","requirements":{"Ranged":64}},
     {"ids":[11785],"family":"dragon_crossbow","requirements":{"Ranged":70}},
-    {"ids":[21012,25916,25918],"family":"dragon_crossbow","requirements":{"Ranged":70},"multipliers":[{"attribute":"dragon","numerator":13,"denominator":10,"accuracy":true},{"attribute":"dragon","numerator":5,"denominator":4,"damage":true}]},
+    {"ids":[21012,25916,25918],"family":"dragon_crossbow","requirements":{"Ranged":70},"multipliers":[{"attribute":"dragon","numerator":13,"denominator":10,"accuracy":true},{"attribute":"dragon","numerator":5,"denominator":4,"damage":true,"additive_with_task_damage":true}]},
     {"ids":[26374],"family":"dragon_crossbow","effects":["zaryte"],"requirements":{"Ranged":80}},
     {"ids":[1381],"family":"wind","requirements":{}},
     {"ids":[1405],"family":"wind","requirements":{"Magic":40,"Attack":40}},
@@ -57,12 +58,14 @@
     {"ids":[22323,25731],"family":"sanguinesti","requirements":{"Magic":82}},
     {"ids":[27275],"family":"shadow","requirements":{"Magic":85}},
     {"ids":[28585],"family":"warped","requirements":{"Magic":62}},
-    {"ids":[29594],"family":"demonbane","demonbane_spell_factor":2,"requirements":{"Magic":77,"Attack":50}}
+    {"ids":[29594],"family":"demonbane","demonbane_spell_factor":2,"requirements":{"Magic":77,"Attack":50}},
+    {"ids":[22978],"family":"versatile","multipliers":[{"attribute":"dragon","numerator":6,"denominator":5,"accuracy":true,"damage":true}],"requirements":{"Attack":78}},
+    {"ids":[20997],"family":"target_bow","requirements":{"Ranged":85}}
   ],
   "ammunition": [
-    {"ids":[892,890,877,878,6061,6062,879,9139,9286,9293,9300,9335,9140,9287,9294,9301,880,9145,9292,9299,9306,9141,9288,9295,9302,9336,9142,9289,9296,9303,9337,9338,9143,9290,9297,9304,9339,9340,9144,9291,9298,9305,11875,21316,9341,9342,21905,21924,21926,21928,21955,21957,21959,21961,21963,21965,21967,21969,21971,21973],"effect":"none"},
-    {"ids":[9242,21944],"effect":"ruby"},
-    {"ids":[9243,21946],"effect":"diamond"},
+    {"ids":[892,890,877,878,6061,6062,879,9139,9286,9293,9300,9335,9140,9287,9294,9301,880,9145,9292,9299,9306,9141,9288,9295,9302,9336,9142,9289,9296,9303,9337,9338,9143,9290,9297,9304,9339,9340,9144,9291,9298,9305,11875,21316,9341,9342,21905,21924,21926,21928,21955,21957,21959,21961,21963,21965,21967,21969,21971,21973,882,884,886,888,21326,11212],"effect":"none"},
+    {"ids":[9242,21944],"effect":"ruby","proc_chance":0.06},
+    {"ids":[9243,21946],"effect":"diamond","proc_chance":0.1},
     {"ids":[9236,9237,9238,9239,9240,9241,9244,9245,21932,21934,21936,21938,21940,21942,21948,21950],"effect":"unsupported"}
   ],
   "equipment_requirements": [
@@ -84,7 +87,9 @@
     {"ids":[4081,12017,25250,26763],"effect":"salve_melee","slot":2},
     {"ids":[10588,12018,25278,26782],"effect":"salve_enhanced_melee","slot":2},
     {"ids":[12017,25250,26763],"effect":"salve_imbued","slot":2},
-    {"ids":[12018,25278,26782],"effect":"salve_enhanced_imbued","slot":2}
+    {"ids":[12018,25278,26782],"effect":"salve_enhanced_imbued","slot":2},
+    {"effect":"slayer_melee","slot":0,"ids":[29816,29822,29818,29820,8919,8901,8917,8915,8913,8911,8909,8907,8905,8903,8921,11783,25275,26780,11774,25266,26771,11782,25274,26779,11781,25273,26778,11780,25272,26777,11779,25271,26776,11778,25270,26775,11777,25269,26774,11776,25268,26773,11775,25267,26772,11784,25276,26781,19639,26675,19641,25179,19643,26676,19645,25181,33066,33072,33068,33070,23073,26680,23075,25189,33338,33443,33439,33441,21264,26678,21266,25185,33340,33449,33445,33447,19647,26677,19649,25183,11864,26674,11865,25177,21888,26679,21890,25187,24370,26681,24444,25191,25910,26684,25912,25914,25898,26682,25900,25902,25904,26683,25906,25908]},
+    {"effect":"slayer_imbued","slot":0,"ids":[29822,29818,29820,11783,25275,26780,11774,25266,26771,11782,25274,26779,11781,25273,26778,11780,25272,26777,11779,25271,26776,11778,25270,26775,11777,25269,26774,11776,25268,26773,11775,25267,26772,11784,25276,26781,26675,19641,25179,26676,19645,25181,33072,33068,33070,26680,23075,25189,33443,33439,33441,26678,21266,25185,33449,33445,33447,26677,19649,25183,26674,11865,25177,26679,21890,25187,26681,24444,25191,26684,25912,25914,26682,25900,25902,26683,25906,25908]}
   ],
   "equipment_sets": [
     {"effect":"void_melee","pieces":[{"slot":0,"ids":[11665,24185,26477,27007]},{"slot":4,"ids":[8839,13072,24177,24178,26463,26469,27000,27003]},{"slot":7,"ids":[8840,13073,24179,24180,26465,26471,27001,27004]},{"slot":9,"ids":[8842,24182,26467,27002]}]},
@@ -92,5 +97,15 @@
     {"effect":"void_magic","pieces":[{"slot":0,"ids":[11663,24183,26473,27005]},{"slot":4,"ids":[8839,13072,24177,24178,26463,26469,27000,27003]},{"slot":7,"ids":[8840,13073,24179,24180,26465,26471,27001,27004]},{"slot":9,"ids":[8842,24182,26467,27002]}]},
     {"effect":"elite_void_ranged","pieces":[{"slot":0,"ids":[11664,24184,26475,27006]},{"slot":4,"ids":[13072,24178,26469,27003]},{"slot":7,"ids":[13073,24180,26471,27004]},{"slot":9,"ids":[8842,24182,26467,27002]}]},
     {"effect":"elite_void_magic","pieces":[{"slot":0,"ids":[11663,24183,26473,27005]},{"slot":4,"ids":[13072,24178,26469,27003]},{"slot":7,"ids":[13073,24180,26471,27004]},{"slot":9,"ids":[8842,24182,26467,27002]}]}
+  ],
+  "target_bonuses": [
+    {"equipment_effect":"salve_enhanced_melee","styles":["Melee"],"attribute":"undead","accuracy":[6,5],"damage":[6,5]},
+    {"equipment_effect":"salve_melee","styles":["Melee"],"attribute":"undead","accuracy":[7,6],"damage":[7,6]},
+    {"equipment_effect":"salve_enhanced_imbued","styles":["Ranged"],"attribute":"undead","accuracy":[6,5],"damage":[6,5]},
+    {"equipment_effect":"salve_imbued","styles":["Ranged"],"attribute":"undead","accuracy":[7,6],"damage":[7,6]},
+    {"equipment_effect":"salve_enhanced_imbued","styles":["Magic"],"attribute":"undead","accuracy":[6,5],"damage":[1,1],"magic_damage_per_mille":200},
+    {"equipment_effect":"salve_imbued","styles":["Magic"],"attribute":"undead","accuracy":[23,20],"damage":[1,1],"magic_damage_per_mille":150},
+    {"equipment_effect":"slayer_melee","styles":["Melee"],"slayer_task":true,"accuracy":[7,6],"damage":[7,6]},
+    {"equipment_effect":"slayer_imbued","styles":["Ranged","Magic"],"slayer_task":true,"accuracy":[23,20],"damage":[23,20]}
   ]
 }

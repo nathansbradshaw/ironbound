@@ -42,6 +42,10 @@ pub fn groups() -> &'static [Group] {
 }
 #[derive(Debug, Deserialize)]
 pub struct Mechanics {
+    #[serde(default)]
+    pub slayer_monster_ids: Vec<i32>,
+    #[serde(default)]
+    pub magic_defence_uses_defence: Vec<i32>,
     pub toa_ids: Vec<i32>,
     pub unsupported_attributes: Vec<String>,
     pub unsupported_names: Vec<String>,
@@ -121,12 +125,22 @@ pub fn progress_hp(id: i32, style: &str) -> Option<f64> {
         .copied()
 }
 pub fn demonbane_vulnerability(id: i32) -> u32 {
-    let source = window(id).map(|window| window.npc_id).unwrap_or(id);
+    let source = source_npc_id(id);
     mechanics()
         .demonbane_vulnerability
         .get(&source)
         .copied()
         .unwrap_or(100)
+}
+pub fn source_npc_id(id: i32) -> i32 {
+    window(id).map(|w| w.npc_id).unwrap_or(id)
+}
+pub fn slayer_eligible(id: i32) -> bool {
+    let source = source_npc_id(id);
+    mechanics()
+        .slayer_monster_ids
+        .binary_search(&source)
+        .is_ok()
 }
 pub fn limitation(target: &Monster) -> Option<&'static str> {
     if window(target.id).is_some_and(|window| !window.outgoing_supported) {

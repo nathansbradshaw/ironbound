@@ -84,16 +84,37 @@ fn shared_setup_roundtrips_all_carried_items() {
 fn mark_assumption_roundtrips_and_old_links_default_inactive() {
     let (mut options, plan) = demo(Boss::Barrows);
     options.combat.mark_darkness = true;
+    options.combat.ranged_stance = "Accurate".into();
+    options.combat.kandarin_diary = true;
+    options.combat.slayer_targets.insert(1673);
     let setup = Setup::from_plan(&plan, &options);
     let decoded = Setup::parse(&setup.fragment().unwrap()).unwrap();
     assert!(decoded.combat.mark_darkness);
+    assert_eq!(decoded.combat.ranged_stance, "Accurate");
+    assert!(decoded.combat.kandarin_diary);
+    assert!(decoded.combat.slayer_targets.contains(&1673));
     let mut legacy = serde_json::to_value(setup).unwrap();
     legacy["combat"]
         .as_object_mut()
         .unwrap()
         .remove("mark_darkness");
+    legacy["combat"]
+        .as_object_mut()
+        .unwrap()
+        .remove("ranged_stance");
+    legacy["combat"]
+        .as_object_mut()
+        .unwrap()
+        .remove("kandarin_diary");
+    legacy["combat"]
+        .as_object_mut()
+        .unwrap()
+        .remove("slayer_targets");
     let old: Setup = serde_json::from_value(legacy).unwrap();
     assert!(!old.combat.mark_darkness);
+    assert_eq!(old.combat.ranged_stance, "Rapid");
+    assert!(!old.combat.kandarin_diary);
+    assert!(old.combat.slayer_targets.is_empty());
 }
 #[test]
 fn sharing_only_contains_an_explicit_public_allowlist() {

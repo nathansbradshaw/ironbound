@@ -65,7 +65,7 @@ pub fn inventory_setup(plan: &Plan, options: &Options, _account: &str) -> Result
     let mut layout: Vec<i32> = plan.equipment.iter().flatten().copied().collect();
     layout.extend(plan.inventory.iter().filter(|p| p.id > 0).map(|p| p.id));
     let notes = format!(
-        "Ironbound / {}. {}. {}. Room plan: {}. Mark of Darkness: {}. Verify spellbook, charges and supplies. No automatic game actions.",
+        "Ironbound / {}. {}. {}. Room plan: {}. Mark of Darkness: {}. Ranged stance: {}. Kandarin bolt bonus: {}. Slayer task targets: {}. Verify spellbook, charges and supplies. No automatic game actions.",
         encounter_name(options),
         plan.label,
         plan.spell,
@@ -78,6 +78,27 @@ pub fn inventory_setup(plan: &Plan, options: &Options, _account: &str) -> Result
             "active"
         } else {
             "inactive"
+        },
+        options.combat.ranged_stance,
+        if options.combat.kandarin_diary {
+            "active"
+        } else {
+            "inactive"
+        },
+        if options.combat.slayer_targets.is_empty() {
+            "None".into()
+        } else {
+            options
+                .combat
+                .slayer_targets
+                .iter()
+                .map(|id| {
+                    crate::planner::monster(*id)
+                        .map(|m| m.name.clone())
+                        .unwrap_or_else(|| id.to_string())
+                })
+                .collect::<Vec<_>>()
+                .join(", ")
         }
     );
     serde_json::to_string(&json!({"setup":{"name":format!("Ironbound - {}",encounter_name(options)),"inv":inv,"eq":eq,"afi":{},"notes":notes,"hc":"#FFFF0000","hd":true,"fb":true,"uh":false,"sb":if options.boss==crate::planner::Boss::Barrows{0}else{4},"iId":plan.equipment[3]},"layout":layout})).map_err(|e|e.to_string())

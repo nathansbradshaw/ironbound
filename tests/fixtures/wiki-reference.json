@@ -1,0 +1,26 @@
+{
+  "revision": "cc149e9f428ecd239a793eb822784f23d1aa84b2",
+  "source": "https://github.com/weirdgloop/osrs-dps-calc",
+  "live_revision": "880ab3f324ebea2644681d835448ab9d45c04f5c",
+  "live_source": "https://tools.runescape.wiki/osrs-dps/",
+  "live_checked": "2026-11-13 UTC; 99 combat stats, no boosts/prayers, rapid bows/crossbows, controlled stab lance. DPS/accuracy tolerances reflect displayed precision.",
+  "cases": [
+    {"name":"BasicRolls whip level 1 accurate", "level":1,"equipment":{"3":4151},"style":"Melee","attack_roll":1752,"max_hit":2},
+    {"name":"BasicRolls whip level 99 accurate", "level":99,"equipment":{"3":4151},"style":"Melee","attack_roll":16060,"max_hit":24},
+    {"name":"BasicRolls bowfa level 1 accurate", "level":1,"equipment":{"3":25865},"style":"Ranged","ranged_stance":"Accurate","attack_roll":2304,"max_hit":3},
+    {"name":"BasicRolls bowfa level 99 accurate", "level":99,"equipment":{"3":25865},"style":"Ranged","ranged_stance":"Accurate","attack_roll":21120,"max_hit":29},
+    {"name":"BasicRolls trident level 1 accurate", "level":1,"equipment":{"3":11905},"style":"Magic","attack_roll":948,"max_hit":1},
+    {"name":"BasicRolls trident level 99 accurate", "level":99,"equipment":{"3":11905},"style":"Magic","attack_roll":8690,"max_hit":28},
+    {"name":"GeneratedTests dragon hunter lance in max melee", "level":99,"levels":{"Attack":118,"Strength":118},"target":8059,"equipment":{"0":26382,"1":21285,"2":19553,"3":22978,"4":26384,"5":22322,"7":26386,"9":22981,"10":13239,"12":11773},"style":"Stab","prayer":"Piety","max_hit":58},
+    {"name":"GeneratedTests shadow in max mage", "level":99,"levels":{"Magic":112},"equipment":{"0":21018,"1":21780,"2":12002,"3":27275,"4":21021,"7":21024,"9":19544,"10":13235,"12":28313},"style":"Magic","max_hit":65},
+    {"name":"GeneratedTests shadow with salve in max mage", "level":99,"levels":{"Magic":112},"target":8059,"equipment":{"0":21018,"1":21780,"2":12018,"3":27275,"4":21021,"7":21024,"9":19544,"10":13235,"12":28313},"style":"Magic","max_hit":67},
+    {"name":"Live Wiki twisted bow low Magic", "level":99,"target":415,"equipment":{"3":20997,"13":11212},"style":"Ranged","attack_roll":5735,"defence_roll":12096,"max_hit":12,"dps":0.480,"accuracy":0.2370},
+    {"name":"Live Wiki twisted bow Jad", "level":99,"target":3127,"equipment":{"3":20997,"13":11212},"style":"Ranged","attack_roll":20073,"defence_roll":31296,"max_hit":51,"dps":2.728,"accuracy":0.3207},
+    {"name":"Live Wiki lance Vorkath", "level":99,"target":8059,"equipment":{"3":22978},"style":"Stab","attack_roll":19310,"defence_roll":20070,"max_hit":27,"dps":2.713,"accuracy":0.4810},
+    {"name":"Live Wiki diamond crossbow Vorkath diary", "level":99,"target":8059,"equipment":{"3":9185,"13":9243},"style":"Ranged","kandarin_diary":true,"attack_roll":16478,"defence_roll":20070,"max_hit":32,"dps":2.297,"accuracy":0.4105},
+    {"name":"Live Wiki diamond crossbow Vorkath no diary", "level":99,"target":8059,"equipment":{"3":9185,"13":9243},"style":"Ranged","attack_roll":16478,"defence_roll":20070,"max_hit":32,"dps":2.263,"accuracy":0.4105},
+    {"name":"GeneratedTests shadow with slayer helmet in max mage", "level":99,"levels":{"Magic":112},"target":415,"equipment":{"0":11865,"1":21780,"2":12002,"3":27275,"4":21021,"7":21024,"9":19544,"10":13235,"12":28313},"style":"Magic","slayer_task":true,"max_hit":70},
+    {"name":"Live Wiki Slayer helmet diamond crossbow task on", "level":99,"target":8059,"equipment":{"0":11865,"3":9185,"13":9243},"style":"Ranged","slayer_task":true,"attack_roll":19318,"defence_roll":20070,"max_hit":36,"dps":2.915,"accuracy":0.4812},
+    {"name":"Live Wiki Slayer helmet diamond crossbow task off", "level":99,"target":8059,"equipment":{"0":11865,"3":9185,"13":9243},"style":"Ranged","attack_roll":16799,"defence_roll":20070,"max_hit":32,"dps":2.296,"accuracy":0.4185}
+  ]
+}

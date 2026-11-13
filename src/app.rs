@@ -30,6 +30,12 @@ fn comparison_caps_query() -> Option<[usize; 2]> {
 struct State {
     saved: Saved,
     sailing_slot: String,
+    sailing_owned_open: bool,
+    sailing_report: Option<(String, Result<crate::sailing_combat::Report, String>)>,
+    sailing_recommendation: Option<(
+        String,
+        Result<crate::sailing_recommendation::Recommendation, String>,
+    )>,
     save_status: Cell<SaveStatus>,
     unreadable_save: Option<String>,
     setups_open: bool,
@@ -159,6 +165,9 @@ impl State {
         Self {
             save_status: Cell::new(save_status),
             sailing_slot: "hull".into(),
+            sailing_owned_open: false,
+            sailing_report: None,
+            sailing_recommendation: None,
             unreadable_save,
             setups_open: false,
             demo_return: None,
@@ -386,7 +395,20 @@ thread_local! {
 
 fn live_number(id: &str) -> bool {
     if let Some(key) = id.strip_prefix("sailing-") {
-        return ["visible", "balls", "kits", "reserved", "minutes", "uptime"].contains(&key);
+        return key.starts_with("loaded-")
+            || [
+                "visible",
+                "balls",
+                "kits",
+                "reserved",
+                "minutes",
+                "uptime",
+                "kills",
+                "repair-ticks",
+                "aggressors",
+                "charges",
+            ]
+            .contains(&key);
     }
     if id.starts_with("risk-") {
         return true;
@@ -428,6 +450,29 @@ fn apply_number(s: &mut State, id: &str, value: &str) -> bool {
         return s.saved.options.combat.rotation.update_time(key, value);
     }
     if let Some(key) = id.strip_prefix("sailing-") {
+        if let Some(id) = key
+            .strip_prefix("loaded-")
+            .and_then(|v| v.parse::<i32>().ok())
+        {
+            if crate::sailing_owned::BALL_IDS.contains(&id)
+                || crate::sailing_owned::KIT_IDS.contains(&id)
+            {
+                if let Some(q) = value.parse::<u32>().ok().filter(|q| *q <= 1_000_000) {
+                    let selected = s.saved.snapshot.selected.clone();
+                    if let Some(m) = s
+                        .saved
+                        .snapshot
+                        .members
+                        .iter_mut()
+                        .find(|m| m.name == selected)
+                    {
+                        m.sailing_owned.loaded.insert(id, q);
+                        return true;
+                    }
+                }
+            }
+            return false;
+        }
         return s.saved.options.sailing.update(key, value);
     }
     if let Some(key) = id.strip_prefix("risk-") {
@@ -1251,7 +1296,7 @@ pub fn start() -> Result<(), JsValue> {
                 if s.shared_setup.is_some() {
                     return false;
                 }
-                let changed = s.saved.options.sailing.update(key, &value);
+                let changed = apply_number(&mut s, &format!("sailing-{key}"), &value);
                 if changed {
                     s.persist();
                 }
@@ -1782,6 +1827,9 @@ fn focus_inventory(slot: usize) {
     }
 }
 fn act(action: &str) {
+    if act_sailing(action) {
+        return;
+    }
     if let Some(slot) = action.strip_prefix("sailing-slot:") {
         if crate::sailing_view::valid_slot(slot) {
             STATE.with(|state| state.borrow_mut().sailing_slot = slot.into());
@@ -2877,6 +2925,7 @@ fn import_raw(raw: &str) {
                         if let Some(old) = s.saved.snapshot.selected() {
                             snapshot.members[0].skills = old.skills.clone();
                             snapshot.members[0].level_overrides = old.level_overrides.clone();
+                            snapshot.members[0].sailing_owned = old.sailing_owned.clone();
                             snapshot.members[0].last_updated = old.last_updated.clone();
                             snapshot.members[0].name = old.name.clone();
                             snapshot.selected = old.name.clone();
@@ -7144,11 +7193,170 @@ fn death_risk_panel(s: &State, plan: &Plan) -> String {
 }
 
 fn sailing_panel(s: &State) -> String {
-    crate::sailing_view::render(
+    let readonly = s.shared_setup.is_some();
+    let mut h = if readonly {
+        String::new()
+    } else {
+        crate::sailing_ui::controls(&s.saved.snapshot, &s.saved.options, s.sailing_owned_open)
+    };
+    h.push_str(&crate::sailing_view::render(
         &s.saved.options.sailing,
-        s.saved.snapshot.selected(),
+        if readonly {
+            None
+        } else {
+            s.saved.snapshot.selected()
+        },
         &s.saved.options.targets,
         &s.sailing_slot,
-        s.shared_setup.is_some(),
-    )
+        readonly,
+    ));
+    if readonly {
+        return h;
+    }
+    h.push_str(&crate::sailing_ui::scenario(&s.saved.options.sailing));
+    if s.busy {
+        h.push_str("<p role=\"status\">Comparing your Sailing setups…</p>");
+    }
+    let key = crate::sailing_ui::key(&s.saved.snapshot, &s.saved.options);
+    if let Some((k, result)) = &s.sailing_report {
+        if *k == key {
+            match result {
+                Ok(r) => h.push_str(&crate::sailing_ui::report(r, "Current trip")),
+                Err(e) => h.push_str(&format!("<p class=\"small-note\">{}</p>", esc(e))),
+            }
+        } else {
+            h.push_str(
+                "<p class=\"small-note\">Settings changed. Calculate the current trip again.</p>",
+            );
+        }
+    }
+    if let Some((k, result)) = &s.sailing_recommendation {
+        if *k == key {
+            match result {
+                Ok(r) => h.push_str(&crate::sailing_ui::recommendation(r)),
+                Err(e) => h.push_str(&format!("<p class=\"small-note\">{}</p>", esc(e))),
+            }
+        } else {
+            h.push_str("<p class=\"small-note\">Account or settings changed. Run the recommendation again.</p>");
+        }
+    }
+    h
+}
+fn act_sailing(action: &str) -> bool {
+    if action == "sailing-calculate" || action == "sailing-recommend" {
+        let recommend = action == "sailing-recommend";
+        let inputs = STATE.with(|state| {
+            let mut s = state.borrow_mut();
+            if s.shared_setup.is_some() || s.busy {
+                return None;
+            }
+            s.busy = true;
+            Some((s.saved.snapshot.clone(), s.saved.options.clone()))
+        });
+        if let Some((snapshot, options)) = inputs {
+            render();
+            spawn_local(async move {
+                let promise = js_sys::Promise::new(&mut |resolve, _| {
+                    let _ = window()
+                        .set_timeout_with_callback_and_timeout_and_arguments_0(&resolve, 30);
+                });
+                let _ = JsFuture::from(promise).await;
+                let key = crate::sailing_ui::key(&snapshot, &options);
+                if recommend {
+                    let result = crate::sailing_recommendation::recommend(&snapshot, &options);
+                    STATE.with(|state| {
+                        let mut s = state.borrow_mut();
+                        s.sailing_recommendation = Some((key, result));
+                        s.busy = false;
+                    });
+                } else {
+                    let result = crate::sailing_recommendation::forecast(&snapshot, &options);
+                    STATE.with(|state| {
+                        let mut s = state.borrow_mut();
+                        s.sailing_report = Some((key, result));
+                        s.busy = false;
+                    });
+                }
+                render();
+                let selector = if recommend {
+                    ".ship-recommendation"
+                } else {
+                    ".ship-forecast"
+                };
+                if let Ok(Some(panel)) = document().query_selector(selector) {
+                    panel.scroll_into_view();
+                }
+            });
+        }
+        return true;
+    }
+    if !["sailing-owned-open", "sailing-confirm", "sailing-use"].contains(&action)
+        && !action.starts_with("sailing-own:")
+    {
+        return false;
+    }
+    STATE.with(|state| {
+        let mut s = state.borrow_mut();
+        if s.shared_setup.is_some() {
+            return;
+        }
+        if action == "sailing-owned-open" {
+            s.sailing_owned_open = !s.sailing_owned_open;
+            return;
+        }
+        if action == "sailing-use" {
+            let key = crate::sailing_ui::key(&s.saved.snapshot, &s.saved.options);
+            let result = s
+                .sailing_recommendation
+                .as_ref()
+                .filter(|(k, _)| *k == key)
+                .and_then(|(_, r)| r.as_ref().ok())
+                .cloned();
+            if let Some(result) = result {
+                match crate::sailing_recommendation::apply(
+                    &s.saved.snapshot,
+                    &s.saved.options,
+                    &result,
+                ) {
+                    Ok(options) => {
+                        s.saved.options = options;
+                        s.persist();
+                        s.notice(
+                            "Owned Sailing setup applied. Review Boat setup and your packing list.",
+                            false,
+                        );
+                    }
+                    Err(reason) => s.notice(reason, true),
+                }
+            } else {
+                s.notice(
+                    "Your account or settings changed. Run the recommendation again.",
+                    true,
+                );
+            }
+        } else {
+            let b = s.saved.options.sailing.clone();
+            let selected = s.saved.snapshot.selected.clone();
+            if let Some(m) = s
+                .saved
+                .snapshot
+                .members
+                .iter_mut()
+                .find(|m| m.name == selected)
+            {
+                if action == "sailing-confirm" {
+                    m.sailing_owned.confirm(&b);
+                } else if let Some((key, n)) = action
+                    .strip_prefix("sailing-own:")
+                    .and_then(|v| v.split_once(':'))
+                    .and_then(|(k, n)| Some((k, n.parse::<usize>().ok()?)))
+                {
+                    m.sailing_owned.toggle(&b, key, n);
+                }
+            }
+            s.persist();
+        }
+    });
+    render();
+    true
 }

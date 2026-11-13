@@ -53,13 +53,14 @@ If browser saving fails, a persistent warning offers a private backup and retry.
 
 ## Sailing
 
-1. **Change encounter → Sailing**, then choose a sea creature.
-2. In **Boat setup**, select your installed hull, keel, cargo hold and cannons. Assign recruited crew to jobs.
-3. Enter cargo supplies and firing time. Use **Combat** to compare your personal weapon.
+1. **Change encounter → Sailing**, then choose one sea creature.
+2. In **Boat setup**, fit your boat and assign crew. **Confirm this boat & crew**, then tick any other **Available parts & crew** you own.
+3. Import your gear and supplies. Add supplies **Already aboard** only when they are missing from your import.
+4. Set your trip goal, repair kits and firing uptime. **Calculate current trip**, or **Recommend my boat → Use this setup**.
 
-Boat setup shows hull + keel HP, keel damage reduction, cargo capacity, crew cannon raw max hits and an expected ammunition budget. It saves locally with named setups and backups; Sailing setup links carry the boat assumptions. Bank imports do not identify installed parts, recruited crew or cargo.
+Shows player/crew cannon DPS, hull damage and seeded trip completion with finite ammunition, repair kits, prayer and confirmed loaded charges. Both guns share stock; kits occupy cargo slots. Recommendations use confirmed boats/parts/crew and available gear/supplies, with a bounded search rather than a global best-in-slot guarantee. Confirmations stay private in account backups; shared links contain boat assumptions only.
 
-The 21 sea creatures use current recorded NPC stats. Ordinary melee is unavailable. Personal armour and protection prayers do not protect the boat. Cannon accuracy, player-operated cannon damage, combined DPS, repair consumption, movement and whole-trip survival are not verified. Veiled Kraken ranged DPS remains unavailable because its flat armour needs a separate hit-distribution model.
+Trip survival is a stationary scenario estimate. Standard NPC hull defence rolls, cannon 0–max rolls and editable repair cadence are model assumptions, not gameplay calibration. Movement, delayed weapon burn and upgraded cannonballs are unsupported; those weapon forecasts are withheld. See **Calculation details** and [sources](SOURCES.md). Ordinary melee and personal protection prayers do not protect the hull.
 
 ## What is still incomplete?
 

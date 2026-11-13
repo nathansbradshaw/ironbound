@@ -3,6 +3,10 @@ pub mod bestiary;
 pub mod burn;
 pub mod death_risk;
 pub mod sailing;
+pub mod sailing_combat;
+pub mod sailing_owned;
+pub mod sailing_recommendation;
+pub mod sailing_ui;
 pub mod sailing_view;
 pub mod wilderness;
 

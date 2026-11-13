@@ -1,5 +1,5 @@
 //! Reviewed boat parts and sea-monster rules. Boat selections are manual
-//! assumptions, independent of bank ownership. Cannon accuracy is not verified.
+//! assumptions. Owned recommendations and trip scenarios use sailing_combat.
 use crate::{
     account::Member,
     planner::{self, Monster, Options, Target},
@@ -19,7 +19,7 @@ pub fn active(o: &Options) -> bool {
 pub fn entries() -> Vec<crate::encounters::Entry> {
     SEA_IDS.iter().map(|id| {
         let m = planner::monster(*id).expect("sea NPC in pinned catalog");
-        crate::encounters::Entry { name: m.name.clone(), targets: vec![Target { id: *id, style: if [15206,15208,15210,15212].contains(id) {"Magic"} else {"Ranged"}.into() }], bank_equipment: true, note: "Sea creature: ranged/magic weapon comparison, boat HP and keel damage reduction. Configure your boat and crew in Boat setup. Cannon accuracy, combined DPS, movement and full-trip survival are not verified.".into() }
+        crate::encounters::Entry { name: m.name.clone(), targets: vec![Target { id: *id, style: if [15206,15208,15210,15212].contains(id) {"Magic"} else {"Ranged"}.into() }], bank_equipment: true, note: "Sea creature: configure your boat and crew in Boat setup, confirm your available parts, then compare cannon DPS and modelled trip survival from your own stock.".into() }
     }).collect()
 }
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -166,6 +166,14 @@ pub struct Assignment {
 #[serde(default, deny_unknown_fields)]
 pub struct Settings {
     pub boat: Boat,
+    pub second_cannon: Option<usize>,
+    pub second_ball: Option<usize>,
+    pub repair_tier: usize,
+    pub trip_kills: u32,
+    pub repair_ticks: u32,
+    pub manual_repairs: bool,
+    pub aggressors: u32,
+    pub powered_charges: u32,
     pub hull: usize,
     pub keel: usize,
     pub cargo: Option<usize>,
@@ -188,6 +196,14 @@ impl Default for Settings {
     fn default() -> Self {
         Self {
             boat: Boat::Skiff,
+            second_cannon: None,
+            second_ball: None,
+            repair_tier: 0,
+            trip_kills: 10,
+            repair_ticks: 5,
+            manual_repairs: true,
+            aggressors: 1,
+            powered_charges: 0,
             hull: 0,
             keel: 0,
             cargo: Some(0),
@@ -210,7 +226,14 @@ impl Default for Settings {
 }
 impl Settings {
     pub fn valid(&self) -> bool {
-        self.hull < 7
+        self.second_cannon.is_none_or(|n| n < 7)
+            && self.second_ball.is_none_or(|n| n < 7)
+            && self.repair_tier < 7
+            && (1..=100).contains(&self.trip_kills)
+            && (1..=20).contains(&self.repair_ticks)
+            && (1..=10).contains(&self.aggressors)
+            && self.powered_charges <= 1_000_000
+            && self.hull < 7
             && self.keel < 7
             && self.cargo.is_none_or(|v| v < 7)
             && self.cannon.is_none_or(|v| v < 7)
@@ -263,6 +286,9 @@ impl Settings {
         }
         if let Some(c) = self.cannon {
             level = level.max(CANNON_LEVELS[c]);
+            if self.cannon_count == 2 {
+                level = level.max(CANNON_LEVELS[self.second_cannon.unwrap_or(c)]);
+            }
         }
         if self.attractor {
             level = level.max(50);
@@ -276,7 +302,9 @@ impl Settings {
             return vec!["Invalid boat settings.".into()];
         }
         let mut errors = Vec::new();
-        if self.cargo.is_none() && (self.cannonballs > 0 || self.repair_kits > 0) {
+        if self.cargo.is_none()
+            && (self.cannonballs > 0 && self.player_role != 1 || self.repair_kits > 0)
+        {
             errors.push("Cargo supplies require an installed cargo hold.".into());
         }
         if self.cannon.is_some() && self.cannon_count > self.boat.cannons() {
@@ -317,10 +345,14 @@ impl Settings {
                     if self.cannon.is_none() || c.role - 2 > self.cannon_count {
                         errors.push(format!("{} needs an installed cannon.", ROLES[c.role]));
                     }
-                    if self
-                        .cannon
-                        .is_some_and(|tier| CREW[i].privateering < CANNON_PRIVATEERING[tier])
-                    {
+                    if self.cannon.is_some_and(|tier| {
+                        CREW[i].privateering
+                            < CANNON_PRIVATEERING[if c.role == 4 {
+                                self.second_cannon.unwrap_or(tier)
+                            } else {
+                                tier
+                            }]
+                    }) {
                         errors.push(format!(
                             "{} lacks the Privateering level for this cannon.",
                             CREW[i].name
@@ -344,6 +376,10 @@ impl Settings {
         }
         if self.player_role == 1 && self.cannon.is_none() {
             errors.push("Install a cannon before assigning yourself to it.".into());
+        }
+        if self.cannon_count == 2 && self.second_ball.is_some_and(|n| n != self.cannonball) {
+            errors
+                .push("Both modelled cannon mounts must use the selected cannonball type.".into());
         }
         if !self.ammo_compatible() {
             errors.push("Selected cannonballs exceed the cannon’s tier.".into());
@@ -380,9 +416,6 @@ impl Settings {
                 }
             }
         }
-        if self.crew.iter().any(|c| c.person.is_some() && c.role >= 3) && self.cannonballs == 0 {
-            notes.push("No cannonballs recorded in cargo for your gunners.".into());
-        }
         if self.crew.iter().any(|c| c.person.is_some() && c.role == 2) && self.repair_kits == 0 {
             notes.push("No repair kits recorded for the repair crew.".into());
         }
@@ -403,7 +436,12 @@ impl Settings {
         }
         let tier = self.cannon.ok_or("No cannon installed")?;
         let base = member.level("Sailing").ok_or("Sailing level unknown")?;
-        if base < CANNON_LEVELS[tier] {
+        let tier = if c.role == 4 {
+            self.second_cannon.unwrap_or(tier)
+        } else {
+            tier
+        };
+        if self.visible_sailing.unwrap_or(base) < CANNON_LEVELS[tier] {
             return Err(format!(
                 "Operating this cannon requires {} Sailing.",
                 CANNON_LEVELS[tier]
@@ -412,17 +450,39 @@ impl Settings {
         if self.crew.iter().filter(|c| c.person.is_some()).count() > self.crew_limit(base) {
             return Err("Too many crew for your base Sailing level.".into());
         }
-        if BALL_TIER[self.cannonball] > tier {
+        if BALL_TIER[if c.role == 4 {
+            self.second_ball.unwrap_or(self.cannonball)
+        } else {
+            self.cannonball
+        }] > tier
+        {
             return Err("Cannonballs exceed the cannon's tier.".into());
         }
-        let level = self.visible_sailing.unwrap_or(base);
-        let max = (level * (CANNON_STRENGTH[tier] + BALL_STRENGTH[self.cannonball] + 64) + 320)
-            / 640
-            + u32::from(self.perildance);
-        Ok(max * (person.privateering + 13) / 20)
+        let mount = c.role - 3;
+        let tier = if mount == 1 {
+            self.second_cannon.unwrap_or(tier)
+        } else {
+            tier
+        };
+        let ball = if mount == 1 {
+            self.second_ball.unwrap_or(self.cannonball)
+        } else {
+            self.cannonball
+        };
+        Ok(
+            ((person.privateering * 12 + 8) * (CANNON_STRENGTH[tier] + BALL_STRENGTH[ball] + 64)
+                + 320)
+                / 640
+                + u32::from(self.perildance),
+        )
     }
     pub fn ammo_compatible(&self) -> bool {
-        self.cannon.is_none_or(|c| BALL_TIER[self.cannonball] <= c)
+        self.cannon.is_none_or(|c| {
+            BALL_TIER[self.cannonball] <= c
+                && (self.cannon_count < 2
+                    || BALL_TIER[self.second_ball.unwrap_or(self.cannonball)]
+                        <= self.second_cannon.unwrap_or(c))
+        })
     }
     pub fn ammo_budget(&self) -> (f64, f64) {
         let guns = if self.cannon.is_some() {
@@ -444,6 +504,33 @@ impl Settings {
         let mut next = self.clone();
         let n = value.parse::<usize>().ok();
         match key {
+            "cannon2" => {
+                next.second_cannon = n;
+            }
+            "ball2" => {
+                next.second_ball = n;
+            }
+            "kit" => {
+                let Some(n) = n else { return false };
+                next.repair_tier = n;
+            }
+            "kills" => {
+                let Ok(n) = value.parse() else { return false };
+                next.trip_kills = n;
+            }
+            "repair-ticks" => {
+                let Ok(n) = value.parse() else { return false };
+                next.repair_ticks = n;
+            }
+            "aggressors" => {
+                let Ok(n) = value.parse() else { return false };
+                next.aggressors = n;
+            }
+            "charges" => {
+                let Ok(n) = value.parse() else { return false };
+                next.powered_charges = n;
+            }
+            "manual-repairs" => next.manual_repairs = value == "true",
             "boat" => {
                 let Some(b) = Boat::ALL.iter().find(|b| b.name() == value) else {
                     return false;
@@ -481,6 +568,9 @@ impl Settings {
             "ball" => {
                 let Some(n) = n else { return false };
                 next.cannonball = n;
+                if next.second_ball.is_some() {
+                    next.second_ball = Some(n);
+                }
             }
             "player" => {
                 let Some(n) = n else { return false };

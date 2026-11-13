@@ -193,7 +193,7 @@ independent references, browser verification, then gameplay verification.
   current-HP ruby, Defence-based Magic defence and pickaxe exception.
 - [x] Tormented Demon shielded outgoing: explicit protection states,
   demonbane/abyssal exceptions, positive-hit minimum and defenceless accuracy;
-  separate melee/Magic gear baseline with real portrait.
+  any-two-style gear baseline with real portrait and all three shielded-defenceless overheads.
 - [ ] Tormented Demon unshielded speed-squared bonus/delay, protection rotation,
   spawn interactions, full-fight supplies and incoming damage.
 - [x] Leafy monsters: exact leaf-bladed/broad ammunition/Magic Dart restriction
@@ -319,3 +319,15 @@ build pass again. Preview checks show example Dharok incoming DPS rising from
 retains 0.625 DPS under that prayer with its branch assumptions visible. No
 console warnings/errors. Prayer drain, tunnels, complete chest-trip supplies
 and matched gameplay validation remain open; publication evidence is in the PR.
+
+Tormented Demon follow-up, 13 November 2026: complete the shielded-defenceless
+protection alternatives for Melee and Ranged overheads. All six shielded states
+are fixed comparisons in one 600-HP pool, without a complete encounter workload.
+Ornamented abyssal whips/tentacles retain the same shield exemption. The gear
+screen accepts any two supported owned styles rather than requiring Magic.
+Nine focused regressions independently check per-splat rounding, current-HP ruby,
+multihit/chained weapons, Blood Moon cooldown, Dharok ordering, style-specific
+exceptions, shared state/export and missing supplies/access assumptions. The
+positive-hit minimum follows the pinned calculator and awaits gameplay evidence.
+Unshielded bonus/cooldown, protection rotation, multi-demon timing, burn, incoming
+attacks and full-fight supplies stay open.

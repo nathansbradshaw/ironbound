@@ -349,11 +349,19 @@ pub struct Entry {
 impl Entry {
     pub fn guide_url(&self) -> String {
         let page = match self.name.as_str() {
+            "Tormented Demons" => "Tormented_Demon",
             "Sliske's wights" => "Desert_Treasure_II",
             name => name.strip_suffix(" (Quest)").unwrap_or(name),
         };
-        let suffix = if self.note.starts_with("Quest boss") { "" } else { "/Strategies" };
-        format!("https://oldschool.runescape.wiki/w/{}{suffix}", page.replace(' ', "_"))
+        let suffix = if self.note.starts_with("Quest boss") {
+            ""
+        } else {
+            "/Strategies"
+        };
+        format!(
+            "https://oldschool.runescape.wiki/w/{}{suffix}",
+            page.replace(' ', "_")
+        )
     }
 
     /// Equipment style changes do not change which boss is being fought.

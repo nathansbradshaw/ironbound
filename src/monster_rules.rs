@@ -342,6 +342,8 @@ fn is_abyssal(weapon: i32, attack_type: &str) -> bool {
                 "Abyssal dagger",
                 "Abyssal whip",
                 "Abyssal tentacle",
+                "Abyssal whip (or)",
+                "Abyssal tentacle (or)",
             ]
             .contains(&g.name.as_str())
         })

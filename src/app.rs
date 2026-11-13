@@ -68,6 +68,7 @@ struct State {
     encounter_filters_open: bool,
     wilderness_options_open: bool,
     combat_options_open: bool,
+    rotation_options_open: bool,
     attack_budget_open: bool,
     simulation_open: bool,
     simulation_result: Option<(String, Result<crate::simulation::Report, String>)>,
@@ -193,6 +194,7 @@ impl State {
             encounter_filters_open: false,
             wilderness_options_open: false,
             combat_options_open: false,
+            rotation_options_open: false,
             attack_budget_open: false,
             simulation_open: false,
             simulation_result: None,
@@ -406,6 +408,10 @@ fn live_number(id: &str) -> bool {
         "ammo-shots",
         "target-hp",
         "current-hitpoints",
+        "rotation-surge-tick",
+        "rotation-surge-ready",
+        "rotation-transfer-tick",
+        "rotation-death-expiry",
     ]
     .contains(&id)
         || id.starts_with("priority-")
@@ -416,6 +422,9 @@ fn live_number(id: &str) -> bool {
 fn apply_number(s: &mut State, id: &str, value: &str) -> bool {
     if s.shared_setup.is_some() && !id.starts_with("skill-") {
         return false;
+    }
+    if let Some(key) = id.strip_prefix("rotation-") {
+        return s.saved.options.combat.rotation.update_time(key, value);
     }
     if let Some(key) = id.strip_prefix("sailing-") {
         return s.saved.options.sailing.update(key, value);
@@ -1099,6 +1108,10 @@ pub fn start() -> Result<(), JsValue> {
                 STATE.with(|state| {
                     state.borrow_mut().combat_options_open = el.has_attribute("open")
                 });
+            } else if el.id() == "rotation-extras" {
+                STATE.with(|state| {
+                    state.borrow_mut().rotation_options_open = el.has_attribute("open")
+                });
             } else if el.id() == "attack-budget" {
                 STATE
                     .with(|state| state.borrow_mut().attack_budget_open = el.has_attribute("open"));
@@ -1365,6 +1378,16 @@ pub fn start() -> Result<(), JsValue> {
             "rotation-pulse",
             "rotation-trials",
             "rotation-policy",
+            "rotation-swap-weapon",
+            "rotation-swap-style",
+            "rotation-swap-delay",
+            "rotation-surge-enabled",
+            "rotation-surge-tick",
+            "rotation-surge-ready",
+            "rotation-transfer-enabled",
+            "rotation-transfer-tick",
+            "rotation-death-charge",
+            "rotation-death-expiry",
             "allow-void",
             "safety",
             "prayer-weight",
@@ -1532,6 +1555,55 @@ pub fn start() -> Result<(), JsValue> {
                     s.saved.options.combat.rotation.enabled = el
                         .dyn_ref::<HtmlInputElement>()
                         .is_some_and(|e| e.checked());
+                }
+                "rotation-surge-enabled"
+                | "rotation-transfer-enabled"
+                | "rotation-death-charge" => {
+                    let checked = el
+                        .dyn_ref::<HtmlInputElement>()
+                        .is_some_and(|e| e.checked());
+                    let cfg = &mut s.saved.options.combat.rotation;
+                    let value = if id == "rotation-death-charge" {
+                        100
+                    } else {
+                        0
+                    };
+                    let field = match id.as_str() {
+                        "rotation-surge-enabled" => &mut cfg.surge_tick,
+                        "rotation-transfer-enabled" => &mut cfg.transfer_tick,
+                        _ => &mut cfg.death_charge,
+                    };
+                    *field = checked.then_some(value);
+                }
+                "rotation-swap-weapon" | "rotation-swap-style" | "rotation-swap-delay" => {
+                    if let Some(sel) = el.dyn_ref::<HtmlSelectElement>() {
+                        let cfg = &mut s.saved.options.combat.rotation;
+                        match id.as_str() {
+                            "rotation-swap-weapon" => {
+                                let id = sel.value().parse::<i32>().ok();
+                                if id == Some(0)
+                                    || id.is_some_and(crate::special_attacks::supported)
+                                {
+                                    cfg.swap_weapon = id.filter(|id| *id != 0);
+                                    cfg.swap_style.clear();
+                                }
+                            }
+                            "rotation-swap-style" => {
+                                if ["", "Stab", "Slash", "Crush", "Magic", "Ranged"]
+                                    .contains(&sel.value().as_str())
+                                {
+                                    cfg.swap_style = sel.value();
+                                }
+                            }
+                            _ => {
+                                if let Ok(v) = sel.value().parse::<u32>() {
+                                    if v <= 10 {
+                                        cfg.swap_delay = v;
+                                    }
+                                }
+                            }
+                        }
+                    }
                 }
                 "rotation-window" | "rotation-pulse" | "rotation-trials" | "rotation-policy" => {
                     if let Ok(sel) = el.dyn_into::<HtmlSelectElement>() {
@@ -3211,7 +3283,10 @@ fn phase_navigation(s: &State, p: &Plan) -> String {
 fn loadout_panel(s: &State, p: &Plan) -> String {
     let current = s.phase.and_then(|i| p.phases.get(i));
     let set = current.map(|p| &p.equipment).unwrap_or(&p.equipment);
-    let target = s.saved.options.targets
+    let target = s
+        .saved
+        .options
+        .targets
         .get(s.phase.unwrap_or(0))
         .filter(|_| s.saved.options.boss == Boss::Custom);
     let provided_note = target.and_then(|target| crate::quest_bosses::provided_weapon_note(
@@ -3219,7 +3294,12 @@ fn loadout_panel(s: &State, p: &Plan) -> String {
     let quest_requirement = target
         .and_then(|target| crate::quest_bosses::weapon_requirement(target.id, set, &target.style))
         .or_else(|| provided_note.map(str::to_owned))
-        .map(|message| format!("<p class=\"connection-warning\" role=\"status\">{}</p>", esc(&message)))
+        .map(|message| {
+            format!(
+                "<p class=\"connection-warning\" role=\"status\">{}</p>",
+                esc(&message)
+            )
+        })
         .unwrap_or_default();
     let mut html = format!(
         "<section class=\"panel loadout-panel\"><div class=\"panel-heading\"><h2>{} {}</h2>{}</div>{quest_requirement}<div class=\"loadout-content\"><div class=\"equipment-paper\"><div class=\"paper-header\">{}</div><div class=\"equipment-grid\">",
@@ -4897,19 +4977,25 @@ fn special_attack_panel(
     style: &str,
     target: &planner::Monster,
 ) -> String {
-    if !set
+    let equipped_special = set
         .get(3)
         .copied()
         .flatten()
-        .is_some_and(crate::special_attacks::supported)
+        .is_some_and(crate::special_attacks::supported);
+    let stock = s.saved.snapshot.available(s.saved.options.shared);
+    if !equipped_special
+        && s.saved.options.combat.rotation.swap_weapon.is_none()
+        && !stock.iter().any(|(id, n)| {
+            *n > 0
+                && crate::special_attacks::supported(*id)
+                && !s.saved.options.item_excluded(*id)
+                && planner::can_use(*id, member)
+        })
     {
         return String::new();
     }
     let settings = &s.saved.options.combat;
-    let zorya = set[3]
-        .and_then(crate::rules::weapon)
-        .and_then(|r| r.weapon.special.as_ref())
-        .is_some_and(|r| r.kind == crate::rules::SpecialKind::Zorya);
+    let zorya = set[3] == Some(34725);
     let mut html = String::from(
         "<section class=\"special-attacks\" aria-label=\"Special attack burst\"><h3>Special attack burst</h3><p>One activation or already-held Zorya follow-ups. Normal attack DPS and gear ranking stay separate.</p><label>Available special energy<select id=\"special-energy\">",
     );
@@ -4927,7 +5013,7 @@ fn special_attack_panel(
         ));
     }
     html.push_str("</select></label>");
-    if zorya {
+    if zorya || settings.rotation.swap_weapon == Some(34725) {
         html.push_str("<label>Zorya starting state<select id=\"zorya-followups\">");
         for (value, label) in [
             (0, "Activate special"),
@@ -4946,49 +5032,53 @@ fn special_attack_panel(
         }
         html.push_str("</select></label>");
     }
-    match crate::special_attacks::evaluate(
-        member,
-        set,
-        style,
-        target,
-        s.saved.options.raid_level,
-        settings,
-    ) {
-        Ok(r) => {
-            html.push_str(&format!("<dl class=\"combat-values\"><div><dt>Effective burst damage</dt><dd>{:.2}</dd></div><div><dt>Damage before overkill</dt><dd>{:.2}</dd></div><div><dt>Defeat chance</dt><dd>{:.1}%</dd></div><div><dt>Energy spent</dt><dd>{}%</dd></div><div><dt>Expected attacks</dt><dd>{:.2}</dd></div><div><dt>Attack cooldown budget</dt><dd>{:.2}s</dd></div></dl>",r.effective_damage,r.damage,r.kill_chance*100.0,r.energy_spent,r.expected_attacks,r.cooldown_ticks*0.6));
-            html.push_str("<table class=\"bonus-table\"><thead><tr><th>Attack</th><th>Hit chance</th><th>Max hit</th><th>Ticks</th></tr></thead><tbody>");
-            for (label, attack) in [
-                (
-                    if zorya {
-                        "Opener"
-                    } else {
-                        "Brutal Swing · any of four rolls"
-                    },
-                    r.opener.as_ref(),
-                ),
-                ("Empowered · starting HP", r.empowered.as_ref()),
-            ] {
-                if let Some(a) = attack {
-                    html.push_str(&format!(
-                        "<tr><th>{label}</th><td>{:.1}%</td><td>{}</td><td>{}</td></tr>",
-                        a.accuracy * 100.0,
-                        a.max_hit,
-                        a.attack_ticks
-                    ));
+    if equipped_special {
+        match crate::special_attacks::evaluate(
+            member,
+            set,
+            style,
+            target,
+            s.saved.options.raid_level,
+            settings,
+        ) {
+            Ok(r) => {
+                html.push_str(&format!("<dl class=\"combat-values\"><div><dt>Effective burst damage</dt><dd>{:.2}</dd></div><div><dt>Damage before overkill</dt><dd>{:.2}</dd></div><div><dt>Defeat chance</dt><dd>{:.1}%</dd></div><div><dt>Energy spent</dt><dd>{}%</dd></div><div><dt>Expected attacks</dt><dd>{:.2}</dd></div><div><dt>Attack cooldown budget</dt><dd>{:.2}s</dd></div></dl>",r.effective_damage,r.damage,r.kill_chance*100.0,r.energy_spent,r.expected_attacks,r.cooldown_ticks*0.6));
+                html.push_str("<table class=\"bonus-table\"><thead><tr><th>Attack</th><th>Hit chance</th><th>Max hit</th><th>Ticks</th></tr></thead><tbody>");
+                for (label, attack) in [
+                    (
+                        if zorya {
+                            "Opener"
+                        } else {
+                            "Brutal Swing · any of four rolls"
+                        },
+                        r.opener.as_ref(),
+                    ),
+                    ("Empowered · starting HP", r.empowered.as_ref()),
+                ] {
+                    if let Some(a) = attack {
+                        html.push_str(&format!(
+                            "<tr><th>{label}</th><td>{:.1}%</td><td>{}</td><td>{}</td></tr>",
+                            a.accuracy * 100.0,
+                            a.max_hit,
+                            a.attack_ticks
+                        ));
+                    }
+                }
+                html.push_str("</tbody></table>");
+                if zorya {
+                    if let Some(chance) = r.buff_chance {
+                        html.push_str(&format!("<p>Opener grants follow-ups: {:.1}% chance. A failed accuracy roll grants none; an accurate hit reduced to zero still qualifies.</p>",chance*100.0));
+                    }
+                    html.push_str(&format!("<p>Expected empowered attacks left: {:.2}. The burst stops when this target is defeated; held attacks can be compared against another target using the starting-state control.</p>",r.remaining_empowered_hits));
                 }
             }
-            html.push_str("</tbody></table>");
-            if zorya {
-                if let Some(chance) = r.buff_chance {
-                    html.push_str(&format!("<p>Opener grants follow-ups: {:.1}% chance. A failed accuracy roll grants none; an accurate hit reduced to zero still qualifies.</p>",chance*100.0));
-                }
-                html.push_str(&format!("<p>Expected empowered attacks left: {:.2}. The burst stops when this target is defeated; held attacks can be compared against another target using the starting-state control.</p>",r.remaining_empowered_hits));
-            }
+            Err(reason) => html.push_str(&format!(
+                "<p>Special burst unavailable: {}</p>",
+                esc(&reason)
+            )),
         }
-        Err(reason) => html.push_str(&format!(
-            "<p>Special burst unavailable: {}</p>",
-            esc(&reason)
-        )),
+    } else {
+        html.push_str("<p>The equipped weapon supplies normal filler attacks. Choose an owned special swap in the timed rotation below.</p>");
     }
     html.push_str("<p class=\"small-note\">Single-burst values include misses, overkill and the finishing cooldown. Use the rotation comparison below for recovery and repeated activations. Verify charges and held buffs in game.</p>");
     html.push_str(&rotation_panel(s, member, set, style, target));
@@ -5075,17 +5165,23 @@ fn rotation_panel(
         ));
     }
     html.push_str("</select></label>");
-    match crate::rotation::evaluate(
-        member,
-        set,
-        style,
-        target,
-        s.saved.options.raid_level,
-        settings,
-    ) {
+    html.push_str(&rotation_extra_controls(s, member));
+    let stock = s.saved.snapshot.available(s.saved.options.shared);
+    match crate::rotation::validate_available(&stock, &s.saved.options).and_then(|()| {
+        crate::rotation::evaluate_with_spell(
+            member,
+            set,
+            style,
+            target,
+            s.saved.options.raid_level,
+            settings,
+            comparison_spell(s, member, set, target),
+        )
+    }) {
         Err(reason) => html.push_str(&format!("<p>Rotation unavailable: {}</p>", esc(&reason))),
         Ok(report) => {
             html.push_str(&format!("<dl class=\"combat-values\"><div><dt>Estimated effective damage</dt><dd>{:.2}</dd></div><div><dt>Estimated defeat chance</dt><dd>{:.1}%</dd></div><div><dt>Mean special activations</dt><dd>{:.2}</dd></div><div><dt>Mean energy remaining</dt><dd>{:.1}%</dd></div></dl><p>Mean attacks: {:.2} normal, {:.2} empowered. Mean energy: {:.1}% restored, {:.1}% spent. Defeat chance 95% sampling interval: {:.1}–{:.1}%. Damage standard error: {:.3}.</p>",report.effective_damage,report.kill_chance*100.0,report.special_activations,report.energy_remaining,report.normal_attacks,report.empowered_attacks,report.energy_restored,report.energy_spent,report.kill_interval_95.0*100.0,report.kill_interval_95.1*100.0,report.damage_standard_error));
+            html.push_str(&format!("<p>Mean setup changes: {:.2}. External energy restored: {:.1}%. Surge doses: {:.2}; cooldown left at stop: {:.1}s. Confirmed Energy Transfers: {:.2}. Death Charge triggers: {:.2}.</p>",report.switches,report.external_energy,report.surge_doses,report.surge_cooldown_remaining*0.6,report.transfer_events,report.death_charge_triggers));
             if !crate::rotation::lightbearer(set) {
                 let stock = s.saved.snapshot.available(s.saved.options.shared);
                 let ring = crate::rules::registry()
@@ -5102,27 +5198,130 @@ fn rotation_panel(
                     if let Ok((gear, with_ring)) =
                         crate::rotation::equip_at_start(settings, set, ring)
                     {
-                        if let Ok(other) = crate::rotation::evaluate(
+                        if let Ok(other) = crate::rotation::evaluate_with_spell(
                             member,
                             &gear,
                             style,
                             target,
                             s.saved.options.raid_level,
                             &with_ring,
+                            comparison_spell(s, member, &gear, target),
                         ) {
                             html.push_str(&format!("<table class=\"bonus-table\"><caption>Equip owned Lightbearer at start · includes lost ring stats</caption><thead><tr><th>Ring</th><th>Effective damage</th><th>Defeat chance</th><th>Specials</th></tr></thead><tbody><tr><th>Equipped ring</th><td>{:.2}</td><td>{:.1}%</td><td>{:.2}</td></tr><tr><th>Owned Lightbearer</th><td>{:.2}</td><td>{:.1}%</td><td>{:.2}</td></tr></tbody></table><p class=\"small-note\">Comparison only; choose the ring in Gear to use it. The initial equip preserves a pulse already less than 15 seconds away.</p>",report.effective_damage,report.kill_chance*100.0,report.special_activations,other.effective_damage,other.kill_chance*100.0,other.special_activations));
                         }
                     }
                 }
             }
-            html.push_str("<details><summary>Example rotation · first seeded trial</summary><table class=\"bonus-table\"><thead><tr><th>Time</th><th>Attack</th><th>Energy</th><th>Damage</th><th>HP left</th><th>Buff left</th></tr></thead><tbody>");
+            html.push_str("<details><summary>Example rotation · first seeded trial</summary><table class=\"bonus-table\"><thead><tr><th>Time</th><th>Action / weapon</th><th>Energy</th><th>Damage</th><th>HP left</th><th>Buff left</th></tr></thead><tbody>");
             for event in &report.trace {
-                html.push_str(&format!("<tr><td>{:.1}s</td><td>{}</td><td>{}→{}%</td><td>{}</td><td>{}</td><td>{}</td></tr>",event.tick as f64*0.6,esc(&event.attack),event.energy_before,event.energy_after,event.damage,event.remaining_hp,event.empowered_hits));
+                html.push_str(&format!("<tr><td>{:.1}s</td><td>{}<br>{} · {}</td><td>{}→{}%</td><td>{}</td><td>{}</td><td>{}</td></tr>",event.tick as f64*0.6,esc(&event.attack),esc(&event.weapon.and_then(planner::gear).map(|g|g.name.as_str()).unwrap_or("Empty")),esc(&event.style),event.energy_before,event.energy_after,event.damage,event.remaining_hp,event.empowered_hits));
             }
             html.push_str("</tbody></table></details>");
         }
     }
-    html.push_str(&format!("<p class=\"small-note\">{} reproducible trials in one fixed target window. Uses held Zorya attacks before another paid opener, normal attacks while energy recovers, and stops at target death. Attacks start before the window ends; recovery at that end boundary cannot fund another attack. No incoming damage, survival, projectile travel, phase transitions, other restores or mid-rotation gear switches. Sampling intervals describe simulation noise, not gameplay calibration.</p></section>",cfg.trials));
+    html.push_str(&format!("<p class=\"small-note\">{} reproducible trials in one target window. Uses held Zorya attacks before another paid opener and stops at target death. Recovery and declared arrivals run during cooldowns and swap overhead. Attacks start before the end boundary. Gear and restore choices are comparisons: carry the swap weapon, space for a displaced shield, and a Surge dose separately; they are not added to the exported bag. No incoming damage, survival, projectile travel, phase transitions, ring hopping or unlisted restores. Sampling intervals describe simulation noise, not gameplay calibration.</p></section>",cfg.trials));
+    html
+}
+
+fn rotation_extra_controls(s: &State, member: &account::Member) -> String {
+    let cfg = &s.saved.options.combat.rotation;
+    let stock = s.saved.snapshot.available(s.saved.options.shared);
+    let mut ids: Vec<_> = stock
+        .iter()
+        .filter(|(id, n)| {
+            **n > 0
+                && crate::special_attacks::supported(**id)
+                && !s.saved.options.item_excluded(**id)
+                && planner::can_use(**id, member)
+        })
+        .map(|(id, _)| *id)
+        .collect();
+    if let Some(id) = cfg.swap_weapon {
+        if !ids.contains(&id) {
+            ids.push(id);
+        }
+    }
+    ids.sort();
+    let mut html = format!(
+        "<details class=\"rotation-extras\" id=\"rotation-extras\" {}><summary>Weapon swap &amp; external energy</summary><p>Keep the equipped setup for normal attacks; swap to this weapon for specials and its follow-ups, then return. Rings and other armour stay fixed. A two-handed swap removes the shield until you return.</p><label>Special swap weapon<select id=\"rotation-swap-weapon\">",
+        if s.rotation_options_open { "open" } else { "" }
+    );
+    html.push_str(&format!(
+        "<option value=\"0\" {}>Use equipped weapon</option>",
+        if cfg.swap_weapon.is_none() {
+            "selected"
+        } else {
+            ""
+        }
+    ));
+    for id in ids {
+        html.push_str(&format!(
+            "<option value=\"{id}\" {}>{}</option>",
+            if cfg.swap_weapon == Some(id) {
+                "selected"
+            } else {
+                ""
+            },
+            esc(planner::gear(id)
+                .map(|g| g.name.as_str())
+                .unwrap_or("Unavailable saved swap"))
+        ));
+    }
+    html.push_str("</select></label>");
+    if cfg.swap_weapon.is_some() {
+        html.push_str("<label>Special swap style<select id=\"rotation-swap-style\">");
+        for style in ["", "Stab", "Slash", "Crush", "Magic", "Ranged"] {
+            html.push_str(&format!(
+                "<option value=\"{style}\" {}>{}</option>",
+                if cfg.swap_style == style {
+                    "selected"
+                } else {
+                    ""
+                },
+                if style.is_empty() {
+                    "Weapon default"
+                } else {
+                    style
+                }
+            ));
+        }
+        html.push_str("</select></label>");
+    }
+    html.push_str("<label>Extra ticks per setup change<select id=\"rotation-swap-delay\">");
+    for ticks in 0..=10 {
+        html.push_str(&format!(
+            "<option value=\"{ticks}\" {}>{ticks} ({:.1}s)</option>",
+            if cfg.swap_delay == ticks {
+                "selected"
+            } else {
+                ""
+            },
+            ticks as f64 * 0.6
+        ));
+    }
+    html.push_str("</select></label><p>Previous attack cooldowns are preserved. Extra ticks are your declared execution overhead, paid after that cooldown; zero assumes a same-tick change. Held Zorya follow-ups are finished before switching away.</p>");
+    for (id, label, value) in [
+        ("surge", "Schedule one owned Surge dose", cfg.surge_tick),
+        (
+            "transfer",
+            "Confirm one Energy Transfer arrival",
+            cfg.transfer_tick,
+        ),
+    ] {
+        html.push_str(&format!("<p><label><input id=\"rotation-{id}-enabled\" type=\"checkbox\" {}> {label}</label></p>",if value.is_some(){"checked"}else{""}));
+        if let Some(tick) = value {
+            html.push_str(&format!("<label>{} tick (0–500)<input id=\"rotation-{id}-tick\" type=\"number\" min=\"0\" max=\"500\" value=\"{tick}\"></label>",if id=="surge"{"Surge dose"}else{"Energy Transfer arrival"}));
+        }
+    }
+    if cfg.surge_tick.is_some() {
+        html.push_str(&format!("<label>Surge ready at tick<input id=\"rotation-surge-ready\" type=\"number\" min=\"0\" max=\"500\" value=\"{}\"></label><p>One dose restores 25%; reuse takes 500 ticks. Full-energy attempts consume no dose. No other potions or PvP delay are modelled.</p>",cfg.surge_ready));
+    }
+    html.push_str("<p>Energy Transfer assumes a cooperating caster's confirmed arrival at that tick, restoring up to 100%. Confirm Accept Aid is enabled. Their 100% energy and 10 HP cost, unlocks, runes, travel and availability are outside this comparison; no teammate is inferred from shared stock.</p>");
+    html.push_str(&format!("<p><label><input id=\"rotation-death-charge\" type=\"checkbox\" {}> Confirm Death Charge already active</label></p>",if cfg.death_charge.is_some(){"checked"}else{""}));
+    if let Some(ticks) = cfg.death_charge {
+        html.push_str(&format!("<label>Death Charge ticks left<input id=\"rotation-death-expiry\" type=\"number\" min=\"1\" max=\"100\" value=\"{ticks}\"></label>"));
+    }
+    html.push_str("<p>Confirm the pre-cast, unlocks, runes, range and eligible last hit. Death Charge gives 15% only if this target dies before expiry. No add kills, automatic recasts or future attacks after that kill are credited. One target uses at most one charge, including the upgraded spell. Pools and other encounter resets remain outside this window.</p></details>");
     html
 }
 

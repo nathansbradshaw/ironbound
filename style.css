@@ -1010,6 +1010,9 @@ button.ranged-type:focus-visible{outline:3px solid #ffe087;outline-offset:2px}
 .ship-budget dt { color: #c5b79c; font-size: 11px; }
 .ship-budget dd { color: #ffff00; font-size: 24px; margin: 4px 0 0; }
 .ship-footnote, .ship-coverage { font-size: 11px; color: #c5b79c; }
+.rotation-extras { margin: 12px 0; padding: 8px; border: 1px solid #796643; }
+.rotation-extras label { display: block; margin: 8px 0; }
+.rotation-extras input[type=number] { display: block; width: 100%; margin-top: 4px; }
 .ship-coverage a { color: #e6bc71; }
 @media (max-width: 760px) { .ship-type {grid-template-columns: 44px 1fr;} .ship-type-art {height: 43px;} .ship-type strong {font-size: 15px;} .ship-type small {font-size: 9px;} }
 @media (max-width: 610px) { .shipyard {padding: 12px;} .shipyard-grid {grid-template-columns: 1fr;} .shipyard-title {align-items: flex-start;flex-direction: column;gap: 4px;} .ship-type {grid-template-columns: 1fr;text-align: center;gap: 2px;} .ship-type-art {grid-row: auto;height: 46px;} .ship-type small {grid-column: 1;} .ship-sea {height: 330px;} .ship-choice-grid {grid-template-columns: repeat(4,minmax(0,1fr));} .ship-picker {min-height: 0;} .ship-trip-inputs {grid-template-columns: repeat(2,minmax(0,1fr));} .ship-section-heading {align-items: flex-start;flex-direction: column;gap: 4px;} }

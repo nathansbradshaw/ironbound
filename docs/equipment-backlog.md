@@ -115,7 +115,12 @@ rotations remain open; catalog stats do not imply unverified effects are support
   equip/removal timing; compare the actual cost of replacing an owned ring.
 - [x] [Bounded fixed-equipment rotations](energy-rotations.md) for reviewed Zorya
   and kisten specials, normal fillers, held buffs, energy, death and uncertainty.
-- [ ] Other energy restores, multi-weapon switches, travel, phase downtime and
+- [x] Normal filler ↔ reviewed special-weapon swaps, actual stance/gear stats,
+  shield removal/return, cooldown preservation and declared execution overhead.
+- [x] Explicit one-dose Surge/cooldown, confirmed Energy Transfer arrival, and
+  pre-cast Death Charge at an eligible target kill; resource checks and traces.
+- [ ] Additional restores, arbitrary multi-spec sequences, automatic rotation-bag
+  packing, add-kill/recast Death Charge, travel, phase downtime and
   gameplay calibration before claiming whole-fight special DPS or gear rankings.
 
 ## Reference and verification

@@ -3440,6 +3440,7 @@ fn bestiary_assessments(s: &State) -> Vec<crate::bestiary::Assessment> {
             .iter()
             .map(|_| crate::bestiary::Assessment {
                 readiness: crate::bestiary::Readiness::Unknown,
+                requirements: Default::default(),
                 reason: "Shared setups do not include the sender's bank or levels.".into(),
                 detail: String::new(),
                 wilderness: false,
@@ -3523,7 +3524,7 @@ fn encounter_catalog(s: &State) -> String {
     };
     html.push_str(&format!("</nav></details><details id=\"wilderness-options\" class=\"secondary-section\" {}><summary>Wilderness options{location}{kit}</summary>",if s.wilderness_options_open {"open"}else{""}));
     html.push_str(&wilderness_controls(s));
-    html.push_str("</details></div><p class=\"bestiary-disclaimer\">Gear readiness only. Check access, supplies and mechanics in each card.</p><div id=\"encounter-results\">");
+    html.push_str("</details></div><p class=\"bestiary-disclaimer\">Gear readiness and entry requirements are shown separately. Check supplies and mechanics in each card.</p><div id=\"encounter-results\">");
     html.push_str(&encounter_results(s));
     html.push_str("</div></section>");
     html
@@ -3560,7 +3561,7 @@ fn encounter_results(s: &State) -> String {
                 } else {
                     ["Popular", "For you", "All"].contains(&s.encounter_filter.as_str())
                         || e.category() == s.encounter_filter
-                        || assessments[*index].readiness.label() == s.encounter_filter
+                        || assessments[*index].matches_filter(&s.encounter_filter)
                 }
         })
         .collect::<Vec<_>>();
@@ -3585,6 +3586,7 @@ fn encounter_results(s: &State) -> String {
         let assessment = if s.shared_setup.is_some() {
             crate::bestiary::Assessment {
                 readiness: crate::bestiary::Readiness::Unknown,
+                requirements: Default::default(),
                 reason: "Shared setups do not include the sender's bank or levels.".into(),
                 detail: String::new(),
                 wilderness: false,

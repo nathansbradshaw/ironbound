@@ -136,12 +136,22 @@ pub fn inventory_setup(plan: &Plan, options: &Options, _account: &str) -> Result
     if std::iter::once(&plan.equipment)
         .chain(plan.phases.iter().map(|p| &p.equipment))
         .any(|set| {
-            ["dharok", "guthan", "verac", "torag", "karil", "ahrim"]
-                .iter()
-                .any(|effect| crate::rules::set_effect(set, effect))
+            [
+                "dharok",
+                "guthan",
+                "verac",
+                "torag",
+                "karil",
+                "ahrim",
+                "blood_moon",
+                "blue_moon",
+                "eclipse_moon",
+            ]
+            .iter()
+            .any(|effect| crate::rules::set_effect(set, effect))
         })
     {
-        notes.push_str(&format!(" Dharok's current Hitpoints assumption: {}. Guthan's healing potential excludes overheal and is not credited as damage reduction; recoil and NPC stat-drain effects are not included.", options.combat.current_hitpoints.map(|hp|hp.to_string()).unwrap_or_else(||"full health".into())));
+        notes.push_str(&format!(" Dharok's current Hitpoints assumption: {} (also used for Torag's amulet defence). Blue Moon free melee: {} (requires the in-game option and melee range). Eclipse burn uses delayed steady-state damage with five-stack limits, not instant hit damage or finite-HP timing. Guthan's healing potential excludes overheal and is not credited as damage reduction; recoil and NPC stat-drain effects are not included.", options.combat.current_hitpoints.map(|hp|hp.to_string()).unwrap_or_else(||"full health".into()),options.combat.blue_moon_melee));
     }
     notes.push_str(&format!(" Spell budget: {} casts total across selected attack spells; rune stacks cover the worst-case mix. Ammunition budget: {} projectiles per ranged weapon. These are packing counts, not a duration or kill-count prediction; recovered projectiles and remaining charges need manual verification. {} User confirmations stay private and must be repeated by the recipient.", options.combat.spell_casts, plan.ammo_shots, crate::coverage::export_note(options)));
     let equipment_notes: std::collections::BTreeSet<_> = std::iter::once(&plan.equipment)

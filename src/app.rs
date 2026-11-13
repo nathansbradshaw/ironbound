@@ -1134,6 +1134,7 @@ pub fn start() -> Result<(), JsValue> {
             "budget-incoming",
             "mark-darkness",
             "loaded-dart",
+            "blue-moon-melee",
             "loaded-ammo-confirmed",
             "boost-melee",
             "boost-ranged",
@@ -1177,6 +1178,14 @@ pub fn start() -> Result<(), JsValue> {
                 return;
             }
             match id.as_str() {
+                "blue-moon-melee" => {
+                    if let Some(sel) = el.dyn_ref::<HtmlSelectElement>() {
+                        let value = sel.value();
+                        if ["Off", "Stab", "Slash", "Crush"].contains(&value.as_str()) {
+                            s.saved.options.combat.blue_moon_melee = value;
+                        }
+                    }
+                }
                 "budget-window" => {
                     if let Some(sel) = el.dyn_ref::<HtmlSelectElement>() {
                         s.budget_window = Some(sel.value());
@@ -3687,8 +3696,25 @@ fn combat_assumptions(
         }
         html.push_str("</select></label>");
     }
-    html.push_str(&format!("<label>Current Hitpoints (Dharok's)<input id=\"current-hitpoints\" type=\"number\" min=\"1\" max=\"255\" placeholder=\"Full health\" value=\"{}\"></label>",
+    html.push_str(&format!("<label>Current Hitpoints (Dharok / Torag)<input id=\"current-hitpoints\" type=\"number\" min=\"1\" max=\"255\" placeholder=\"Full health\" value=\"{}\"></label>",
         settings.current_hitpoints.map(|hp|hp.to_string()).unwrap_or_default()));
+    if set[3]
+        .and_then(crate::rules::weapon)
+        .is_some_and(|r| r.weapon.family == "blue_moon")
+    {
+        html.push_str("<label>Blue Moon free melee<select id=\"blue-moon-melee\">");
+        for value in ["Off", "Stab", "Slash", "Crush"] {
+            html.push_str(&format!(
+                "<option {}>{value}</option>",
+                if settings.blue_moon_melee == value {
+                    "selected"
+                } else {
+                    ""
+                }
+            ));
+        }
+        html.push_str("</select></label><p class=\"small-note\">Enable Blue Moon's automatic melee in game and stay in melee range to count Frostweaver strikes. Off counts spell damage only.</p>");
+    }
     let owned = s.saved.snapshot.available(s.saved.options.shared);
     if owned.keys().any(|id| {
         crate::rules::weapon(*id).is_some_and(|r| r.has(crate::rules::Effect::Soulreaper))
@@ -4066,7 +4092,7 @@ fn magic_spell_book(s: &State, set: &[Option<i32>]) -> String {
         .iter()
         .filter(|recipe| {
             rule.as_ref()
-                .is_some_and(|r| recipe.family == r.weapon.family)
+                .is_some_and(|r| crate::rules::spell_compatible(r, recipe, set))
                 && (!elemental || filter.is_none_or(|e| recipe.element.as_deref() == Some(e)))
         })
         .collect();
@@ -4230,7 +4256,11 @@ fn ranged_ammunition_card(s: &State, set: &[Option<i32>]) -> String {
 }
 fn combat_style_controls(s: &State, set: &[Option<i32>], style: &str) -> String {
     let main_style = crate::rules::base_style(style);
-    let rule = set.get(3).copied().flatten().and_then(crate::rules::weapon);
+    let rule = set
+        .get(3)
+        .copied()
+        .flatten()
+        .and_then(|id| crate::rules::weapon_for_style(id, style));
     let mut html = String::from("<nav class=\"combat-style-tabs\" aria-label=\"Combat style\">");
     for candidate in ["Melee", "Ranged", "Magic"] {
         html.push_str(&format!("<button class=\"phase {}\" data-action=\"edit-style:{candidate}\" aria-pressed=\"{}\">{candidate}</button>",if candidate==main_style{"active"}else{""},candidate==main_style));
@@ -4386,6 +4416,15 @@ fn combat_panel(s: &State, p: &Plan) -> String {
             Ok(r) => {
                 html.push_str(&format!(r#"<dl class="combat-values"><div><dt>Outgoing DPS</dt><dd>{:.3}</dd></div><div><dt>Hit chance</dt><dd>{:.1}%</dd></div><div><dt>Max hit</dt><dd>{}</dd></div><div><dt>Attack speed</dt><dd>{:.2} ticks</dd></div></dl><p>{} attacks · {:.2} seconds per attack (expected)</p>"#,r.dps,r.accuracy*100.0,r.max_hit,r.expected_attack_ticks,esc(&r.attack_type),r.expected_attack_ticks*0.6));
                 html.push_str(&attack_window_budget(s, target, &set, &r));
+                if r.burn_dps > 0.0 {
+                    html.push_str(&format!("<p>Eclipse burn: {:.3} of the DPS above is delayed steady-state damage (1 every 4 ticks, 10 per stack, at most 5 stacks). Short fights, phase resets and target death reduce this contribution; no finite-HP attack-time estimate is credited.</p>", r.burn_dps));
+                }
+                if r.expected_attack_ticks != f64::from(r.attack_ticks) {
+                    html.push_str(&format!("<p>Bloodrager average delay: {:.3} ticks ({:.3}s), including the 33% chance per accurate splat to attack one tick sooner.</p>",r.expected_attack_ticks,r.expected_attack_ticks*0.6));
+                }
+                if crate::rules::set_effect(&set, "blue_moon") {
+                    html.push_str(&format!("<p>Blue Moon free melee: {}. Only accurate binding, Ice and Grasp spells can trigger Frostweaver.</p>", esc(&s.saved.options.combat.blue_moon_melee)));
+                }
                 html.push_str(&combat_breakdown(s, m, &set, target, &r));
                 if r.potential_healing_per_second > 0.0 {
                     html.push_str(&format!("<p>Guthan's potential healing: {:.3} HP/s before overheal and remaining-target-HP limits. This is not subtracted from damage taken.</p>", r.potential_healing_per_second));

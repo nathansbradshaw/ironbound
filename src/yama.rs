@@ -146,7 +146,7 @@ fn calculated(
     o: &Options,
     owned: &BTreeMap<i32, u32>,
 ) -> Result<combat::ResultStats, String> {
-    if !rules::casting_supported_configured(member, set, owned, o.combat.spell_casts, &o.combat) {
+    if !rules::casting_supported_for_style(member, set, owned, &o.combat, &target.style) {
         return Err("Judge set needs a usable weapon and sufficient spell runes.".into());
     }
     combat::calculate_configured(
@@ -183,14 +183,18 @@ pub fn judge_cycle(
         .guaranteed_hits
         .as_deref()
         .ok_or("Judge melee distribution unavailable")?;
-    simulate_judge_distributions(
+    let mut result = simulate_judge_distributions(
         magic_hits,
         mage.attack_ticks,
         melee_hits,
         melee.attack_ticks,
         cycle.hp,
         cycle.occurrences,
-    )
+    )?;
+    result.ticks += result.magic_hits * (mage.expected_attack_ticks - f64::from(mage.attack_ticks))
+        + result.melee_hits * (melee.expected_attack_ticks - f64::from(melee.attack_ticks));
+    result.seconds = result.ticks * 0.6;
+    Ok(result)
 }
 pub fn judge_cycle_weight(o: &Options) -> f64 {
     paired_windows(o)
@@ -275,10 +279,5 @@ pub fn window_attack_time(id: i32, result: &combat::ResultStats) -> Option<f64> 
                 .map(|(damage, p)| p * attacks[remaining.saturating_sub(*damage as usize)])
                 .sum::<f64>();
     }
-    Some(
-        attacks[hp as usize]
-            * f64::from(result.attack_ticks)
-            * 0.6
-            * f64::from(window.entity_count),
-    )
+    Some(attacks[hp as usize] * result.expected_attack_ticks * 0.6 * f64::from(window.entity_count))
 }

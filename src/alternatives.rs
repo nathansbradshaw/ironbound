@@ -146,7 +146,7 @@ fn compatible(
             }
         }
     }
-    rules::casting_supported_configured(m, set, owned, o.combat.spell_casts, &o.combat)
+    rules::casting_supported_for_style(m, set, owned, &o.combat, style)
 }
 fn spell_supplies(
     set: &[Option<i32>],
@@ -154,7 +154,11 @@ fn spell_supplies(
     owned: &BTreeMap<i32, u32>,
     o: &Options,
     target: i32,
+    style: &str,
 ) -> Vec<(i32, u32)> {
+    if rules::base_style(style) != "Magic" {
+        return vec![];
+    }
     if !set
         .get(3)
         .copied()
@@ -272,7 +276,8 @@ fn budget(
     if maximum > 28 {
         notes.push(format!("Needs {maximum}/28 bag slots; supplies were kept."));
     }
-    if spell_supplies(c.set, m, owned, o, c.target) != spell_supplies(trial, m, owned, o, c.target)
+    if spell_supplies(c.set, m, owned, o, c.target, &c.style)
+        != spell_supplies(trial, m, owned, o, c.target, &c.style)
     {
         notes.push("Spell supplies change; rebuild to check the bag.".into());
     }

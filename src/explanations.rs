@@ -89,13 +89,7 @@ fn damage(
     owned.retain(|id, _| !o.excluded.contains(id));
     let member = planner::member_with_stock(snapshot.selected()?, &owned);
     if set.len() != 14
-        || !rules::casting_supported_configured(
-            &member,
-            set,
-            &owned,
-            o.combat.spell_casts,
-            &o.combat,
-        )
+        || !rules::casting_supported_for_style(&member, set, &owned, &o.combat, style)
     {
         return None;
     }

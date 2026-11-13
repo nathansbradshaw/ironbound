@@ -92,6 +92,9 @@ pub fn for_window(
     o: &Options,
     set: &[Option<i32>],
 ) -> Result<Budget, String> {
+    if result.burn_dps > 0.0 {
+        return Err("Eclipse burn DPS assumes sustained attacks and five-stack limits. Finite-HP timing with burn buildup, expiration and target death is unavailable; burn is not treated as instant damage.".into());
+    }
     if crate::yama::is_judge_window(target.id) {
         return Err("Use the paired Judge cycle; alternating attacks cannot be counted as independent styles.".into());
     }

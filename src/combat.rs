@@ -83,11 +83,14 @@ pub struct ResultStats {
     pub hit_distribution: Vec<(i32, f64)>,
     pub hp_dependent: Option<HpDependentHit>,
     pub dps: f64,
+    /// Delayed Eclipse damage at steady state, with five-stack blocking.
+    pub burn_dps: f64,
     /// Proc potential before overhealing and target remaining-HP caps.
     pub potential_healing_per_second: f64,
     pub accuracy: f64,
     pub max_hit: i32,
     pub attack_ticks: i32,
+    /// Mean cooldown, including Bloodrager's accuracy-dependent one-tick reduction.
     pub expected_attack_ticks: f64,
     pub attack_roll: i64,
     pub defence_roll: i64,
@@ -206,6 +209,7 @@ pub fn calculate_configured(
     if !settings.valid() {
         return Err("Invalid combat settings.".into());
     }
+    let source_monster = monster;
     let reduced = settings
         .reductions
         .get(&monster.id)
@@ -228,8 +232,8 @@ pub fn calculate_configured(
         );
     }
     let stats = stats(weapon).ok_or("Weapon stats unavailable.")?;
-    let rule =
-        rules::weapon(weapon).ok_or("This weapon's combat mechanics are not modelled yet.")?;
+    let rule = rules::weapon_for_style(weapon, style)
+        .ok_or("This weapon's combat mechanics are not modelled for this style.")?;
     if !rule.permits(style) {
         return Err("This weapon does not support the selected attack style.".into());
     }
@@ -244,7 +248,7 @@ pub fn calculate_configured(
     }
     if style == "Magic" {
         if let Some(recipe) = rules::spells().iter().find(|recipe| recipe.name == spell) {
-            if recipe.family != rule.weapon.family {
+            if !rules::spell_compatible(&rule, recipe, set) {
                 return Err(format!(
                     "This weapon cannot cast {}. Choose a supported spell or a compatible spellcasting weapon.",
                     recipe.name
@@ -287,14 +291,11 @@ pub fn calculate_configured(
     let accuracy_bonus = target_bonus.map(|b| b.accuracy).unwrap_or([1, 1]);
     let damage_bonus = if rule.has(Effect::StrengthRanged) {
         crate::effects::target_bonus(set, "Melee", monster, settings)
-            .map(|b| b.damage)
-            .unwrap_or([1, 1])
     } else {
-        target_bonus.map(|b| b.damage).unwrap_or([1, 1])
-    };
-    if style == "Ranged" && rules::set_effect(set, "eclipse_moon") {
-        return Err("Eclipse Moon burn stacks and timing are not modelled yet; compare partial armour or another weapon.".into());
+        target_bonus
     }
+    .map(|b| b.damage)
+    .unwrap_or([1, 1]);
     let prayer_attack = if prayer.style == style {
         prayer.attack
     } else {
@@ -362,6 +363,22 @@ pub fn calculate_configured(
         *magic = (*magic * factor).min(1000);
     }
     if style == "Magic" {
+        if rules::spells()
+            .iter()
+            .any(|r| r.name == spell && r.family == "ancient")
+        {
+            let pieces = rules::registry()
+                .equipment_effects
+                .iter()
+                .filter(|r| r.effect == "virtus_ancient")
+                .filter(|r| {
+                    r.slot
+                        .and_then(|slot| set[slot])
+                        .is_some_and(|id| r.ids.contains(&id))
+                })
+                .count() as i32;
+            *b.other.entry("magic_str".into()).or_default() += 30 * pieces;
+        }
         *b.other.entry("magic_str".into()).or_default() += if prayer.style == style {
             prayer.magic_damage as i32 * 10
         } else {
@@ -477,7 +494,7 @@ pub fn calculate_configured(
                 Formula::Elemental => {
                     let recipe = rules::spells()
                         .iter()
-                        .find(|r| r.name == spell && r.family == rule.weapon.family)
+                        .find(|r| r.name == spell && rules::spell_compatible(&rule, r, set))
                         .ok_or("Choose a supported elemental spell.")?;
                     if mage < i64::from(recipe.level) {
                         return Err(format!("{} requires {} Magic.", recipe.name, recipe.level));
@@ -511,7 +528,9 @@ pub fn calculate_configured(
                     }
                     let recipe = rules::spells()
                         .iter()
-                        .find(|recipe| recipe.name == spell && recipe.family == rule.weapon.family)
+                        .find(|recipe| {
+                            recipe.name == spell && rules::spell_compatible(&rule, recipe, set)
+                        })
                         .ok_or("Choose a supported spell for this weapon.")?;
                     if mage < i64::from(recipe.level) {
                         return Err(format!("{} requires {} Magic.", recipe.name, recipe.level));
@@ -529,12 +548,11 @@ pub fn calculate_configured(
             }
             let base_a = effective * (get(&b.offensive, "magic") as i64 + 64);
             let mut a = base_a * accuracy_bonus[0] / accuracy_bonus[1];
-            if rule.family.formula == Formula::Elemental {
-                let element = rules::spells()
-                    .iter()
-                    .find(|r| r.name == spell)
-                    .and_then(|r| r.element.as_deref())
-                    .ok_or("Spell element unavailable.")?;
+            if let Some(element) = rules::spells()
+                .iter()
+                .find(|r| r.name == spell)
+                .and_then(|r| r.element.as_deref())
+            {
                 let weakness_percent = monster
                     .weakness
                     .as_ref()
@@ -736,9 +754,18 @@ pub fn calculate_configured(
     if rule.has(Effect::ObsidianWeapon) && rules::equipped_effect(set, "berserker_necklace") {
         damage_factor = [6, 5];
     }
+    let frostweaver = style == "Magic"
+        && rules::set_effect(set, "blue_moon")
+        && settings.blue_moon_melee != "Off"
+        && rules::spells()
+            .iter()
+            .any(|r| r.name == spell && r.frostweaver_percent > 0)
+        && !hit_rule.is_some_and(|r| !r.allowed_styles.iter().any(|s| s == "Melee"))
+        && crate::monster_rules::check_weapon(monster.id, "Melee", weapon).is_ok();
     let per_splat_npc = rule.has(Effect::TwinHits)
         || rule.has(Effect::Macuahuitl)
         || rule.has(Effect::Scythe)
+        || frostweaver
         || style == "Ranged" && rules::set_effect(set, "karil_damned");
     let hit_effects = crate::effects::SetHitEffects {
         npc_transform: if per_splat_npc {
@@ -791,7 +818,6 @@ pub fn calculate_configured(
         distribution.push((0, 1.0 - hit));
     }
     max_hit = ceiling;
-    let mut expected_ticks = ticks as f64;
     let multi_hit_effects = crate::effects::SetHitEffects {
         npc_transform: hit_effects.npc_transform,
         final_divisor: if damage_model == crate::encounters::DamageModel::HalfDamage {
@@ -801,49 +827,6 @@ pub fn calculate_configured(
         },
         ..Default::default()
     };
-    if rule.has(Effect::Macuahuitl) {
-        if warden_p2 || always_max {
-            return Err(
-                "Dual macuahuitl guaranteed-hit and special-phase transforms are not verified."
-                    .into(),
-            );
-        }
-        let first_max = splat_base_max / 2;
-        let second_max = splat_base_max - first_max;
-        let (_, first_ceiling, first) = conditional_hit(
-            0,
-            first_max,
-            flat_armour,
-            &[],
-            monster,
-            None,
-            &multi_hit_effects,
-        );
-        let (_, second_ceiling, second) = conditional_hit(
-            0,
-            second_max,
-            flat_armour,
-            &[],
-            monster,
-            None,
-            &multi_hit_effects,
-        );
-        let second: Vec<_> = second
-            .into_iter()
-            .map(|(d, p)| (d, p * hit))
-            .chain(std::iter::once((0, 1.0 - hit)))
-            .collect();
-        let mut successful = crate::equipment_effects::combine_hits(&[first, second]);
-        for (_, p) in &mut successful {
-            *p *= hit;
-        }
-        successful.push((0, 1.0 - hit)); // second accuracy roll occurs only after first succeeds
-        distribution = successful;
-        max_hit = first_ceiling + second_ceiling;
-        if rules::set_effect(set, "blood_moon") {
-            expected_ticks -= hit / 3.0 + hit * hit * 2.0 / 9.0;
-        }
-    }
     if rule.has(Effect::Scythe) {
         if warden_p2 {
             return Err("Scythe Wardens P2 hit transforms are not verified.".into());
@@ -902,7 +885,19 @@ pub fn calculate_configured(
         }
         hits.extend(proc_hits.into_iter().map(|(d, p)| (d, p * 0.25)));
     }
-    if rule.has(Effect::TwinHits) {
+    let chained_weapon = rule.has(Effect::Macuahuitl);
+    if chained_weapon && (warden_p2 || always_max) {
+        return Err(
+            "Dual macuahuitl guaranteed-hit and special-phase transforms are not verified.".into(),
+        );
+    }
+    let blood_proc = if chained_weapon && rules::set_effect(set, "blood_moon") {
+        // 33% per accurate splat; the second splat must pass both accuracy checks.
+        0.33 * hit + 0.33 * 0.67 * hit * hit
+    } else {
+        0.0
+    };
+    if rule.has(Effect::TwinHits) || chained_weapon {
         let mut parts = Vec::new();
         let twin_effects = crate::effects::SetHitEffects {
             npc_transform: hit_effects.npc_transform,
@@ -938,10 +933,33 @@ pub fn calculate_configured(
             .iter()
             .flat_map(|(a, p)| parts[1].iter().map(move |(b, q)| (a + b, p * q)))
             .collect();
+        if chained_weapon {
+            // Misses on the first splat suppress the entire second hit. Keep
+            // accurate zero-damage first hits eligible for the second roll.
+            distribution.clear();
+            distribution.push((0, 1.0 - hit));
+            let first_max = distribution_max / 2;
+            let (_, _, first) = conditional_hit(
+                if always_max { first_max } else { 0 },
+                first_max,
+                flat_armour,
+                &[],
+                monster,
+                None,
+                &twin_effects,
+            );
+            for (a, p) in first {
+                for (b, q) in &parts[1] {
+                    distribution.push((a + b, p * hit * q));
+                }
+            }
+        }
         if always_max {
             hits = distribution.clone();
         }
-        hit = 1.0 - (1.0 - hit).powi(2);
+        if !chained_weapon {
+            hit = 1.0 - (1.0 - hit).powi(2);
+        }
     }
     if always_max
         && (hit_effects.critical || hit_effects.extra_half || rules::set_effect(set, "verac"))
@@ -950,6 +968,45 @@ pub fn calculate_configured(
         // maximum after equipment procs, as in the reference calculator.
         distribution = vec![(max_hit, 1.0)];
         hits = vec![(max_hit, 1.0)];
+    }
+    let mut combined_final_damage = false;
+    if frostweaver {
+        let chance = rules::spells()
+            .iter()
+            .find(|r| r.name == spell)
+            .map(|r| f64::from(r.frostweaver_percent) / 100.0)
+            .unwrap_or(0.0);
+        if chance > 0.0 {
+            // Frostweaver is conditional on an accurate spell. The free spear
+            // strike rolls its own melee accuracy, with the same gear/prayer.
+            let melee = calculate_configured(
+                member,
+                set,
+                &settings.blue_moon_melee,
+                source_monster,
+                "",
+                invocation,
+                settings,
+            )?;
+            if damage_model == crate::encounters::DamageModel::HalfDamage {
+                for (damage, _) in &mut hits {
+                    *damage /= 2;
+                }
+                max_hit /= 2;
+                combined_final_damage = true;
+            }
+            distribution = vec![(0, 1.0 - hit)];
+            for (damage, p) in &hits {
+                distribution.push((*damage, p * hit * (1.0 - chance)));
+                for (extra, q) in &melee.hit_distribution {
+                    distribution.push((damage + extra, p * hit * chance * q));
+                }
+            }
+            max_hit += melee.max_hit;
+            if always_max {
+                hits = distribution.clone();
+            }
+        }
     }
     // Collapse equal totals before finite-HP planning. In particular, two
     // independent hammers have many roll pairs but few distinct damage totals.
@@ -1105,7 +1162,8 @@ pub fn calculate_configured(
         && hit_effects.final_divisor == 1
         && !rule.has(Effect::TwinHits)
         && !rule.has(Effect::Scythe)
-        && !rule.has(Effect::Macuahuitl)
+        && !chained_weapon
+        && !combined_final_damage
     {
         for (damage, _) in &mut distribution {
             *damage /= 2;
@@ -1119,10 +1177,26 @@ pub fn calculate_configured(
         .iter()
         .map(|(damage, p)| *damage as f64 * p)
         .sum::<f64>();
+    let expected_ticks = f64::from(ticks) - blood_proc;
+    let burn_dps = if style == "Ranged"
+        && rules::set_effect(set, "eclipse_moon")
+        && !crate::moon::burn_immune(monster.id)
+    {
+        if damage_model != crate::encounters::DamageModel::Standard {
+            return Err(
+                "Eclipse burn timing/reduction is unverified for this special attack window."
+                    .into(),
+            );
+        }
+        crate::moon::burn_dps(hit, ticks)
+    } else {
+        0.0
+    };
     Ok(ResultStats {
         hit_distribution: distribution,
         hp_dependent,
-        dps: expected / (expected_ticks * 0.6),
+        dps: expected / (expected_ticks * 0.6) + burn_dps,
+        burn_dps,
         potential_healing_per_second: if style == "Melee" && rules::set_effect(set, "guthan") {
             expected / (ticks as f64 * 0.6) / 4.0
         } else {

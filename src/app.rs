@@ -3606,7 +3606,10 @@ fn encounter_targets(s: &State) -> Vec<i32> {
         crate::encounters::mechanics()
             .windows
             .iter()
-            .filter(|w| w.comparison_alternative && sources.contains(&w.npc_id))
+            .filter(|w| {
+                w.comparison_alternative && sources.contains(&w.npc_id)
+                    || w.comparison_sources.iter().any(|id| sources.contains(id))
+            })
             .map(|w| w.id),
     );
     targets

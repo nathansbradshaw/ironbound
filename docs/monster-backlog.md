@@ -67,8 +67,15 @@ independent references, browser verification, then gameplay verification.
   sleepwalkers, parasite and incoming damage; normal and solo models stay distinct.
 - [ ] Nex: phase-specific HP, immunities, blood healing, minions, team scaling
   and attack mixtures. Existing Smoke/Ice incoming scenario is only partial.
-- [ ] Hespori: flower invulnerability, roots and incoming damage.
-- [ ] Skotizo: altar reductions, Arclight interactions, adds and incoming damage.
+- [x] Hespori outgoing: flowers-cleared and flowers-alive body comparisons,
+  fire weakness, guaranteed Farming Guild flower finishers and 12-flower attack
+  budget. Quest flower rules stay separate and blocked.
+- [ ] Hespori full fight: exact flower thresholds/overshoot, travel, roots,
+  poison, incoming attacks and full supplies; quest variant needs its own model.
+- [x] Skotizo outgoing: zero through four active altars, per-hitsplat/bolt
+  reductions, exact Arclight/Emberlight exceptions and active altar finishers.
+- [ ] Skotizo full fight: random activation/cooldown sequence, travel, adds,
+  attack mixtures, incoming damage and full supplies.
 - [ ] Hueycoatl: body/tail damage limits, crush/earth rules, pillar bonus and team
   scaling; verify these independently of generic elemental weakness.
 - [ ] Royal Titans: titan resistances, elemental-add accuracy, barriers, duo

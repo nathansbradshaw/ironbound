@@ -67,6 +67,13 @@ See [armour coverage](armour-sets.md) for exact support and limitations.
 - [ ] Audit remaining catalog weapons by family. Never accidentally enable
   uncharged, broken, cosmetic or incompatible variants.
 
+Recent-equipment follow-up: [reviewed weapons, armour and remaining gaps](recent-equipment.md).
+Added normal attacks for Twinflame/smoke staves, dragon hunter wand, Eye of Ayak,
+Zorya's tome, Scorching bow, Burning claws, Noxious halberd, Arkan blade, Crimson
+kisten and all three Nagua weapons. Charged-quiver bonuses and recent armour wear
+requirements are explicit. Obligator, Ascension ammunition and special rotations
+remain tracked separately; catalog stats do not imply those effects are supported.
+
 ## 7. Defensive passives
 
 - [x] Elysian: proc probability and per-hit floors for ordinary unprotected hits.

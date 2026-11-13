@@ -9,10 +9,15 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             .and_then(|s| serde_json::from_str(&s).ok())
             .unwrap_or_default();
         for entry in ironbound::encounters::catalog() {
+            if std::env::args().any(|a| a == "--sailing-only") && entry.category() != "Sailing" {
+                continue;
+            }
             if pack.contains_key(&entry.name) && !std::env::args().any(|a| a == "--refresh") {
                 continue;
             }
             let name = match entry.name.as_str() {
+                "Manta ray (monster)" => "Manta ray",
+                "Mogre (sea)" => "Mogre",
                 "Tormented Demons" => "Tormented Demon (1)",
                 "Turoths" => "Turoth (lv 89)",
                 "Kurasks" => "Kurask",

@@ -51,6 +51,16 @@ If browser saving fails, a persistent warning offers a private backup and retry.
 - **Track upgrades:** compare owned equipment with reviewed unowned options.
 - **Take it into RuneLite:** export Inventory Setups or Bank Tags, or share a setup link.
 
+## Sailing
+
+1. **Change encounter → Sailing**, then choose a sea creature.
+2. In **Boat setup**, select your installed hull, keel, cargo hold and cannons. Assign recruited crew to jobs.
+3. Enter cargo supplies and firing time. Use **Combat** to compare your personal weapon.
+
+Boat setup shows hull + keel HP, keel damage reduction, cargo capacity, crew cannon raw max hits and an expected ammunition budget. It saves locally with named setups and backups; Sailing setup links carry the boat assumptions. Bank imports do not identify installed parts, recruited crew or cargo.
+
+The 21 sea creatures use current recorded NPC stats. Ordinary melee is unavailable. Personal armour and protection prayers do not protect the boat. Cannon accuracy, player-operated cannon damage, combined DPS, repair consumption, movement and whole-trip survival are not verified. Veiled Kraken ranged DPS remains unavailable because its flat armour needs a separate hit-distribution model.
+
 ## What is still incomplete?
 
 The prioritized [development backlog](docs/backlog.md) records completed work, remaining mechanics and verification evidence.

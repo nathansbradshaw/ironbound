@@ -1,4 +1,6 @@
 pub mod account;
+pub mod sailing;
+pub mod sailing_view;
 pub mod bestiary;
 pub mod burn;
 pub mod death_risk;

@@ -35,6 +35,7 @@ pub mod raids;
 pub mod ranking;
 pub mod recommendation;
 pub mod reference;
+pub mod rotation;
 pub mod rules;
 mod set_search;
 pub mod setups;

@@ -36,6 +36,9 @@ pub fn notes(set: &[Option<i32>], settings: &Settings) -> Vec<String> {
             } else {
                 notes.push("Crimson kisten: Brutal Swing rolls accuracy four times against crush defence, then makes one damage hit in the matching 70–110% through 130–170% band. Attack bonus and stance use the selected attack style.".into());
             }
+            if settings.rotation.enabled {
+                notes.push(format!("Rotation: {} ticks, {} seeded trials, {}. Initial recovery pulse: {}. Fixed equipment restores 10% every {} ticks; full energy pauses recovery. No external restores, incoming damage, phase changes or mid-rotation switches.",settings.rotation.window_ticks,settings.rotation.trials,settings.rotation.policy.label(),if settings.rotation.next_pulse==0 {"fresh interval".into()} else {format!("{} ticks",settings.rotation.next_pulse)},crate::rotation::interval(crate::rotation::lightbearer(set))));
+            }
         }
         if weapon.weapon.family == "dragon_wand" {
             notes.push("Dragon hunter wand: standard and supported Ice casts; dragonbane applies before elemental weakness. Spell rune costs are packed normally; no free runes are inferred.".into());
@@ -50,13 +53,8 @@ pub fn notes(set: &[Option<i32>], settings: &Settings) -> Vec<String> {
     if rules::equipped_effect(set, "bulwark") {
         notes.push(format!("Dinh's Block: {}. Active Block prevents attacks. Only settled ordinary unprotected incoming hits are supported; activation delay and offensive defence scaling are excluded.", if settings.bulwark_block { "active" } else { "inactive" }));
     }
-    if set
-        .get(12)
-        .copied()
-        .flatten()
-        .is_some_and(|id| crate::planner::gear(id).is_some_and(|g| g.name == "Lightbearer"))
-    {
-        notes.push("Lightbearer energy recovery and special-attack rotations are not included in gear scores.".into());
+    if crate::rotation::lightbearer(set) {
+        notes.push("Lightbearer: 10% energy every 25 active ticks in the timed rotation model. It pauses at full energy; normal gear scores and full-fight survival simulations still exclude special rotations.".into());
     }
     if set
         .get(13)

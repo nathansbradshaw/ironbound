@@ -37,14 +37,14 @@ pub fn supported(weapon: i32) -> bool {
     rules::weapon(weapon).is_some_and(|r| r.weapon.special.is_some())
 }
 
-pub fn evaluate(
+pub(crate) fn validate_setup(
     member: &Member,
     set: &[Option<i32>],
     style: &str,
     monster: &Monster,
     invocation: u32,
     settings: &Settings,
-) -> Result<Report, String> {
+) -> Result<(&'static rules::SpecialAttack, u32), String> {
     if set.len() != 14 || !settings.valid() {
         return Err("Invalid special attack setup.".into());
     }
@@ -88,6 +88,22 @@ pub fn evaluate(
                 .into(),
         );
     }
+    let hp = combat::current_target_hp(monster, invocation, settings)?;
+    if !(1..=10_000).contains(&hp) {
+        return Err("Special comparison needs 1–10,000 target HP.".into());
+    }
+    Ok((special, hp))
+}
+
+pub fn evaluate(
+    member: &Member,
+    set: &[Option<i32>],
+    style: &str,
+    monster: &Monster,
+    invocation: u32,
+    settings: &Settings,
+) -> Result<Report, String> {
+    let (special, hp) = validate_setup(member, set, style, monster, invocation, settings)?;
     let pending = if special.kind == SpecialKind::Zorya {
         settings.zorya_empowered_hits
     } else {
@@ -99,10 +115,6 @@ pub fn evaluate(
             "One activation needs {}% special energy; {}% is available.",
             special.energy, settings.special_energy
         ));
-    }
-    let hp = combat::current_target_hp(monster, invocation, settings)?;
-    if !(1..=10_000).contains(&hp) {
-        return Err("Burst comparison needs 1–10,000 target HP.".into());
     }
     let calculate =
         |mode| combat::calculate_mode(member, set, style, monster, "", invocation, settings, mode);
@@ -218,7 +230,7 @@ pub fn evaluate(
 fn mean(outcomes: &[(i32, f64)]) -> f64 {
     outcomes.iter().map(|(d, p)| f64::from(*d) * p).sum()
 }
-fn successful_outcomes(result: &ResultStats) -> Result<Vec<(i32, f64)>, String> {
+pub(crate) fn successful_outcomes(result: &ResultStats) -> Result<Vec<(i32, f64)>, String> {
     let mut hits: BTreeMap<i32, f64> = BTreeMap::new();
     for (damage, p) in &result.hit_distribution {
         *hits.entry(*damage).or_default() += p;

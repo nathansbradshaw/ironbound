@@ -76,8 +76,10 @@ future game fixes; the tests establish the chosen arithmetic, not a new game tes
   per-hit Vorkath acid halving. These do not establish whole-fight special timing.
 - Energy and held-buff assumptions save in private backups/share links and setup
   notes. They never alter normal DPS scores or automatically insert spec swaps.
-- Recovery/Lightbearer, chained activations, resource replenishment, actual charge
-  balances, complete rotations and special-weapon recommendations remain open.
+- [Timed rotations](energy-rotations.md) separately model natural recovery,
+  Lightbearer and chained activations with fixed equipment and normal fillers.
+  Other restores, actual charge balances, weapon swaps, complete encounter
+  rotations and automatic special-weapon recommendations remain open.
 
 ## Sources and verification
 
@@ -111,4 +113,5 @@ Three explicitly held attacks remain usable with zero energy, persist after
 reload and appear in Inventory Setups export notes. Kisten reports one attack,
 34 maximum, a four-tick cooldown and 50% spent (21.99 effective / 29.38 uncapped
 damage). No browser application errors were reported. The preview was stopped
-after verification; actual gameplay and recovery/rotation gates remain open.
+after verification. Subsequent recovery/rotation support has its own
+[evidence and limits](energy-rotations.md); actual gameplay calibration remains open.

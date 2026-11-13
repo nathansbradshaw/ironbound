@@ -111,8 +111,12 @@ rotations remain open; catalog stats do not imply unverified effects are support
   one paid activation or explicitly held empowerment, exact hit/death state,
   four-roll kisten mixture, separate cooldown and energy budgets.
 - [ ] Remaining special distributions and unreviewed encounter interactions.
-- [ ] Energy costs/recovery, Lightbearer, timing, switches and rotations before
-  recommending special gear or claiming whole-fight DPS.
+- [x] Natural recovery and Lightbearer's tick clock, full-energy pauses and
+  equip/removal timing; compare the actual cost of replacing an owned ring.
+- [x] [Bounded fixed-equipment rotations](energy-rotations.md) for reviewed Zorya
+  and kisten specials, normal fillers, held buffs, energy, death and uncertainty.
+- [ ] Other energy restores, multi-weapon switches, travel, phase downtime and
+  gameplay calibration before claiming whole-fight special DPS or gear rankings.
 
 ## Reference and verification
 

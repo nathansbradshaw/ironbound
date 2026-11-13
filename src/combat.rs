@@ -245,7 +245,7 @@ pub fn calculate_configured(
         AttackMode::Normal,
     )
 }
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub(crate) enum AttackMode {
     Normal,
     Special,

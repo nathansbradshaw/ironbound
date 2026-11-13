@@ -500,15 +500,22 @@ fn special_settings_do_not_change_normal_damage_ranking_or_packing() {
     };
     options.combat.zorya_empowered_hits = 2;
     options.combat.special_energy = 0;
+    options.combat.rotation.enabled = true;
+    options.combat.rotation.window_ticks = 250;
+    options.combat.rotation.next_pulse = 9;
+    options.combat.rotation.policy = ironbound::rotation::Policy::NormalOnly;
     let plan = planner::plan(&snapshot, &options);
     assert!(plan.exportable(), "{:?}", plan.missing);
     let setup = ironbound::share::Setup::from_plan(&plan, &options);
     let restored = ironbound::share::Setup::parse(&setup.fragment().unwrap()).unwrap();
     assert_eq!(restored.options().combat.zorya_empowered_hits, 2);
     assert_eq!(restored.options().combat.special_energy, 0);
+    assert_eq!(restored.options().combat.rotation, options.combat.rotation);
     let export = ironbound::export::inventory_setup(&plan, &options, "Special QA").unwrap();
     assert!(export.contains("2 empowered attacks held"));
     assert!(export.contains("0% energy available"));
+    assert!(export.contains("Normal attacks only"));
+    assert!(export.contains("250 ticks"));
     let old: Settings = serde_json::from_str("{}").unwrap();
     assert_eq!((old.special_energy, old.zorya_empowered_hits), (50, 0));
 }

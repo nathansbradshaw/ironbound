@@ -11,6 +11,9 @@ use std::collections::{BTreeMap, BTreeSet};
 #[derive(Clone, Debug)]
 pub struct Alternative {
     pub id: i32,
+    /// Exact equipment context used for this what-if, including carried switches.
+    pub style: String,
+    pub slot: usize,
     pub dps_delta: Option<f64>,
     /// Alternative minus current continuous drain; negative means less drain.
     pub prayer_delta: f64,
@@ -552,6 +555,8 @@ pub fn equipment(
             }
             let alternative = Alternative {
                 id: gear.id,
+                style: c.style.clone(),
+                slot,
                 dps_delta,
                 prayer_delta,
                 defence_delta,

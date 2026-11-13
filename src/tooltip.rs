@@ -75,11 +75,12 @@ pub fn render(
     if choices.is_empty() {
         return html;
     }
-    html.push_str(r#"<div class="tooltip-alternatives"><strong class="tooltip-heading">Owned alternatives</strong><p class="tooltip-context">Key changes vs this item · one attack window</p><p class="tooltip-legend"><span class="tooltip-gain">Green = better</span> · <span class="tooltip-loss">Red = worse</span></p>"#);
+    html.push_str(r#"<div class="tooltip-alternatives"><strong class="tooltip-heading">Owned alternatives</strong><p class="tooltip-context">Key changes vs this item · one attack window</p>"#);
     for choice in choices {
         html.push_str(&format!(
-            r#"<div class="tooltip-choice"><div class="tooltip-item">{}<strong>{}</strong></div><div class="tooltip-metrics">"#,
-            item_icon(choice.id), esc(&planner::item_name(choice.id))
+            r#"<button type="button" class="tooltip-choice" data-action="pick-gear:{}:{}:{}" data-slot="{}" aria-label="Equip {}"><span class="tooltip-item">{}<strong>{}</strong><span class="tooltip-equip-label">Equip</span></span><span class="tooltip-metrics">"#,
+            esc(&choice.style), choice.slot, choice.id, choice.slot,
+            esc(&planner::item_name(choice.id)), item_icon(choice.id), esc(&planner::item_name(choice.id))
         ));
         let (dps, benefit) = match choice.dps_delta {
             Some(delta) if delta.abs() < 0.0005 => ("Same DPS".into(), 0.0),
@@ -125,7 +126,7 @@ pub fn render(
                 -choice.prayer_delta,
             ));
         }
-        html.push_str("</div>");
+        html.push_str("</span>");
         if !choice.fits_budget {
             let warning = if cap.is_some_and(|cap| choice.max_changes > cap) {
                 format!(
@@ -136,7 +137,7 @@ pub fn render(
                 "Rebuild setup / check bag space".into()
             };
             html.push_str(&format!(
-                r#"<p class="tooltip-warning">{}</p>"#,
+                r#"<span class="tooltip-warning">{}</span>"#,
                 esc(&warning)
             ));
         }
@@ -146,9 +147,12 @@ pub fn render(
                 compact = compact.chars().take(139).collect();
                 compact.push('…');
             }
-            html.push_str(&format!(r#"<p class="tooltip-note">{}</p>"#, esc(&compact)));
+            html.push_str(&format!(
+                r#"<span class="tooltip-note">{}</span>"#,
+                esc(&compact)
+            ));
         }
-        html.push_str("</div>");
+        html.push_str("</button>");
     }
     html.push_str("</div>");
     html

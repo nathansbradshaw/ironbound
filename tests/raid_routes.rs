@@ -193,7 +193,7 @@ fn incomplete_conflicting_duplicate_or_unrelated_targets_are_not_routes() {
 }
 
 #[test]
-fn all_archive_room_targets_withhold_unverified_dps() {
+fn archive_rooms_distinguish_reviewed_attacks_from_remaining_mechanics() {
     for target in raids::raid("tfa")
         .unwrap()
         .rooms
@@ -201,7 +201,8 @@ fn all_archive_room_targets_withhold_unverified_dps() {
         .flat_map(|r| &r.targets)
     {
         assert!(
-            encounters::limitation(planner::monster(target.id).unwrap()).is_some(),
+            encounters::limitation(planner::monster(target.id).unwrap()).is_some()
+                == [16640, 16641, 16684].contains(&target.id),
             "{}",
             target.id
         );

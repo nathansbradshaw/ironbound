@@ -66,6 +66,7 @@ struct State {
     switch_preferences_open: bool,
     combat_options_open: bool,
     budget_comparison_open: bool,
+    budget_phases_open: bool,
     budget_window: Option<String>,
     budget_incoming: Option<String>,
     ranking_draft: Option<crate::ranking::Preferences>,
@@ -159,6 +160,7 @@ impl State {
             switch_preferences_open: false,
             combat_options_open: false,
             budget_comparison_open: comparison_query.is_some(),
+            budget_phases_open: false,
             budget_window: None,
             budget_incoming: None,
             ranking_draft: None,
@@ -716,6 +718,9 @@ pub fn start() -> Result<(), JsValue> {
                 STATE.with(|state| {
                     state.borrow_mut().combat_options_open = el.has_attribute("open")
                 });
+            } else if el.id() == "budget-phases" {
+                STATE
+                    .with(|state| state.borrow_mut().budget_phases_open = el.has_attribute("open"));
             } else if el.id() == "budget-comparison" {
                 let changed = STATE.with(|state| {
                     let mut s = state.borrow_mut();
@@ -3785,6 +3790,162 @@ fn budget_stat(
         number(b)
     )
 }
+fn encounter_overview(comparison: &crate::tradeoffs::Comparison) -> String {
+    let summary = crate::encounter_summary::compare(comparison);
+    let partial = !summary.complete();
+    let mut html = format!(
+        "<section class=\"encounter-overview\" aria-label=\"Overall encounter comparison\"><h3>Overall encounter{}</h3><p class=\"small-note\">Attack-time estimate · {} of {} windows{}</p>",
+        if partial { " · partial" } else { "" },
+        summary.covered_windows,
+        summary.total_windows,
+        if partial {
+            " · missing coverage below"
+        } else {
+            ""
+        }
+    );
+    let a = summary.left.as_ref();
+    let b = summary.right.as_ref();
+    if let Some((a, b)) = a.zip(b) {
+        let seconds = b.seconds - a.seconds;
+        let prayer = b.prayer_points - a.prayer_points;
+        let speed = if seconds.abs() < 0.05 {
+            "same attack time".into()
+        } else {
+            format!(
+                "{:.1}s {} ({:.1}%)",
+                seconds.abs(),
+                if seconds < 0.0 { "faster" } else { "slower" },
+                seconds.abs() / a.seconds * 100.0
+            )
+        };
+        let cost = if prayer.abs() < 0.05 {
+            "same prayer use".into()
+        } else {
+            format!(
+                "{:.1} {} prayer points",
+                prayer.abs(),
+                if prayer < 0.0 { "fewer" } else { "more" }
+            )
+        };
+        html.push_str(&format!(
+            "<p class=\"encounter-verdict\">At {}: {speed}; {cost}{}.</p>",
+            comparison.right.cap,
+            if partial {
+                " across covered windows"
+            } else {
+                ""
+            }
+        ));
+    }
+    html.push_str(&format!(
+        "<div class=\"budget-metrics\">{}{}{}{}</div>",
+        budget_stat(
+            "Effective DPS",
+            a.map(|v| v.effective_dps),
+            b.map(|v| v.effective_dps),
+            3,
+            false,
+            true
+        ),
+        budget_stat(
+            "Attack time · seconds",
+            a.map(|v| v.seconds),
+            b.map(|v| v.seconds),
+            1,
+            true,
+            true
+        ),
+        budget_stat(
+            "Prayer used · points",
+            a.map(|v| v.prayer_points),
+            b.map(|v| v.prayer_points),
+            1,
+            true,
+            false
+        ),
+        budget_stat(
+            "Prayer / minute",
+            a.map(|v| v.prayer_per_minute),
+            b.map(|v| v.prayer_per_minute),
+            2,
+            true,
+            false
+        )
+    ));
+    let range = |v: Option<&crate::encounter_summary::Totals>| {
+        v.and_then(|v| v.incoming_damage)
+            .map(|(min, max)| {
+                if (max - min).abs() < 0.05 {
+                    format!("{min:.1}")
+                } else {
+                    format!("{min:.1}–{max:.1}")
+                }
+            })
+            .unwrap_or_else(|| "—".into())
+    };
+    let incoming_known = a
+        .and_then(|v| v.incoming_damage)
+        .zip(b.and_then(|v| v.incoming_damage))
+        .is_some();
+    html.push_str(&format!("<div class=\"budget-stat encounter-incoming\"><span>Normal damage over attack time</span><strong>{} → {}</strong><small>{}</small></div>",range(a),range(b),if incoming_known {"Scenario bounds, not a predicted attack mix. Specials excluded."} else {"Unverified: at least one incoming attack scenario is unknown. Specials excluded."}));
+    for note in summary
+        .assumptions
+        .iter()
+        .filter(|n| n.contains("one declared probe workload"))
+    {
+        html.push_str(&format!("<p class=\"small-note\">{}</p>", esc(note)));
+    }
+    html.push_str("<p class=\"small-note\">Combat time only. Movement, downtime and specials are excluded.</p>");
+    if partial {
+        html.push_str(
+            "<details class=\"encounter-omissions\"><summary>Missing coverage</summary><ul>",
+        );
+        for note in &summary.omissions {
+            html.push_str(&format!("<li>{}</li>", esc(note)));
+        }
+        html.push_str("</ul></details>");
+    }
+    html.push_str("<details><summary>Overall defence bonuses</summary><p class=\"small-note\">Equipment bonuses weighted by time in each set. These are not damage-reduction percentages.</p><table class=\"bonus-table\"><thead><tr><th>Type</th>");
+    html.push_str(&format!(
+        "<th>{}</th><th>{}</th><th>Change</th></tr></thead><tbody>",
+        comparison.left.cap, comparison.right.cap
+    ));
+    for kind in ["stab", "slash", "crush", "magic", "ranged"] {
+        let av = a.and_then(|v| v.defence.get(kind)).copied();
+        let bv = b.and_then(|v| v.defence.get(kind)).copied();
+        let number = |v: Option<f64>| v.map(|v| format!("{v:+.1}")).unwrap_or_else(|| "—".into());
+        html.push_str(&format!(
+            "<tr><th>{kind}</th><td>{}</td><td>{}</td><td>{}</td></tr>",
+            number(av),
+            number(bv),
+            number(av.zip(bv).map(|(a, b)| b - a))
+        ));
+    }
+    html.push_str(
+        "</tbody></table></details><details><summary>How the total is calculated</summary><ul>",
+    );
+    for note in &summary.assumptions {
+        html.push_str(&format!("<li>{}</li>", esc(note)));
+    }
+    html.push_str("</ul><div class=\"comparison-scroll\"><table class=\"bonus-table\"><thead><tr><th>Window</th><th>HP</th><th>Seconds ");
+    html.push_str(&format!(
+        "{} → {}</th></tr></thead><tbody>",
+        comparison.left.cap, comparison.right.cap
+    ));
+    for row in &summary.workloads {
+        html.push_str(&format!(
+            "<tr><th>{}</th><td>{:.1}</td><td>{:.1} → {:.1}</td></tr>",
+            esc(&row.name),
+            row.hp,
+            row.left_seconds,
+            row.right_seconds
+        ));
+    }
+    html.push_str("</tbody></table></div></details></section>");
+    html
+}
+
 fn budget_comparison(s: &State) -> String {
     let [left_cap, right_cap] = s.saved.budget_caps;
     let mut html = format!(
@@ -3846,6 +4007,11 @@ fn budget_comparison(s: &State) -> String {
             html.push_str("</details>");
         }
     }
+    html.push_str(&encounter_overview(&comparison));
+    html.push_str(&format!(
+        "<details id=\"budget-phases\" {}><summary>Phase details</summary>",
+        if s.budget_phases_open { "open" } else { "" }
+    ));
     let mut keys = Vec::<(i32, String, String)>::new();
     for window in comparison
         .left
@@ -4055,7 +4221,7 @@ fn budget_comparison(s: &State) -> String {
         }
         html.push_str("</tbody></table></div></details>");
     }
-    html.push_str("<details><summary>Coverage & assumptions</summary><ul>");
+    html.push_str("</details><details><summary>Coverage & assumptions</summary><ul>");
     for note in comparison
         .notes
         .iter()
@@ -4065,7 +4231,7 @@ fn budget_comparison(s: &State) -> String {
     {
         html.push_str(&format!("<li>{}</li>", esc(note)));
     }
-    html.push_str("</ul></details><p class=\"small-note\">Per attack window, with current prayers and boosts. Unverified values stay blank.</p></div></details>");
+    html.push_str("</ul></details></div></details>");
     html
 }
 

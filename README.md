@@ -20,7 +20,7 @@ Your account stays on that browser. Import it again when using a different devic
 - **Use Recommended:** reviewed ToA, Moons, Vorkath and Yama roles guide your owned gear. Selecting Vorkath compares complete melee/ranged loadouts, including Salve and full Void sets. **Why this gear? → Compare owned styles** reruns that comparison. Custom weights live under **Options → Advanced**.
 - **Yama:** packs melee/magic switches, spell runes, poison control and boosts. Combat shows Purging staff/Demonbane damage, Void Flare maximum hits and the alternating Judge cycle. Toggle **Mark of Darkness active** to match your play. Normal fight only; movement, specials and contract mechanics are outside the estimate.
 - **Plan a trip:** boss and raid templates, or your own group of monsters. Select your CoX rooms or choose each Fractured Archive fork.
-- **Compare switch limits:** open **Compare switches** to weigh 4 vs 8 (or your own caps): DPS, defence bonuses, incoming scenarios, prayer drain and bag space. Apply either plan.
+- **Compare switch limits:** choose any two caps in **Compare switches**. The encounter overview shows effective DPS, attack time, prayer used and drain alongside bag space. Expand phase details only when needed; apply either plan.
 - **Compare gear:** outgoing DPS, supported incoming damage, defence and prayer drain.
 - **Check the maths:** [live Wiki comparisons and update guide](docs/combat-validation.md). Run `cargo run --locked --bin validate_combat` to check the pinned reference loadouts.
 - **Model your fight:** Combat → **Boosts, darts & debuffs**. Choose active boosts, loaded blowpipe darts and successful reductions for each target.

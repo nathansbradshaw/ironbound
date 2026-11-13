@@ -127,6 +127,11 @@ impl Setup {
                 return Err(fail());
             }
             if let Some(weapon) = set[3].and_then(crate::rules::weapon) {
+                if weapon.family.style == "Ranged"
+                    && !self.combat.ranged_type.permits_weapon(set[3].unwrap())
+                {
+                    return Err(fail());
+                }
                 if !weapon.family.internal_ammo.is_empty()
                     && self
                         .combat

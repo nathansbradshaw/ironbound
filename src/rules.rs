@@ -586,6 +586,42 @@ pub fn all_ammo_ids() -> Vec<i32> {
 }
 
 pub const DEFAULT_CASTS: u32 = 150;
+/// Saved weapon-category constraint shared by planning and combat comparisons.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum RangedType {
+    #[default]
+    Auto,
+    Light,
+    Standard,
+    Heavy,
+}
+impl RangedType {
+    pub fn key(self) -> Option<&'static str> {
+        match self {
+            Self::Auto => None,
+            Self::Light => Some("light"),
+            Self::Standard => Some("standard"),
+            Self::Heavy => Some("heavy"),
+        }
+    }
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Auto => "Auto",
+            Self::Light => "Light",
+            Self::Standard => "Standard",
+            Self::Heavy => "Heavy",
+        }
+    }
+    pub fn permits_weapon(self, id: i32) -> bool {
+        weapon(id).is_some_and(|rule| {
+            rule.family.style == "Ranged"
+                && self
+                    .key()
+                    .is_none_or(|kind| rule.family.attack_types.iter().any(|t| t == kind))
+        })
+    }
+}
 /// One source of truth for calculation, planning, rune packing and sharing.
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(
@@ -954,6 +990,11 @@ pub fn casting_supported_configured(
     casts: u32,
     settings: &crate::defence::Settings,
 ) -> bool {
+    if let Some(rule) = set.get(3).copied().flatten().and_then(weapon) {
+        if rule.family.style == "Ranged" {
+            return settings.ranged_type.permits_weapon(set[3].unwrap());
+        }
+    }
     casting_at_level(
         member,
         set,

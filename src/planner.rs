@@ -723,6 +723,7 @@ fn style_set(
         crate::guidance::seed(&mut set, style, m, owned, options);
     }
     align_spell_weapon(&mut set, style, m, owned, options);
+    align_ranged_weapon(&mut set, style, m, owned, options);
     for (slot, value) in set.iter_mut().enumerate() {
         if let Some(id) = options.gear_overrides.get(&format!("{style}:{slot}")) {
             if *id == 0 {
@@ -815,6 +816,64 @@ fn align_spell_weapon(
                 std::cmp::Reverse(*id),
             )
         });
+}
+fn ranged_ammo_for_weapon(
+    weapon: i32,
+    member: &Member,
+    owned: &BTreeMap<i32, u32>,
+    shots: u32,
+) -> Option<i32> {
+    let allowed = crate::rules::ammo_ids(weapon);
+    let available =
+        |id: &&i32| owned.get(id).copied().unwrap_or(0) >= shots && can_use(**id, member);
+    allowed
+        .iter()
+        .filter(available)
+        .find(|id| crate::rules::ammunition(**id) != crate::rules::AmmoEffect::Unsupported)
+        .or_else(|| allowed.iter().find(available))
+        .copied()
+}
+fn align_ranged_weapon(
+    set: &mut [Option<i32>],
+    style: &str,
+    member: &Member,
+    owned: &BTreeMap<i32, u32>,
+    options: &Options,
+) {
+    let selection = options.combat.ranged_type;
+    if style != "Ranged"
+        || selection.key().is_none()
+        || options.gear_overrides.contains_key("Ranged:3")
+    {
+        return;
+    }
+    let ready = |id| {
+        let rule = crate::rules::weapon(id).unwrap();
+        if !rule.family.internal_ammo.is_empty() {
+            crate::rules::internal_ammo(member, id, &options.combat).is_some_and(|dart| {
+                options.combat.loaded_ammo_confirmed
+                    || owned.get(&dart).copied().unwrap_or(0) >= options.combat.ammo_shots
+            })
+        } else {
+            rule.family.ammo.is_empty()
+                || ranged_ammo_for_weapon(id, member, owned, options.combat.ammo_shots).is_some()
+        }
+    };
+    if !set[3].is_some_and(|id| selection.permits_weapon(id) && ready(id)) {
+        set[3] = owned
+            .keys()
+            .copied()
+            .filter(|id| can_use(*id, member) && selection.permits_weapon(*id))
+            .max_by_key(|id| {
+                (
+                    ready(*id),
+                    equipment_score(*id, style),
+                    std::cmp::Reverse(*id),
+                )
+            });
+    }
+    set[13] =
+        set[3].and_then(|id| ranged_ammo_for_weapon(id, member, owned, options.combat.ammo_shots));
 }
 fn refine_dps(
     set: &mut Vec<Option<i32>>,
@@ -1136,6 +1195,10 @@ fn refine_dps_seed(
                 if owned.get(&id).copied().unwrap_or(0) == 0 || !can_use(id, m) {
                     continue;
                 }
+                if slot == 3 && style == "Ranged" && !options.combat.ranged_type.permits_weapon(id)
+                {
+                    continue;
+                }
                 if slot == 13 && owned.get(&id).copied().unwrap_or(0) < options.combat.ammo_shots {
                     continue;
                 }
@@ -1234,6 +1297,7 @@ fn guided_trials(
     let mut trials = vec![set.to_vec(), guided.clone()];
     for trial in &mut trials {
         align_spell_weapon(trial, style, member, owned, options);
+        align_ranged_weapon(trial, style, member, owned, options);
         for (key, id) in &options.gear_overrides {
             if let Some(slot) = key
                 .strip_prefix(&format!("{style}:"))
@@ -1479,7 +1543,21 @@ fn plan_uncached(snapshot: &Snapshot, options: &Options) -> Plan {
     }
     let needs_ranged = options.boss != Boss::Custom || targets.iter().any(|t| t.style == "Ranged");
     if needs_ranged && ranged[3].is_none() {
-        out.missing.push("A supported ranged weapon".into());
+        out.missing
+            .push(if options.combat.ranged_type.key().is_none() {
+                "A supported ranged weapon".into()
+            } else {
+                format!(
+                    "A supported, usable {} ranged weapon from your bank",
+                    options.combat.ranged_type.label()
+                )
+            });
+    }
+    if needs_ranged && ranged[3].is_some_and(|id| !options.combat.ranged_type.permits_weapon(id)) {
+        out.missing.push(format!(
+            "The pinned ranged weapon does not match {}. Choose a compatible weapon or Auto.",
+            options.combat.ranged_type.label()
+        ));
     }
     if needs_ranged
         && ranged[3].is_some_and(|id| !crate::rules::ammo_ids(id).is_empty())

@@ -5,6 +5,7 @@ use serde::{Deserialize, Serialize};
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(default, deny_unknown_fields)]
 pub struct Settings {
+    pub ranged_type: crate::rules::RangedType,
     pub spell_selection: crate::rules::SpellSelection,
     pub spell_casts: u32,
     pub ammo_shots: u32,
@@ -26,6 +27,7 @@ pub struct Settings {
 impl Default for Settings {
     fn default() -> Self {
         Self {
+            ranged_type: Default::default(),
             spell_selection: Default::default(),
             spell_casts: crate::rules::DEFAULT_CASTS,
             ammo_shots: crate::rules::DEFAULT_LOADED_SHOTS,

@@ -196,6 +196,12 @@ pub fn calculate_configured(
     }
     let requested_style = style;
     let style = rules::base_style(style);
+    if style == "Ranged" && !settings.ranged_type.permits_weapon(weapon) {
+        return Err(format!(
+            "Choose a {} ranged weapon for this plan.",
+            settings.ranged_type.label()
+        ));
+    }
     if style == "Magic" {
         if let Some(recipe) = rules::spells().iter().find(|recipe| recipe.name == spell) {
             if recipe.family != rule.weapon.family {

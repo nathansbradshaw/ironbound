@@ -27,6 +27,7 @@ pub mod moon;
 pub mod optimization;
 pub mod planner;
 pub mod prayer;
+pub mod quest_bosses;
 pub mod preparation;
 pub mod raids;
 pub mod ranking;

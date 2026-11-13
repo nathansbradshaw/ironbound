@@ -194,7 +194,8 @@ fn vardorvis_catalog_and_current_stats_have_exact_full_fraction_rounding() {
             "Vardorvis's drain floor follows current scaled defence"
         );
     }
-    assert!(encounters::limitation(planner::monster(12224).unwrap()).is_some());
+    assert!(encounters::limitation(planner::monster(12224).unwrap()).is_none());
+    assert_eq!(planner::monster(12224).unwrap().skills["def"], 180);
 }
 
 #[test]

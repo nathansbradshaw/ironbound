@@ -51,6 +51,7 @@ struct State {
     incoming_attack: Option<String>,
     encounter_query: String,
     encounter_filter: String,
+    hide_quest_bosses: bool,
     gear_filter: crate::bestiary::GearFilter,
     requirements_filter: crate::bestiary::RequirementsFilter,
     building_group: bool,
@@ -169,6 +170,7 @@ impl State {
             incoming_attack: None,
             encounter_query: String::new(),
             encounter_filter: "For you".into(),
+            hide_quest_bosses: false,
             gear_filter: Default::default(),
             requirements_filter: Default::default(),
             building_group: false,
@@ -1707,12 +1709,15 @@ fn act(action: &str) {
     }
 
     if action.starts_with("gear-filter:")
+        || action == "quest-filter:Hide quest bosses"
         || action.starts_with("requirements-filter:")
         || action.starts_with("encounter-filter:")
     {
         STATE.with(|state| {
             let mut s = state.borrow_mut();
-            if let Some(filter) = action
+            if action == "quest-filter:Hide quest bosses" {
+                s.hide_quest_bosses = !s.hide_quest_bosses;
+            } else if let Some(filter) = action
                 .strip_prefix("gear-filter:")
                 .and_then(crate::bestiary::GearFilter::parse)
             {
@@ -1740,6 +1745,7 @@ fn act(action: &str) {
                 let mut s = state.borrow_mut();
                 s.encounter_query.clear();
                 s.encounter_filter = "For you".into();
+                s.hide_quest_bosses = false;
                 s.gear_filter = Default::default();
                 s.requirements_filter = Default::default();
                 s.wilderness_location = "all".into();
@@ -3585,6 +3591,7 @@ fn bestiary_assessments(s: &State) -> Vec<crate::bestiary::Assessment> {
 }
 fn extra_filter_label(s: &State) -> String {
     let mut labels = vec!["Gear & requirements"];
+    if s.hide_quest_bosses { labels.push("Quest bosses hidden"); }
     if s.gear_filter != crate::bestiary::GearFilter::Any {
         labels.push(s.gear_filter.label());
     }
@@ -3634,7 +3641,9 @@ fn encounter_catalog(s: &State) -> String {
             s.requirements_filter == filter,
         ));
     }
-    html.push_str("</nav></fieldset><p class=\"bestiary-filter-note\">Known levels met checks recorded Slayer requirements only. Quest, key and task access remain unverified. Gear and requirements filters apply together.</p>");
+    html.push_str("</nav></fieldset><fieldset class=\"bestiary-filter-group\"><legend>Quest bosses</legend><nav class=\"encounter-filters\" aria-label=\"Quest boss filters\">");
+    html.push_str(&encounter_filter_button("quest-filter", "Hide quest bosses", s.hide_quest_bosses));
+    html.push_str("</nav></fieldset><p class=\"bestiary-filter-note\">Known levels met checks recorded Slayer requirements only. Quest, key and task access remain unverified. Gear, requirements and quest filters apply together.</p>");
     let location = match s.wilderness_location.as_str() {
         "safe" => " · avoiding Wilderness",
         "wild" => " · Wilderness only",
@@ -3661,6 +3670,7 @@ fn encounter_results(s: &State) -> String {
         .iter()
         .enumerate()
         .filter(|(index, e)| {
+            if !crate::quest_bosses::visible(e, s.hide_quest_bosses) { return false; }
             let exposed = crate::wilderness::exposure(&e.name) != crate::wilderness::Exposure::None;
             if s.wilderness_location == "safe" && exposed
                 || s.wilderness_location == "wild" && !exposed
@@ -3763,7 +3773,7 @@ fn refresh_encounter_browser(s: &State) {
                     )
                 }),
         );
-    for (id, active) in buttons {
+    for (id, active) in buttons.chain(std::iter::once(("quest-filter-Hide-quest-bosses".into(), s.hide_quest_bosses))) {
         if let Some(el) = document().get_element_by_id(&id) {
             el.set_class_name(if active {
                 "encounter-filter active"

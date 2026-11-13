@@ -96,7 +96,12 @@ fn doom_shield_is_a_separate_guaranteed_demonbane_counter() {
             .contains("demonbane")
     );
     assert!(try_calc(100178, 9185, Some(9242), "Ranged", "").is_err());
-    assert!(try_calc(100178, 13913, None, "Magic", "").is_err()); // unknown/non-demonbane staff cannot bypass
+    assert!(
+        try_calc(100178, 31113, None, "Magic", "")
+            .unwrap_err()
+            .contains("Eye of Ayak")
+    );
+    close(calc(100178, 29591, Some(892), "Ranged").accuracy, 1.0);
     let spell = try_calc(100178, 29594, None, "Magic", "Dark Demonbane").unwrap();
     close(spell.accuracy, 1.0);
     let burrow = calc(100179, 9185, Some(9144), "Ranged");

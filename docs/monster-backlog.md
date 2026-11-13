@@ -1,5 +1,28 @@
 # Monster mechanics backlog
 
+Latest outgoing batch, 13 November 2026: 38 additional reviewed states plus an
+explicit unshielded Tormented Demon gate. Eleven more encounter/mob gear screens
+are available, including three new mob bestiary entries with real portraits.
+Access requirements remain independent. This is not complete coverage of the
+backlog: Nex, raid scaling/room mechanics, Sire's initial phase, Muspah's shield,
+dedicated equipment and several attribute/special states remain open below.
+
+Verification: 663 integrated Rust tests, including 18 new monster regressions,
+and all 24 independent combat references pass. Affected tests pass again after
+browser-discovered phase-label corrections. Native and Wasm package artifacts
+use the shared Cargo target with separate `monster-dev` / `monster-release`
+profiles to avoid another active checkout substituting its package outputs.
+
+Browser preview: Maggot melee is blocked at distance; the example nearby crush
+attack has 30.2% accuracy / 19 max, versus 87.6% / 28 for its timed punish probe.
+Mad Angel's example normal/cleave/perfect-lightning outputs are 1.432/4.896/7.917
+basic DPS; the counter probes show 100% first-hit accuracy. Doom delve placeholders
+show 525/675 HP for levels 1/8 and reject non-demonbane shield attacks. Tormented
+protection states block the matching style; the example shielded trident has
+16 max, while the unverified unshielded state remains gated. Shellbane shows
+met Slayer separately from missing tortugan gear. No console warnings/errors.
+Full-fight timing, incoming mechanics and gameplay confirmation remain separate.
+
 Reviewed against remote main on 13 November 2026. Catalog entries and outgoing
 attack windows do not establish a complete encounter simulation. Check each
 layer separately: outgoing damage, incoming damage, encounter timing/supplies,

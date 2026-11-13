@@ -738,6 +738,32 @@ footer{font-size:10px;padding:9px 4px 0}footer>span:last-child{display:none}
 .combat-breakdown h3 { margin: .8rem 0 .4rem; }
 .combat-breakdown .wiki-table { width: 100%; font-size: .86rem; }
 .combat-breakdown .wiki-table th, .combat-breakdown .wiki-table td { padding: .4rem; text-align: left; }
+
+/* Compare carried setups under two switch caps. */
+.budget-comparison{max-width:650px;margin:0 auto 12px}
+.budget-comparison>summary{padding:10px 12px;color:#ff981f;font:20px/1.2 Scape,monospace;cursor:pointer}
+.budget-body{padding:0 12px 12px;min-width:0}
+.budget-cap-fields,.budget-sides,.budget-metrics{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin:10px 0}
+.budget-body label{display:flex;flex-direction:column;gap:5px;margin:10px 0}
+.budget-cap-fields label{margin:0}
+.budget-body select,.budget-body input{width:100%;min-width:0}
+.budget-side{border:2px inset #89744b;padding:8px;min-width:0}
+.budget-side h3{font:22px ScapeBold,monospace;color:#ffdf00;margin:0 0 7px}
+.budget-side dl{margin:0 0 10px;font:18px Scape,monospace}
+.budget-side dl>div{display:flex;justify-content:space-between;gap:5px;margin:4px 0}
+.budget-side dd{margin:0;color:#ffdf00}
+.budget-side .phase{width:100%;min-height:36px}
+.budget-side .budget-blocked{color:#ffb580}
+.budget-body .budget-space{font:20px ScapeBold,monospace;color:#ffdf00;margin:8px 0}
+.budget-stat{padding:8px;border:2px inset #89744b;background:#342d22;margin:8px 0}
+.budget-metrics .budget-stat{margin:0}
+.budget-stat>span,.budget-stat>strong,.budget-stat>small{display:block}
+.budget-stat>strong{font:24px Scape,monospace;color:#ffdf00;margin:5px 0}
+.budget-stat .gain{color:#a8d888}.budget-stat .loss{color:#ffb580}.budget-stat .same,.budget-stat .unknown{color:#ddd1b8}
+.budget-body>details{margin:12px 0}.budget-body>details>summary{line-height:1.3}
+.budget-gear p{display:flex;align-items:center;flex-wrap:wrap;gap:4px}.budget-gear img{vertical-align:middle}
+.budget-defence .bonus-table{width:100%}.budget-defence .bonus-table td{text-align:right;white-space:nowrap}
+@media(max-width:580px){.budget-body{padding:0 9px 9px}.budget-cap-fields,.budget-sides,.budget-metrics{gap:7px}.budget-side{padding:7px}.budget-side h3{font-size:20px}.budget-side dl{font-size:16px}.budget-stat>strong{font-size:21px}.budget-comparison>summary{font-size:19px}.budget-body .bonus-table th,.budget-body .bonus-table td{padding:6px 3px}}
 .analysis-layout { grid-template-columns: minmax(0, 1fr); }
 .combat-breakdown .wiki-table { min-width: 540px; }
 

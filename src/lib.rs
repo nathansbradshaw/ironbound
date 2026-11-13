@@ -1,4 +1,5 @@
 pub mod account;
+pub mod alternatives;
 #[cfg(target_arch = "wasm32")]
 mod app;
 pub mod combat;
@@ -20,5 +21,6 @@ pub mod reference;
 pub mod rules;
 pub mod share;
 pub mod supplies;
+pub mod tradeoffs;
 pub mod validation;
 pub mod yama;

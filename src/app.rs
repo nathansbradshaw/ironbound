@@ -14,6 +14,21 @@ use wasm_bindgen_futures::{JsFuture, spawn_local};
 use web_sys::{Element, HtmlInputElement, HtmlSelectElement, HtmlTextAreaElement};
 
 const STORAGE: &str = "ironbound.account.v1";
+fn default_budget_caps() -> [usize; 2] {
+    [4, 8]
+}
+fn comparison_caps_query() -> Option<[usize; 2]> {
+    let search = window().location().search().ok()?;
+    let value = search
+        .trim_start_matches('?')
+        .split('&')
+        .find_map(|part| part.strip_prefix("compare="))?
+        .replace("%2C", ",")
+        .replace("%2c", ",");
+    let (left, right) = value.split_once(',')?;
+    let caps = [left.parse::<usize>().ok()?, right.parse::<usize>().ok()?];
+    caps.iter().all(|cap| *cap <= 11).then_some(caps)
+}
 #[derive(Clone, Serialize, Deserialize)]
 struct Saved {
     version: u32,
@@ -22,6 +37,8 @@ struct Saved {
     pins: BTreeMap<String, Vec<String>>,
     #[serde(default)]
     last_setup_fragment: Option<String>,
+    #[serde(default = "default_budget_caps")]
+    budget_caps: [usize; 2],
 }
 struct State {
     saved: Saved,
@@ -48,6 +65,9 @@ struct State {
     raid_rooms_open: bool,
     switch_preferences_open: bool,
     combat_options_open: bool,
+    budget_comparison_open: bool,
+    budget_window: Option<String>,
+    budget_incoming: Option<String>,
     ranking_draft: Option<crate::ranking::Preferences>,
 }
 impl State {
@@ -71,6 +91,7 @@ impl State {
             options: Options::default(),
             pins: BTreeMap::new(),
             last_setup_fragment: None,
+            budget_caps: default_budget_caps(),
         });
         if saved.snapshot.source == "Demo" {
             saved.snapshot = account::demo();
@@ -89,6 +110,11 @@ impl State {
         saved.options.raid_level = saved.options.raid_level.min(150);
         saved.options.max_switches = saved.options.max_switches.map(|n| n.min(11));
         saved.options.switch_slots = saved.options.switch_slots.min(20);
+        saved.budget_caps = saved.budget_caps.map(|n| n.min(11));
+        let comparison_query = comparison_caps_query();
+        if let Some(caps) = comparison_query {
+            saved.budget_caps = caps;
+        }
         if saved.options.fewer_switches {
             saved.options.max_switches = Some(4);
             saved.options.fewer_switches = false;
@@ -132,6 +158,9 @@ impl State {
             raid_rooms_open: false,
             switch_preferences_open: false,
             combat_options_open: false,
+            budget_comparison_open: comparison_query.is_some(),
+            budget_window: None,
+            budget_incoming: None,
             ranking_draft: None,
             saved,
             tab: "bossing".into(),
@@ -157,9 +186,17 @@ impl State {
         let mut stored = self.saved.clone();
         if self.shared_setup.is_none() {
             let base = format!(
-                "{}{}",
+                "{}{}{}",
                 window().location().origin().unwrap_or_default(),
-                window().location().pathname().unwrap_or_default()
+                window().location().pathname().unwrap_or_default(),
+                if self.budget_comparison_open {
+                    format!(
+                        "?compare={},{}",
+                        self.saved.budget_caps[0], self.saved.budget_caps[1]
+                    )
+                } else {
+                    String::new()
+                }
             );
             let hash = share::Setup::from_plan(&self.plan(), &self.saved.options)
                 .fragment()
@@ -223,6 +260,8 @@ fn live_number(id: &str) -> bool {
         "food",
         "potions",
         "raid-level",
+        "budget-cap-left",
+        "budget-cap-right",
     ]
     .contains(&id)
         || id.starts_with("priority-")
@@ -235,6 +274,13 @@ fn apply_number(s: &mut State, id: &str, value: &str) -> bool {
         return false;
     }
     let target_id = comparison_monster(s).map(|m| m.id);
+    if ["budget-cap-left", "budget-cap-right"].contains(&id) {
+        let Ok(value) = value.parse::<usize>() else {
+            return false;
+        };
+        s.saved.budget_caps[usize::from(id == "budget-cap-right")] = value.min(11);
+        return true;
+    }
     let o = &mut s.saved.options;
     if id == "max-switches" && value.trim().is_empty() {
         o.max_switches = None;
@@ -405,9 +451,105 @@ fn hide_item_tooltip() {
 }
 
 fn show_item_tooltip(item: &Element) {
-    let Some(text) = item.get_attribute("data-explanation") else {
+    let Some(base) = item.get_attribute("data-explanation") else {
         return;
     };
+    let text = item
+        .get_attribute("data-complete-explanation")
+        .unwrap_or_else(|| {
+            let suffix = STATE.with(|state| {
+                let s = state.borrow();
+                if s.shared_setup.is_some() {
+                    return String::new();
+                }
+                let p = s.plan();
+                let action = item.get_attribute("data-action").unwrap_or_default();
+                let choices = if let Some(slot) = action
+                    .strip_prefix("edit-equipment:")
+                    .and_then(|v| v.parse::<usize>().ok())
+                {
+                    crate::alternatives::equipment(
+                        &s.saved.snapshot,
+                        &s.saved.options,
+                        &p,
+                        s.phase,
+                        slot,
+                        2,
+                    )
+                } else if let Some(index) = action
+                    .strip_prefix("edit-inventory:")
+                    .and_then(|v| v.parse::<usize>().ok())
+                {
+                    p.preview_inventory(s.phase)
+                        .get(index)
+                        .map(|item| {
+                            crate::alternatives::packed(
+                                &s.saved.snapshot,
+                                &s.saved.options,
+                                &p,
+                                item,
+                                2,
+                            )
+                        })
+                        .unwrap_or_default()
+                } else {
+                    Vec::new()
+                };
+                if choices.is_empty() {
+                    return String::new();
+                }
+                let mut lines = vec!["Owned alternatives · one attack window".to_string()];
+                for choice in choices {
+                    let mut facts = Vec::new();
+                    facts.push(match choice.dps_delta {
+                        Some(delta) if delta.abs() < 0.0005 => "same DPS".into(),
+                        Some(delta) => format!("{delta:+.3} DPS"),
+                        None => "DPS unverified".into(),
+                    });
+                    let defence = signed_defence(&choice.defence_delta);
+                    if !defence.is_empty() {
+                        facts.push(defence);
+                    }
+                    if !choice.defence_delta.is_empty() && choice.prayer_delta.abs() >= 0.005 {
+                        facts.push(format!("{:+.2} prayer/min", choice.prayer_delta));
+                    }
+                    if !choice.fits_budget {
+                        if s.saved
+                            .options
+                            .max_switches
+                            .is_some_and(|cap| choice.max_changes > cap)
+                        {
+                            facts.push(format!("needs {} changes", choice.max_changes));
+                        } else {
+                            facts.push("rebuild / check bag".into());
+                        }
+                    }
+                    lines.push(format!(
+                        "{}\n{}",
+                        planner::item_name(choice.id),
+                        facts.join(" · ")
+                    ));
+                    if let Some(note) = choice.note {
+                        let mut compact = String::new();
+                        for word in note.split_whitespace() {
+                            if compact.len() + word.len() + 1 > 140 {
+                                compact.push('…');
+                                break;
+                            }
+                            if !compact.is_empty() {
+                                compact.push(' ');
+                            }
+                            compact.push_str(word);
+                        }
+                        lines.push(compact);
+                    }
+                }
+                format!("\n\n{}", lines.join("\n"))
+            });
+            let text = format!("{base}{suffix}");
+            let _ = item.set_attribute("data-complete-explanation", &text);
+            text
+        });
     let Some(tooltip) = document().get_element_by_id("item-explanation") else {
         return;
     };
@@ -574,6 +716,18 @@ pub fn start() -> Result<(), JsValue> {
                 STATE.with(|state| {
                     state.borrow_mut().combat_options_open = el.has_attribute("open")
                 });
+            } else if el.id() == "budget-comparison" {
+                let changed = STATE.with(|state| {
+                    let mut s = state.borrow_mut();
+                    let open = el.has_attribute("open");
+                    let changed = s.budget_comparison_open != open;
+                    s.budget_comparison_open = open;
+                    changed
+                });
+                if changed {
+                    STATE.with(|state| state.borrow().persist());
+                    render();
+                }
             }
         }
     });
@@ -731,6 +885,8 @@ pub fn start() -> Result<(), JsValue> {
             "switch-slots",
             "focus-style",
             "compare-target",
+            "budget-window",
+            "budget-incoming",
             "incoming-attack",
             "protection",
             "offensive-prayer",
@@ -779,6 +935,17 @@ pub fn start() -> Result<(), JsValue> {
                 return;
             }
             match id.as_str() {
+                "budget-window" => {
+                    if let Some(sel) = el.dyn_ref::<HtmlSelectElement>() {
+                        s.budget_window = Some(sel.value());
+                        s.budget_incoming = None;
+                    }
+                }
+                "budget-incoming" => {
+                    if let Some(sel) = el.dyn_ref::<HtmlSelectElement>() {
+                        s.budget_incoming = Some(sel.value());
+                    }
+                }
                 "loaded-dart" => {
                     if let Ok(sel) = el.dyn_into::<HtmlSelectElement>() {
                         s.saved.options.combat.loaded_dart = sel
@@ -1290,6 +1457,29 @@ fn act(action: &str) {
             if ["loadout", "combat", "prepare"].contains(&view) {
                 s.view = view.into();
                 s.edit_equipment = None;
+            }
+        } else if let Some(side) = action.strip_prefix("budget-apply:") {
+            let index = usize::from(side == "right");
+            if side == "left" || side == "right" {
+                let cap = s.saved.budget_caps[index];
+                let comparison = crate::tradeoffs::compare(
+                    &s.saved.snapshot,
+                    &s.saved.options,
+                    s.saved.budget_caps[0],
+                    s.saved.budget_caps[1],
+                );
+                let choice = if index == 0 {
+                    &comparison.left
+                } else {
+                    &comparison.right
+                };
+                if choice.feasible && s.shared_setup.is_none() {
+                    apply_number(&mut s, "max-switches", &cap.to_string());
+                    s.phase = None;
+                    s.view = "loadout".into();
+                    s.budget_comparison_open = false;
+                    s.notice(&format!("Applied the {cap}-item switch cap."), false);
+                }
             }
         } else if let Some(selection) = action.strip_prefix("raid-room:") {
             if s.shared_setup.is_some() {
@@ -1977,6 +2167,8 @@ fn update_markup(root: &Element, html: &str, keep: Option<&str>) {
 }
 
 fn render() {
+    // A full render already includes the latest inputs; cancel older delayed renders.
+    LIVE_EDIT.with(|generation| generation.set(generation.get().wrapping_add(1)));
     render_with_edit(None);
 }
 
@@ -2003,7 +2195,7 @@ fn render_with_edit(edit: Option<&str>) {
         html.push_str(&raid_rooms(&s));
         html.push_str("</div>");
         if s.shared_setup.is_some(){html.push_str(&format!("<p class=\"notice\">Viewing a shared setup. Your saved bank is unchanged. {}</p>",button("use-bank","Rebuild using my items","text-button")));}
-        if s.shared_setup.is_none(){html.push_str(&switch_controls(&s,&plan));}
+        if s.shared_setup.is_none(){html.push_str(&switch_controls(&s,&plan));html.push_str(&budget_comparison(&s));}
         html.push_str("<nav class=\"planner-tabs\" aria-label=\"Planner sections\">");
         for (view,label) in [("loadout","Gear"),("combat","Combat"),("prepare","Preparation")] {let disabled=if view=="combat"&&s.shared_setup.is_some(){"disabled title=\"Rebuild using your items to calculate combat stats\""}else{""};html.push_str(&format!("<button class=\"workspace-tab {}\" data-action=\"view:{view}\" aria-pressed=\"{}\" {disabled}>{label}{}</button>",if s.view==view{"active"}else{""},s.view==view,if view=="prepare"&&!plan.missing.is_empty(){format!(" <span class=\"issue-count\">{}</span>",plan.missing.len())}else{String::new()}));}
         html.push_str("</nav><section class=\"workspace-view\">");
@@ -3529,8 +3721,357 @@ fn switch_controls(s: &State, p: &Plan) -> String {
     html
 }
 
+fn signed_defence(delta: &BTreeMap<String, i32>) -> String {
+    let label = |key: &str| match key {
+        "stab" => "stab",
+        "slash" => "slash",
+        "crush" => "crush",
+        "magic" => "magic",
+        "ranged" => "ranged",
+        _ => "defence",
+    };
+    let mut values: Vec<_> = delta.iter().filter(|(_, value)| **value != 0).collect();
+    values.sort_by_key(|(_, value)| std::cmp::Reverse(value.abs()));
+    let positive = values.iter().copied().find(|(_, value)| **value > 0);
+    let negative = values.iter().copied().find(|(_, value)| **value < 0);
+    let chosen = if let (Some(positive), Some(negative)) = (positive, negative) {
+        vec![positive, negative]
+    } else {
+        values.into_iter().take(2).collect()
+    };
+    chosen
+        .into_iter()
+        .map(|(key, value)| format!("{value:+} {} def", label(key)))
+        .collect::<Vec<_>>()
+        .join(" · ")
+}
+fn budget_stat(
+    label: &str,
+    a: Option<f64>,
+    b: Option<f64>,
+    digits: usize,
+    lower: bool,
+    percent: bool,
+) -> String {
+    let number = |value: Option<f64>| {
+        value
+            .map(|v| format!("{v:.digits$}"))
+            .unwrap_or_else(|| "—".into())
+    };
+    let (delta, class) = match a.zip(b) {
+        Some((a, b)) if (b - a).abs() < 0.5 * 10_f64.powi(-(digits as i32)) => {
+            ("No change".into(), "same")
+        }
+        Some((a, b)) => {
+            let difference = b - a;
+            let mut text = format!("{difference:+.digits$}");
+            if percent && a.abs() > 1e-9 {
+                text.push_str(&format!(" ({:+.2}%)", difference / a * 100.0));
+            }
+            (
+                text,
+                if (difference < 0.0) == lower {
+                    "gain"
+                } else {
+                    "loss"
+                },
+            )
+        }
+        None => ("Unverified".into(), "unknown"),
+    };
+    format!(
+        "<div class=\"budget-stat\"><span>{label}</span><strong>{} <span aria-hidden=\"true\">→</span> {}</strong><small class=\"{class}\">{delta}</small></div>",
+        number(a),
+        number(b)
+    )
+}
+fn budget_comparison(s: &State) -> String {
+    let [left_cap, right_cap] = s.saved.budget_caps;
+    let mut html = format!(
+        "<details id=\"budget-comparison\" class=\"panel budget-comparison\" {}><summary>Compare switches · {left_cap} vs {right_cap}</summary>",
+        if s.budget_comparison_open { "open" } else { "" }
+    );
+    if !s.budget_comparison_open {
+        html.push_str("</details>");
+        return html;
+    }
+    let comparison =
+        crate::tradeoffs::compare(&s.saved.snapshot, &s.saved.options, left_cap, right_cap);
+    html.push_str("<div class=\"budget-body\"><div class=\"budget-cap-fields\">");
+    for (id, label, cap) in [
+        ("left", "From cap", left_cap),
+        ("right", "To cap", right_cap),
+    ] {
+        html.push_str(&format!("<label>{label}<input id=\"budget-cap-{id}\" type=\"number\" min=\"0\" max=\"11\" value=\"{cap}\"></label>"));
+    }
+    html.push_str("</div><p class=\"small-note\">Choose any two caps, 0–11. Same account, prayers and supplies; each cap repacks the bag.</p><div class=\"budget-sides\">");
+    for (key, side) in [("left", &comparison.left), ("right", &comparison.right)] {
+        html.push_str(&format!("<div class=\"budget-side\"><h3>{}-item cap</h3><dl><div><dt>Switch pieces</dt><dd>{}</dd></div><div><dt>Largest switch</dt><dd>{}</dd></div><div><dt>Peak bag</dt><dd>{}/28</dd></div></dl><button data-action=\"budget-apply:{key}\" class=\"phase\" {}>Use {}</button>",side.cap,side.carried_gear,side.max_pair,side.max_inventory_space,if side.feasible{""}else{"disabled"},side.cap));
+        if !side.feasible {
+            html.push_str("<p class=\"budget-blocked\">No setup fits this cap.</p>");
+        }
+        if !side.prep_blockers.is_empty() {
+            html.push_str("<details><summary>Preparation gaps</summary><ul>");
+            for item in &side.prep_blockers {
+                html.push_str(&format!("<li>{}</li>", esc(item)));
+            }
+            html.push_str("</ul></details>");
+        }
+        html.push_str("</div>");
+    }
+    html.push_str("</div>");
+    if comparison.left.feasible && comparison.right.feasible {
+        let extra = comparison.right.max_inventory_space as i32
+            - comparison.left.max_inventory_space as i32;
+        html.push_str(&format!(
+            "<p class=\"budget-space\">{extra:+} peak bag slots at the {}-item cap.</p>",
+            right_cap
+        ));
+        if !comparison.added_gear.is_empty() || !comparison.removed_gear.is_empty() {
+            html.push_str("<details class=\"budget-gear\"><summary>Gear that changes</summary>");
+            for (label, ids) in [
+                ("Added", &comparison.added_gear),
+                ("Removed", &comparison.removed_gear),
+            ] {
+                if !ids.is_empty() {
+                    html.push_str(&format!(
+                        "<p><strong>{label}:</strong> {}.</p>",
+                        ids.iter()
+                            .map(|id| format!("{} {}", image(*id), esc(&planner::item_name(*id))))
+                            .collect::<Vec<_>>()
+                            .join(", ")
+                    ));
+                }
+            }
+            html.push_str("</details>");
+        }
+    }
+    let mut keys = Vec::<(i32, String, String)>::new();
+    for window in comparison
+        .left
+        .windows
+        .iter()
+        .chain(&comparison.right.windows)
+    {
+        if !keys
+            .iter()
+            .any(|(id, style, _)| *id == window.target_id && style == &window.style)
+        {
+            keys.push((window.target_id, window.style.clone(), window.name.clone()));
+        }
+    }
+    let key_value = |id: i32, style: &str| format!("{id}:{style}");
+    let default_key = keys
+        .iter()
+        .max_by(|(aid, astyle, _), (bid, bstyle, _)| {
+            let score = |id: i32, style: &str| {
+                let a = comparison
+                    .left
+                    .windows
+                    .iter()
+                    .find(|w| w.target_id == id && w.style == style);
+                let b = comparison
+                    .right
+                    .windows
+                    .iter()
+                    .find(|w| w.target_id == id && w.style == style);
+                a.zip(b)
+                    .map(|(a, b)| {
+                        (b.metrics.dps.unwrap_or(0.0) - a.metrics.dps.unwrap_or(0.0)).abs() * 1000.0
+                            + (b.metrics.prayer_per_minute - a.metrics.prayer_per_minute).abs()
+                    })
+                    .unwrap_or(0.0)
+            };
+            score(*aid, astyle).total_cmp(&score(*bid, bstyle))
+        })
+        .map(|(id, style, _)| key_value(*id, style));
+    let selected = s
+        .budget_window
+        .as_ref()
+        .filter(|value| {
+            keys.iter()
+                .any(|(id, style, _)| key_value(*id, style) == **value)
+        })
+        .cloned()
+        .or(default_key);
+    if let Some(selected) = selected {
+        html.push_str("<label class=\"budget-window\">Attack window<select id=\"budget-window\">");
+        for (id, style, name) in &keys {
+            let value = key_value(*id, style);
+            html.push_str(&format!(
+                "<option value=\"{}\" {}>{} · {}</option>",
+                esc(&value),
+                if value == selected { "selected" } else { "" },
+                esc(name),
+                esc(style)
+            ));
+        }
+        html.push_str("</select></label>");
+        let find = |side: &crate::tradeoffs::Budget| {
+            side.windows
+                .iter()
+                .find(|w| key_value(w.target_id, &w.style) == selected)
+                .map(|w| w.metrics.clone())
+        };
+        let a = find(&comparison.left);
+        let b = find(&comparison.right);
+        let ad = a.as_ref().and_then(|m| m.dps);
+        let bd = b.as_ref().and_then(|m| m.dps);
+        let ap = a
+            .as_ref()
+            .filter(|m| !m.defence.is_empty())
+            .map(|m| m.prayer_per_minute);
+        let bp = b
+            .as_ref()
+            .filter(|m| !m.defence.is_empty())
+            .map(|m| m.prayer_per_minute);
+        html.push_str(&format!(
+            "<div class=\"budget-metrics\">{}{}</div>",
+            budget_stat("Outgoing DPS", ad, bd, 3, false, true),
+            budget_stat("Prayer / minute", ap, bp, 2, true, false)
+        ));
+        if ad.is_none() || bd.is_none() {
+            for reason in a
+                .iter()
+                .chain(b.iter())
+                .filter_map(|m| m.dps_reason.as_deref())
+                .collect::<std::collections::BTreeSet<_>>()
+            {
+                html.push_str(&format!("<p class=\"small-note\">{}</p>", esc(reason)));
+            }
+        }
+        let attacks = a
+            .iter()
+            .chain(b.iter())
+            .flat_map(|m| m.incoming.iter().map(|v| v.attack.clone()))
+            .collect::<std::collections::BTreeSet<_>>();
+        if !attacks.is_empty() {
+            let attack = s
+                .budget_incoming
+                .as_ref()
+                .filter(|v| attacks.contains(*v))
+                .cloned()
+                .unwrap_or_else(|| attacks.iter().next().unwrap().clone());
+            html.push_str("<label>Incoming scenario<select id=\"budget-incoming\">");
+            for name in attacks {
+                html.push_str(&format!(
+                    "<option {}>{}</option>",
+                    if name == attack { "selected" } else { "" },
+                    esc(&name)
+                ));
+            }
+            html.push_str("</select></label>");
+            let incoming = |m: &Option<crate::tradeoffs::Metrics>| {
+                m.as_ref()
+                    .and_then(|m| m.incoming.iter().find(|v| v.attack == attack))
+                    .cloned()
+            };
+            let ai = incoming(&a);
+            let bi = incoming(&b);
+            html.push_str(&budget_stat(
+                "Incoming DPS",
+                ai.as_ref().and_then(|v| v.dps),
+                bi.as_ref().and_then(|v| v.dps),
+                3,
+                true,
+                true,
+            ));
+            let reasons = ai
+                .iter()
+                .chain(bi.iter())
+                .filter_map(|v| v.reason.as_deref())
+                .collect::<std::collections::BTreeSet<_>>();
+            for reason in reasons {
+                html.push_str(&format!("<p class=\"small-note\">{}</p>", esc(reason)));
+            }
+        }
+        let mut delta = BTreeMap::new();
+        for key in ["stab", "slash", "crush", "magic", "ranged"] {
+            if let Some((av, bv)) = a
+                .as_ref()
+                .and_then(|m| m.defence.get(key))
+                .zip(b.as_ref().and_then(|m| m.defence.get(key)))
+            {
+                delta.insert(key.to_string(), bv - av);
+            }
+        }
+        let changes = signed_defence(&delta);
+        html.push_str(&format!("<details class=\"budget-defence\"><summary>Defence bonuses{}</summary><table class=\"bonus-table\"><thead><tr><th>Type</th><th>{left_cap}</th><th>{right_cap}</th><th>Change</th></tr></thead><tbody>",if changes.is_empty(){String::new()}else{format!(" · {}",esc(&changes))}));
+        for (key, label) in [
+            ("stab", "Stab"),
+            ("slash", "Slash"),
+            ("crush", "Crush"),
+            ("magic", "Magic"),
+            ("ranged", "Ranged"),
+        ] {
+            let value = |m: &Option<crate::tradeoffs::Metrics>| {
+                m.as_ref()
+                    .and_then(|m| m.defence.get(key))
+                    .map(|v| format!("{v:+}"))
+                    .unwrap_or_else(|| "—".into())
+            };
+            html.push_str(&format!(
+                "<tr><th>{label}</th><td>{}</td><td>{}</td><td>{}</td></tr>",
+                value(&a),
+                value(&b),
+                delta
+                    .get(key)
+                    .map(|v| format!("{v:+}"))
+                    .unwrap_or_else(|| "—".into())
+            ));
+        }
+        html.push_str("</tbody></table><p class=\"small-note\">Equipment bonuses. Damage taken uses the selected incoming scenario.</p></details>");
+        html.push_str("<details><summary>All attack windows</summary><div class=\"comparison-scroll\"><table class=\"bonus-table\"><thead><tr><th>Window</th><th>DPS</th><th>Prayer / min</th></tr></thead><tbody>");
+        for (id, style, name) in &keys {
+            let a = comparison
+                .left
+                .windows
+                .iter()
+                .find(|w| w.target_id == *id && w.style == *style);
+            let b = comparison
+                .right
+                .windows
+                .iter()
+                .find(|w| w.target_id == *id && w.style == *style);
+            let dps = |w: Option<&crate::tradeoffs::Window>| {
+                w.and_then(|w| w.metrics.dps)
+                    .map(|v| format!("{v:.3}"))
+                    .unwrap_or_else(|| "—".into())
+            };
+            let pray = |w: Option<&crate::tradeoffs::Window>| {
+                w.filter(|w| !w.metrics.defence.is_empty())
+                    .map(|w| format!("{:.2}", w.metrics.prayer_per_minute))
+                    .unwrap_or_else(|| "—".into())
+            };
+            html.push_str(&format!(
+                "<tr><th>{} · {}</th><td>{} → {}</td><td>{} → {}</td></tr>",
+                esc(name),
+                esc(style),
+                dps(a),
+                dps(b),
+                pray(a),
+                pray(b)
+            ));
+        }
+        html.push_str("</tbody></table></div></details>");
+    }
+    html.push_str("<details><summary>Coverage & assumptions</summary><ul>");
+    for note in comparison
+        .notes
+        .iter()
+        .chain(&comparison.left.notes)
+        .chain(&comparison.right.notes)
+        .collect::<std::collections::BTreeSet<_>>()
+    {
+        html.push_str(&format!("<li>{}</li>", esc(note)));
+    }
+    html.push_str("</ul></details><p class=\"small-note\">Per attack window, with current prayers and boosts. Unverified values stay blank.</p></div></details>");
+    html
+}
+
 fn switch_panel(s: &State, p: &Plan) -> String {
     if s.shared_setup.is_some()
+        || s.budget_comparison_open
         || p.optimization.is_none()
             && s.saved.options.max_switches.is_none()
             && encounter_targets(s).len() <= 1
@@ -3538,7 +4079,7 @@ fn switch_panel(s: &State, p: &Plan) -> String {
         return String::new();
     }
     let mut html = String::from(
-        "<section class=\"panel switch-panel\"><div class=\"panel-heading\"><h2>Switch comparison</h2></div><div class=\"combat-body\"><details><summary>Phase priorities</summary><p>1 is normal. Increase to favour a phase; 0 gives it the lowest priority.</p>",
+        "<section class=\"panel switch-panel\"><div class=\"panel-heading\"><h2>Current setup details</h2></div><div class=\"combat-body\"><details><summary>Phase priorities</summary><p>1 is normal. Increase to favour a phase; 0 gives it the lowest priority.</p>",
     );
     let mut priority_ids = std::collections::BTreeSet::new();
     for id in encounter_targets(s)

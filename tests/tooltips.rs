@@ -17,6 +17,7 @@ fn alternative() -> Alternative {
 
 #[test]
 fn tooltip_colors_benefits_and_costs_including_inverse_prayer_drain() {
+    tooltip::install_icons(include_str!("../assets/item-icons-pack.json")).unwrap();
     let mut choice = alternative();
     let html = tooltip::render(
         "Ring: Current\nChosen for this phase.",

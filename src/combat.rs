@@ -365,6 +365,14 @@ pub fn calculate_configured(
     }
     let toa = crate::encounters::mechanics().toa_ids.contains(&monster.id);
     let mut b = bonuses_in_context(set, toa);
+    if style == "Ranged"
+        && rule.family.quiver_ammo
+        && set[13].is_some_and(|ammo| rule.family.ammo.contains(&ammo))
+        && rules::equipped_effect(set, "charged_quiver")
+    {
+        *b.offensive.entry("ranged".into()).or_default() += 10;
+        *b.other.entry("ranged_str".into()).or_default() += 1;
+    }
     if !rule.family.internal_ammo.is_empty() {
         let dart = rules::internal_ammo(member, weapon, settings).ok_or_else(|| {
             format!(
@@ -395,6 +403,13 @@ pub fn calculate_configured(
         *magic = (*magic * factor).min(1000);
     }
     if style == "Magic" {
+        if rule.has(Effect::SmokeStaff)
+            && rules::spells()
+                .iter()
+                .any(|r| r.name == spell && r.family == "wind")
+        {
+            *b.other.entry("magic_str".into()).or_default() += 100;
+        }
         if rules::spells()
             .iter()
             .any(|r| r.name == spell && r.family == "ancient")
@@ -587,7 +602,39 @@ pub fn calculate_configured(
                 effective = effective * 29 / 20;
             }
             let base_a = effective * (get(&b.offensive, "magic") as i64 + 64);
-            let mut a = base_a * accuracy_bonus[0] / accuracy_bonus[1];
+            let smoke = rule.has(Effect::SmokeStaff)
+                && rules::spells()
+                    .iter()
+                    .any(|r| r.name == spell && r.family == "wind");
+            // Smoke accuracy adds to Salve's additive percentage. Task accuracy
+            // instead multiplies after smoke and dragonbane, with its own floor.
+            let on_task = target_bonus.is_some_and(|bonus| bonus.slayer_task);
+            let mut a = if smoke {
+                if on_task {
+                    base_a * 110 / 100
+                } else {
+                    base_a * (accuracy_bonus[0] * 10 + accuracy_bonus[1]) / (accuracy_bonus[1] * 10)
+                }
+            } else if on_task {
+                base_a
+            } else {
+                base_a * accuracy_bonus[0] / accuracy_bonus[1]
+            };
+            // Magic dragonbane applies before additive elemental weakness,
+            // unlike the later melee/ranged multiplier stage.
+            for multiplier in &rule.weapon.multipliers {
+                if monster.attributes.contains(&multiplier.attribute) {
+                    if multiplier.accuracy {
+                        a = a * multiplier.numerator / multiplier.denominator;
+                    }
+                    if multiplier.damage {
+                        max = max * multiplier.numerator / multiplier.denominator;
+                    }
+                }
+            }
+            if on_task {
+                a = a * accuracy_bonus[0] / accuracy_bonus[1];
+            }
             if let Some(element) = rules::spells()
                 .iter()
                 .find(|r| r.name == spell)
@@ -701,6 +748,9 @@ pub fn calculate_configured(
         }
     }
     for multiplier in &rule.weapon.multipliers {
+        if style == "Magic" {
+            continue;
+        }
         if monster.attributes.contains(&multiplier.attribute) {
             if multiplier.accuracy {
                 attack = attack * multiplier.numerator / multiplier.denominator;
@@ -786,7 +836,14 @@ pub fn calculate_configured(
     }
     let respiratory = crate::monster_rules::profile(monster.id)
         .is_some_and(|p| p.kind == crate::monster_rules::Kind::Respiratory);
-    let respiratory_finisher = respiratory && (rule.has(Effect::Demonbane) || demonbane_spell);
+    let respiratory_finisher = respiratory
+        && (rule.has(Effect::Demonbane)
+            || demonbane_spell
+            || rule
+                .weapon
+                .multipliers
+                .iter()
+                .any(|m| m.attribute == "demon"));
     if respiratory_finisher {
         max_hit = monster.skills.get("hp").copied().unwrap_or(50);
         min_hit = max_hit;
@@ -857,7 +914,23 @@ pub fn calculate_configured(
             .any(|r| r.name == spell && r.frostweaver_percent > 0)
         && !hit_rule.is_some_and(|r| !r.allowed_styles.iter().any(|s| s == "Melee"))
         && crate::monster_rules::check_weapon(monster.id, "Melee", weapon).is_ok();
+    let twinflame = style == "Magic"
+        && rule.has(Effect::Twinflame)
+        && rules::spells().iter().any(|r| {
+            r.name == spell
+                && r.family == "wind"
+                && ["Bolt", "Blast", "Wave"]
+                    .iter()
+                    .any(|suffix| r.name.ends_with(suffix))
+        });
+    if twinflame && (always_max || warden_p2) {
+        return Err(
+            "Twinflame's extra hit in guaranteed-hit and Wardens P2 windows is not verified yet."
+                .into(),
+        );
+    }
     let per_splat_npc = rule.has(Effect::TwinHits)
+        || twinflame
         || rule.has(Effect::Macuahuitl)
         || rule.has(Effect::Scythe)
         || frostweaver
@@ -873,9 +946,9 @@ pub fn calculate_configured(
         damage_factor,
         critical: style == "Magic" && rules::set_effect(set, "ahrim_damned"),
         extra_half: style == "Ranged" && rules::set_effect(set, "karil_damned"),
+        extra_two_fifths: twinflame,
         final_divisor: if damage_divisor > 1
-            && style == "Ranged"
-            && rules::set_effect(set, "karil_damned")
+            && (twinflame || style == "Ranged" && rules::set_effect(set, "karil_damned"))
         {
             damage_divisor
         } else {

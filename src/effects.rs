@@ -10,6 +10,7 @@ pub struct SetHitEffects {
     pub damage_factor: [i64; 2],
     pub critical: bool,
     pub extra_half: bool,
+    pub extra_two_fifths: bool,
     pub final_divisor: i32,
 }
 impl Default for SetHitEffects {
@@ -19,6 +20,7 @@ impl Default for SetHitEffects {
             damage_factor: [1, 1],
             critical: false,
             extra_half: false,
+            extra_two_fifths: false,
             final_divisor: 1,
         }
     }
@@ -39,6 +41,11 @@ pub fn set_hit_outcomes(hits: &[(i32, f64)], effects: &SetHitEffects) -> Vec<(Ve
             if effects.extra_half {
                 result.push((vec![damage.max(1)], p * q * 0.75));
                 result.push((vec![damage.max(1), (damage / 2).max(1)], p * q * 0.25));
+            } else if effects.extra_two_fifths {
+                // Twinflame follows the accurate-zero rule. Its second splat
+                // shares the first damage roll and may remain zero.
+                let first = damage.max(1);
+                result.push((vec![first, first * 2 / 5], p * q));
             } else {
                 result.push((vec![damage.max(1)], p * q));
             }

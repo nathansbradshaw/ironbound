@@ -1,4 +1,4 @@
-//! Escaped, structured item comparisons. Icons come from the bundled public pack.
+//! Escaped, structured item comparisons. One public icon pack loads separately.
 use crate::{alternatives::Alternative, planner};
 use std::{collections::BTreeMap, sync::OnceLock};
 
@@ -10,17 +10,22 @@ fn esc(text: &str) -> String {
         .replace('\'', "&#39;")
 }
 
+static ICONS: OnceLock<BTreeMap<i32, String>> = OnceLock::new();
+
+pub fn install_icons(raw: &str) -> Result<(), serde_json::Error> {
+    let icons = serde_json::from_str(raw)?;
+    let _ = ICONS.set(icons);
+    Ok(())
+}
+
 pub fn item_icon(id: i32) -> String {
-    static ICONS: OnceLock<BTreeMap<i32, String>> = OnceLock::new();
-    let icons = ICONS.get_or_init(|| {
-        serde_json::from_str(include_str!("../assets/item-icons-pack.json"))
-            .expect("public icon pack")
-    });
-    match icons.get(&id) {
+    match ICONS.get().and_then(|icons| icons.get(&id)) {
         Some(data) => {
             format!(r#"<img src="data:image/png;base64,{data}" alt="" width="32" height="32">"#)
         }
-        None => "<span class=\"unknown-item\" aria-hidden=\"true\">?</span>".into(),
+        None => format!(
+            r#"<span class="unknown-item" data-item-icon="{id}" aria-hidden="true">?</span>"#
+        ),
     }
 }
 

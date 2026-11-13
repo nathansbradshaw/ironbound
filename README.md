@@ -98,6 +98,12 @@ Share links contain the encounter, carried gear, quantities, switches and combat
 <details>
 <summary><strong>Calculation details</strong></summary>
 
+[Recent equipment coverage](docs/recent-equipment.md) includes Twinflame, Eye of
+Ayak, Zorya's tome, the dragon hunter wand, Scorching bow and newer melee weapons.
+Charged Dizana quiver bonuses require compatible arrows/bolts. Oathplate, Torva,
+Masori, Hueycoatl hide, Sunfire fanatic and recent jewellery use reviewed wear
+requirements. Special attacks and the remaining equipment gaps stay labelled.
+
 Weapon IDs map to shared families and reusable mechanics. Exact variants stay separate: owning a basic Keris partisan does not unlock any upgrade. Families supply attack types, stances, ammunition, requirements, rune recipes and effects to both the planner and calculator.
 
 Defaults use unboosted levels. Selected boosts use peak current levels; wear requirements still use base levels. Supported prayers affect combat and drain. Reviewed outgoing calculations include melee, bows/crossbows, loaded blowpipes, powered staves, all 20 elemental Strike/Bolt/Blast/Wave/Surge spells and Iban Blast, with supported Fang, Keris, bolt and Shadow effects. Elemental damage tiers use base Magic; boosted levels unlock casts and affect accuracy. Only matching elements gain weakness bonuses. Charged Fire/Water/Earth tomes have their supported bonuses and rune supply; check pages manually. ToA assumes solo, path level 0 and invocation levels 0–150. Combat offers explicit Wardens obelisk, unprotected P2 shield, melee core and vulnerable P3 comparisons; the complete Wardens cycle remains unverified.
@@ -127,7 +133,7 @@ Inventory Setups preserves equipment and inventory positions/quantities; Bank Ta
 <details>
 <summary><strong>Build, test and publish</strong></summary>
 
-Requires Rust, the `wasm32-unknown-unknown` target and wasm-bindgen-cli **0.2.127**.
+Requires Rust, the `wasm32-unknown-unknown` target, wasm-bindgen-cli **0.2.127**, and `gzip`.
 
 ```sh
 cargo test --locked -j 2
@@ -186,3 +192,9 @@ Open **Gear & requirements** to combine filters, for example **Well equipped** +
 **Nervous about the Wilderness?** In **Boss bestiary**, choose **Avoid Wilderness** or **Wilderness only**. **Scaredy cat · 3 valuable items** rerates exposed bosses with three valuable pieces plus owned cheap gear. Choose a filler ceiling (default 10k GP per piece/ammo stack), expand a card to see the exact kit and full-kit comparison, then select the boss to keep that kit in the planner. **Return to full gear** removes the restriction. Price estimates use the displayed public snapshot; missing values consume a valuable slot. Confirm **Items Kept on Death** in game while unskulled with **PK Skull Prevention** on. Supplies, charges, fees and loot add risk.
 
 **Kept items & death risk** appears after selecting a Wilderness boss or scaredy-cat kit. It uses the actual packed inventory, worn ammo and declared contents, with a GP breakdown for gear, supplies, runes, ammunition and charges. Protection ordering uses separate official-GE/reviewed death values; it does not reuse the cheap-gear threshold. Choose your skull/Protect Item scenario. For unreviewed values or ties, open **Complete risk details** and select the items shown as kept in-game, then enter missing base losses or remaining contents. **Known subtotal · incomplete** stays visible until all required values are resolved. Charge counts are actual starting contents, not simulator budgets. Declarations save privately, expire when the packed pool changes, and are never inherited by recipients of shared setups. Add entry fees, loot and unrepresented bag/pouch contents under **Other GP at risk**. This is estimated replacement/repair loss for standard-account Wilderness PvP, not a promise of protection or the PKer's loot value; UIM, Deadman and Trouver/grave mechanics remain outside its scope.
+
+Barrows incoming comparisons now distinguish Dharok's NPC health from your own
+armour-set health setting. In **Combat → Attack window & supply budget**, lower
+**Current target HP** to update his incoming damage. Verac keeps a separate
+protection-bypass branch; Protect from Melee reduces it but does not remove it.
+These are selected attacks, excluding prayer drain, tunnels and complete trips.

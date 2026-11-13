@@ -29,6 +29,7 @@ pub mod rules;
 mod set_search;
 pub mod setups;
 pub mod share;
+pub mod simulation;
 pub mod slayer;
 pub mod supplies;
 pub mod tooltip;

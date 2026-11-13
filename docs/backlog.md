@@ -33,9 +33,10 @@ dedicated encounter simulations.
 - [x] Vorkath: expose current-HP ruby bolts and an acid damage window with per-outcome rounding; verify finite-HP attack budgets with decreasing ruby procs.
 - [x] Normal Yama: distinguish the 71-HP final shadow flare, boss HP stages and full-health flare pairs; retain the explicit paired Judge model.
 - [x] ToA / Wardens: enable explicit obelisk, unprotected P2 shield, melee core and vulnerable P3 outgoing windows with pinned P2 observations, independent loadouts and core scaling checks.
-- [ ] Vorkath: model six-attack special cycles, freeze/spawn immunity, acid movement/healing and incoming mechanics before offering full encounter duration or consumption.
-- [ ] Normal Yama: validate movement/transition timing, actual flare counts, regeneration and incoming/special mechanics.
-- [ ] ToA / Wardens: validate shield rotations/regeneration, core exposure/transfer/downs, skulls, enrage healing/reset and incoming mechanics. Current outgoing windows do not establish a full Wardens simulation.
+- [x] Vorkath: add a complete seeded fight timeline with alternating six-attack special cycles, freeze/spawn immunity, acid damage/healing and explicit execution/consumption assumptions.
+- [x] Normal Yama: carry boss HP through transitions and both Judges; simulate flare cadence, deadlines, regeneration, healing and final-phase workloads using editable execution assumptions.
+- [x] ToA / Wardens: simulate the obelisk, shield rotations, repeated core exposure/transfer/downs, skull sets and enrage healing/Defence reset. Solo Wardens only; earlier raid rooms are excluded.
+- [ ] Calibrate all three scenario timelines and incoming damage against actual encounter traces. Spatial pathing, mechanic-changing invocations/contracts and excluded effects are not gameplay-validated by deterministic tests. See [full-fight model assumptions](full-fight-simulation.md).
 - [ ] Later coverage: Challenge/Hard/Expert scaling, full-wave encounters and other unsupported bosses. Catalog presence alone does not close a mechanics task.
 
 ## 4. Make trip assumptions editable
@@ -44,7 +45,8 @@ dedicated encounter simulations.
 - [x] Keep the chosen budget in backups and named setups.
 - [x] State that ammunition, charges and food/prayer counts are packing assumptions, not a kills-per-trip prediction.
 - [x] Make the ammunition packing budget editable throughout selection, phase previews, carried-stock validation and both RuneLite export formats; keep 100 as the migration default. Increasing the budget resets the existing-loaded-darts confirmation.
-- [ ] Follow-up: independently verified consumption and changing-HP encounter simulation before offering automatic trip-duration or kill-count estimates.
+- [x] Add changing-HP full-fight consumption scenarios, first-fight median/tail demand, packed-supply coverage and stock-conserving trip distributions. Preserve actual bag constraints; report shortages rather than silently adding supplies.
+- [ ] Calibrate consumption against gameplay before presenting unqualified duration, survival or kill-count predictions.
 
 ## 5. Surface preparation unknowns
 

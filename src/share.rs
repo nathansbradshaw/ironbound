@@ -27,6 +27,8 @@ pub struct Setup {
     pub damage_tolerance: u32,
     #[serde(default, skip_serializing_if = "crate::efficient::is_zero_tolerance")]
     pub prayer_tolerance: u32,
+    #[serde(default)]
+    pub simulation: crate::simulation::Settings,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub recommended: Option<bool>,
     #[serde(default)]
@@ -59,6 +61,7 @@ impl Setup {
             switch_tolerance: o.switch_tolerance,
             damage_tolerance: o.damage_tolerance,
             prayer_tolerance: o.prayer_tolerance,
+            simulation: o.simulation.clone(),
             recommended: o.recommended,
             ranking: o.ranking.clone(),
             combat: {
@@ -119,6 +122,7 @@ impl Setup {
             || self.damage_tolerance > crate::efficient::MAX_TOLERANCE_PERCENT
             || self.prayer_tolerance > crate::efficient::MAX_TOLERANCE_PERCENT
             || !self.ranking.weights.valid()
+            || !self.simulation.valid()
             || !self.combat.valid()
             || self.version != 1
             || self.raid_level > 150
@@ -310,6 +314,7 @@ impl Setup {
             switch_tolerance: self.switch_tolerance,
             damage_tolerance: self.damage_tolerance,
             prayer_tolerance: self.prayer_tolerance,
+            simulation: self.simulation.clone(),
             recommended: self.recommended,
             ranking: self.ranking.clone(),
             combat: self.combat.clone(),

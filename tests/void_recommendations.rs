@@ -134,7 +134,9 @@ fn higher_dps_conventional_armour_can_beat_an_owned_full_set() {
 
 #[test]
 fn target_defence_changes_the_winner_with_the_same_owned_bank() {
-    let s = bank(RANGED);
+    let mut ids = RANGED.to_vec();
+    ids.push(2503); // Include the conventional body's accuracy as well as legs.
+    let s = bank(&ids);
     for recommended in [true, false] {
         for (id, expect_void) in [(1672, true), (1673, false)] {
             let o = options(id, "Ranged", recommended);
@@ -148,7 +150,7 @@ fn target_defence_changes_the_winner_with_the_same_owned_bank() {
 fn complete_sets_still_obey_the_shared_switch_and_inventory_budget() {
     let s = bank(&[
         21012, 21905, 11905, 11663, 11664, 13072, 13073, 8842, 3749, 2497, 2491, 7462, 4089, 4091,
-        4093, 4095,
+        4093, 4095, 8007,
     ]);
     let mut o = options(1673, "Magic", true);
     o.targets.push(Target {

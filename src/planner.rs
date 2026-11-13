@@ -829,6 +829,9 @@ fn refine_dps(
     // one-slot search cannot enter or leave a four-piece set reliably.
     let seeds = void_sets(set, style, m, owned, options);
     refine_dps_seed(set, style, boss, m, owned, catalog, options);
+    if seeds.is_empty() {
+        return;
+    }
     let mut trials = vec![set.clone()];
     for mut seed in seeds {
         let mut pinned = options.clone();

@@ -27,7 +27,7 @@ pub fn notes(set: &[Option<i32>], settings: &Settings) -> Vec<String> {
             notes.push("Ascension crossbows: one bolt per attack, two ticks on Rapid and three on Accurate. Ascension bolts only; diamond/onyx proc rates are halved, with the Kandarin multiplier applied. Onyx healing and ammunition recovery are excluded.".into());
         }
         if weapon.weapon.family == "ayak" {
-            notes.push("Charged powered weapon: normal attacks only. Verify loaded charges; special attacks, empowered follow-ups and energy rotations are excluded.".into());
+            notes.push("Eye of Ayak: its own special attack and drains are excluded. Normal powered attacks can supply fillers for a reviewed special-weapon swap. Verify loaded charges.".into());
         }
         if let Some(special) = &weapon.weapon.special {
             notes.push(format!("Special burst: {}% energy available; one activation costs {}%. Normal gear scores and full-fight simulation exclude specials, recovery and rotations.",settings.special_energy,special.energy));
@@ -36,12 +36,25 @@ pub fn notes(set: &[Option<i32>], settings: &Settings) -> Vec<String> {
             } else {
                 notes.push("Crimson kisten: Brutal Swing rolls accuracy four times against crush defence, then makes one damage hit in the matching 70–110% through 130–170% band. Attack bonus and stance use the selected attack style.".into());
             }
-            if settings.rotation.enabled {
-                notes.push(format!("Rotation: {} ticks, {} seeded trials, {}. Initial recovery pulse: {}. Fixed equipment restores 10% every {} ticks; full energy pauses recovery. No external restores, incoming damage, phase changes or mid-rotation switches.",settings.rotation.window_ticks,settings.rotation.trials,settings.rotation.policy.label(),if settings.rotation.next_pulse==0 {"fresh interval".into()} else {format!("{} ticks",settings.rotation.next_pulse)},crate::rotation::interval(crate::rotation::lightbearer(set))));
-            }
         }
         if weapon.weapon.family == "dragon_wand" {
             notes.push("Dragon hunter wand: standard and supported Ice casts; dragonbane applies before elemental weakness. Spell rune costs are packed normally; no free runes are inferred.".into());
+        }
+    }
+    if settings.rotation.enabled {
+        let cfg = &settings.rotation;
+        notes.push(format!("Rotation: {} ticks, {} seeded trials, {}. Seed {}. Initial recovery pulse: {}. Natural recovery restores 10% every {} ticks; full energy pauses recovery. No incoming damage or phase changes.",cfg.window_ticks,cfg.trials,cfg.policy.label(),cfg.seed,if cfg.next_pulse==0 {"fresh interval".into()} else {format!("{} ticks",cfg.next_pulse)},crate::rotation::interval(crate::rotation::lightbearer(set))));
+        if let Some(id) = cfg.swap_weapon {
+            notes.push(format!("Rotation comparison swap: {} ({}); {} extra ticks per setup change after the prior cooldown. A two-handed swap removes the shield; returning restores the original setup. Finish held Zorya follow-ups before switching away. Carry the swap weapon and displaced-item space separately; this comparison does not add them to the exported bag.",crate::planner::gear(id).map(|g|g.name.as_str()).unwrap_or("Unavailable swap"),if cfg.swap_style.is_empty(){"weapon default"}else{&cfg.swap_style},cfg.swap_delay));
+        }
+        if let Some(t) = cfg.surge_tick {
+            notes.push(format!("Rotation Surge: one owned dose at tick {t}, ready at tick {}. Restores up to 25%, 500-tick reuse cooldown; full-energy attempts consume no dose. Carry this dose separately; no potion is added to the exported bag.",cfg.surge_ready));
+        }
+        if let Some(t) = cfg.transfer_tick {
+            notes.push(format!("Rotation Energy Transfer: one confirmed cooperative arrival at tick {t}, restoring up to 100%. Caster energy/HP costs, travel and availability are not simulated."));
+        }
+        if let Some(t) = cfg.death_charge {
+            notes.push(format!("Rotation Death Charge: confirmed already active for {t} more ticks; one eligible target kill before expiry restores up to 15%. Verify unlocks, runes, range and last hit. No add kills or automatic recasts."));
         }
     }
     if rules::equipped_effect(set, "charged_quiver") {

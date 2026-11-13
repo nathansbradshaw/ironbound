@@ -77,8 +77,9 @@ future game fixes; the tests establish the chosen arithmetic, not a new game tes
 - Energy and held-buff assumptions save in private backups/share links and setup
   notes. They never alter normal DPS scores or automatically insert spec swaps.
 - [Timed rotations](energy-rotations.md) separately model natural recovery,
-  Lightbearer and chained activations with fixed equipment and normal fillers.
-  Other restores, actual charge balances, weapon swaps, complete encounter
+  Lightbearer, normal/special weapon swaps, Surge, confirmed Energy Transfer and
+  pre-cast Death Charge at an eligible kill, with explicit timing assumptions.
+  Additional restores, actual charge balances, arbitrary multi-spec sequences, complete encounter
   rotations and automatic special-weapon recommendations remain open.
 
 ## Sources and verification

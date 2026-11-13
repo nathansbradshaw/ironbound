@@ -133,7 +133,7 @@ fn unsupported_windows_and_shared_imports_do_not_invent_damage_benefits() {
     p.phases[1].name = o.targets[1].name();
     let reason = explanations::equipment(&bank, &o, &p, Some(1), 3);
     assert!(
-        reason.contains("damage benefits are unverified"),
+        reason.contains("DPS is unavailable for this setup"),
         "{reason}"
     );
     assert!(!reason.contains("modeled DPS"));

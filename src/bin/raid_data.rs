@@ -543,13 +543,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         w["defensive_override"]["flat_armour"] = json!(armour);
         w["defensive_override"]["magic_resistance"] = json!(resistance);
         if stun {
+            w["guaranteed_melee_accuracy"] = json!(true);
             for key in ["stab", "slash", "crush"] {
                 let n = w["defensive_override"][key].as_i64().unwrap();
                 w["defensive_override"][key] = json!(n - 100);
             }
         }
         w["comparison_alternative"] = json!(true);
-        b.probe(w,500,30000,"Pinned Smorks-HP armour state: physical flat armour and Magic resistance apply to each accurate splat. Stun instead lowers all three melee defence bonuses by 100 at the recorded unempowered armour. HP is a comparison point; empowerment/stun uptime, cannonballs, team scaling, incoming damage and full supplies are not simulated.");
+        b.probe(w,500,30000,"Pinned Smorks-HP armour state: physical flat armour and Magic resistance apply to each accurate splat. Stun guarantees melee accuracy and lowers all three melee defence bonuses by 100 at the recorded unempowered armour. HP is a comparison point; empowerment/stun uptime, cannonballs, team scaling, incoming damage and full supplies are not simulated.");
     }
     for (id, label, explosion, overhead) in [
         (205020, "phase 4 · no curse", None, ""),

@@ -116,6 +116,8 @@ pub struct Window {
     #[serde(default)]
     pub guaranteed_accuracy: bool,
     #[serde(default)]
+    pub guaranteed_melee_accuracy: bool,
+    #[serde(default)]
     pub demonbane_only: bool,
     #[serde(default)]
     pub counter: Counter,

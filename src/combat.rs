@@ -405,8 +405,10 @@ pub(crate) fn calculate_mode(
         })
         .copied()
         .unwrap_or(0);
-    if flat_armour != 0 && style == "Ranged" && rule.has(Effect::Ascension) {
-        return Err("Ascension multi-bolt ordering against flat armour is not yet verified.".into());
+    if flat_armour != 0 && style == "Ranged" && rule.has(Effect::Ascension)
+        && ![16640, 16641].contains(&crate::encounters::source_npc_id(monster.id))
+    {
+        return Err("Ascension damage with flat armour is not yet verified for this encounter.".into());
     }
     if let Some(reason) = crate::encounters::limitation(monster) {
         return Err(reason.into());
@@ -1544,11 +1546,14 @@ pub(crate) fn calculate_mode(
         && instant_defeat.is_none()
         && !crate::encounters::window(monster.id).is_some_and(|w| w.invulnerable)
     {
-        if flat_armour != 0 || crate::encounters::window(monster.id).is_some_and(|w| {
+        // Stationary Archive body probes support ordinary burn buildup.
+        // They still do not establish phase duration or a raid kill workload.
+        let archive_burn = [16640,16641,16684].contains(&crate::encounters::source_npc_id(monster.id));
+        if flat_armour != 0 && !archive_burn || crate::encounters::window(monster.id).is_some_and(|w| {
             w.npc_damage.is_some()
                 || w.ocellus_explosions.is_some()
                 || w.raid_scale.is_some()
-                || w.hp_probe.is_some()
+                || w.hp_probe.is_some() && !archive_burn
                 || w.npc_id==11278
                 || w.huey_pillar
                 || crate::monster_rules::profile(monster.id).is_some_and(|p| {

@@ -348,7 +348,6 @@ fn efficient_result(s: &State) -> Option<crate::efficient::Suggestion> {
             crate::efficient::choose(
                 rows,
                 crate::efficient::Tolerances::from_options(&s.saved.options),
-                s.saved.options.max_switches.unwrap_or(11),
             )
         })
 }
@@ -714,46 +713,51 @@ fn image(id: i32) -> String {
 }
 
 fn load_item_icons() {
-    // Fetch the same complete public pack for everyone, never bank-derived URLs.
-    // It must not block Wasm initialization or recalculate the user's plan.
+    // Every client receives these same public packs. Equipment and supplies come
+    // first; other inventory art follows without recalculating or rerendering.
     spawn_local(async {
-        let load = async {
-            let url = document()
-                .get_element_by_id("item-icon-pack")
-                .and_then(|el| el.get_attribute("content"))
-                .ok_or(JsValue::NULL)?;
-            let response = JsFuture::from(window().fetch_with_str(&url))
-                .await?
-                .dyn_into::<web_sys::Response>()?;
-            if !response.ok() {
-                return Err(JsValue::NULL);
-            }
-            let raw = JsFuture::from(response.text()?)
-                .await?
-                .as_string()
-                .ok_or(JsValue::NULL)?;
-            crate::tooltip::install_icons(&raw).map_err(|_| JsValue::NULL)?;
-            let pending = document().query_selector_all("[data-item-icon]")?;
-            for index in 0..pending.length() {
-                if let Some(el) = pending
-                    .item(index)
-                    .and_then(|node| node.dyn_into::<Element>().ok())
-                {
-                    if let Some(id) = el
-                        .get_attribute("data-item-icon")
-                        .and_then(|id| id.parse().ok())
+        for pack in ["item-icon-core", "item-icon-pack"] {
+            let load = async {
+                let url = document()
+                    .get_element_by_id(pack)
+                    .and_then(|el| el.get_attribute("content"))
+                    .ok_or(JsValue::NULL)?;
+                let response = JsFuture::from(window().fetch_with_str(&url))
+                    .await?
+                    .dyn_into::<web_sys::Response>()?;
+                if !response.ok() {
+                    return Err(JsValue::NULL);
+                }
+                let buffer = JsFuture::from(response.array_buffer()?).await?;
+                crate::tooltip::install_compressed_icons(
+                    &js_sys::Uint8Array::new(&buffer).to_vec(),
+                )
+                .map_err(|_| JsValue::NULL)?;
+                let pending = document().query_selector_all("[data-item-icon]")?;
+                for index in 0..pending.length() {
+                    if let Some(el) = pending
+                        .item(index)
+                        .and_then(|n| n.dyn_into::<Element>().ok())
                     {
-                        el.set_outer_html(&image(id));
+                        if let Some(id) = el
+                            .get_attribute("data-item-icon")
+                            .and_then(|id| id.parse().ok())
+                        {
+                            let icon = image(id);
+                            if !icon.contains("data-item-icon") {
+                                el.set_outer_html(&icon);
+                            }
+                        }
                     }
                 }
+                Ok::<_, JsValue>(())
             }
-            Ok::<_, JsValue>(())
-        }
-        .await;
-        if load.is_err() {
-            web_sys::console::warn_1(&JsValue::from_str(
-                "Item artwork could not load; the planner is still available. Reload to retry.",
-            ));
+            .await;
+            if load.is_err() {
+                web_sys::console::warn_1(&JsValue::from_str(
+                    "Item artwork could not load; the planner is still available. Reload to retry.",
+                ));
+            }
         }
     });
 }
@@ -2319,7 +2323,7 @@ fn act(action: &str) {
                             s.saved.options.inventory_overrides.clear();
                             s.saved.options.inventory_quantities.clear();
                             s.phase=None; s.view="loadout".into();
-                            s.notice("Compact setup applied. Automatic inventory packing restored.",false);
+                            s.notice("Fewer-switch setup applied. Automatic inventory packing restored.",false);
                         }
                     }
                 }
@@ -3247,6 +3251,9 @@ fn encounter_detail(s: &State, p: &Plan) -> String {
             "Check calculation limits",
             "text-button",
         ));
+    }
+    if s.shared_setup.is_none() {
+        html.push_str(&slayer_tasks(s));
     }
     html.push_str("</section>");
     html
@@ -4994,11 +5001,12 @@ fn combat_style_controls(s: &State, set: &[Option<i32>], style: &str) -> String 
     html
 }
 fn task_buttons(s: &State, target: &planner::Monster) -> String {
+    let label = target.name.split(" · ").next().unwrap_or(&target.name);
     let on_task = crate::slayer::on_task(&s.saved.options.combat, target.id);
     let mut html = format!(
         "<div class=\"slayer-target\" role=\"group\" aria-label=\"Slayer task for {}\"><strong>{}</strong><div class=\"combat-subtype-options\">",
-        esc(&target.name),
-        esc(&target.name)
+        esc(label),
+        esc(label)
     );
     for (value, label, active) in [("off", "Off task", !on_task), ("on", "On task", on_task)] {
         html.push_str(&format!("<button class=\"phase {}\" data-action=\"slayer-task:{}:{value}\" aria-pressed=\"{active}\">{label}</button>", if active {"active"} else {""}, target.id));
@@ -5018,8 +5026,13 @@ fn slayer_tasks(s: &State) -> String {
     if targets.is_empty() {
         return String::new();
     }
-    let mut html = String::from(
-        "<section class=\"slayer-tasks\" aria-label=\"Slayer task settings\"><h3>Slayer task</h3><p class=\"small-note\">Set each assigned target on task. Gear recommendations and combat comparisons include eligible Slayer bonuses.</p>",
+    let mut html = format!(
+        "<section class=\"slayer-tasks {}\" aria-label=\"Slayer task settings\"><h3>Slayer task</h3>",
+        if targets.len() == 1 {
+            "single-target"
+        } else {
+            ""
+        }
     );
     for target in targets {
         html.push_str(&task_buttons(s, target));
@@ -5027,7 +5040,6 @@ fn slayer_tasks(s: &State) -> String {
     html.push_str("</section>");
     html
 }
-
 fn special_attack_panel(
     s: &State,
     member: &account::Member,
@@ -5452,9 +5464,6 @@ fn combat_panel(s: &State, p: &Plan) -> String {
         let stock_member = planner::member_with_stock(m, &stock);
         let m = &stock_member;
         html.push_str(&combat_assumptions(s, p, m, target, &set));
-        if crate::encounters::slayer_eligible(target.id) {
-            html.push_str(&task_buttons(s, target));
-        }
         html.push_str(&format!(
             "<p class=\"small-note slayer-bonus\">{}</p>",
             crate::slayer::bonus_note(&s.saved.options.combat, target, &set, style)
@@ -6019,7 +6028,6 @@ fn switch_controls(s: &State, p: &Plan) -> String {
     };
     let usage_html =
         format!("<p id=\"switch-usage\" class=\"switch-usage\" role=\"status\">{usage}</p>");
-    html.push_str(&slayer_tasks(s));
     let recommended = crate::recommendation::enabled(&s.saved.options);
     html.push_str(&format!("<label class=\"void-preference\"><input id=\"allow-void\" type=\"checkbox\" {}> Use Void armour <small>Normal and Elite Void · turn off to compare your other gear.</small></label>", if s.saved.options.exclude_void { "" } else { "checked" }));
     html.push_str(&format!(r#"<div class="recommendation-policy"><label>Gear approach<select id="recommendation-mode"><option value="recommended" {}>Recommended</option><option value="custom" {}>Custom weights</option></select></label><details><summary>Why this gear?</summary><p>{}</p>"#,if recommended{"selected"}else{""},if recommended{""}else{"selected"},esc(crate::recommendation::summary(&s.saved.options))));
@@ -6054,14 +6062,15 @@ fn switch_controls(s: &State, p: &Plan) -> String {
 
 fn efficient_panel(s: &State, _plan: &Plan) -> String {
     if !s.compact_open {
-        return "<details id=\"compact-setup\" class=\"panel efficient-panel\" aria-label=\"Compact setup recommendation\"><summary><h3>Save bag space</h3></summary></details>".into();
+        return "<details id=\"compact-setup\" class=\"panel efficient-panel\" aria-label=\"Fewer gear switches\"><summary><h3>Find fewer gear switches</h3></summary></details>".into();
     }
     ensure_efficient(s);
     let limits = crate::efficient::Tolerances::from_options(&s.saved.options);
     let mut html = format!(
-        "<details id=\"compact-setup\" class=\"panel efficient-panel\" aria-label=\"Compact setup recommendation\" {}><summary><h3>Save bag space</h3></summary><div class=\"efficient-body\">",
+        "<details id=\"compact-setup\" class=\"panel efficient-panel\" aria-label=\"Fewer gear switches\" {}><summary><h3>Find fewer gear switches</h3></summary><div class=\"efficient-body\">",
         if s.compact_open { "open" } else { "" }
     );
+    html.push_str("<p class=\"small-note\">Find the fewest changes per switch within your thresholds, across all switch limits.</p>");
     html.push_str(&format!("<details id=\"packing-limits\" class=\"packing-limits\" {}><summary>Allowances <span>{}% DPS · {}% damage · {}% prayer</span></summary><div class=\"tradeoff-limits\">",if s.packing_limits_open {"open"}else{""},limits.dps_loss,limits.damage_taken,limits.prayer_drain));
     for (id, label, value) in [
         ("switch-tolerance", "DPS loss", limits.dps_loss),
@@ -6080,7 +6089,7 @@ fn efficient_panel(s: &State, _plan: &Plan) -> String {
     }
     html.push_str("</div><p id=\"tolerance-help\" class=\"small-note\">Effective encounter DPS. Prayer drain is points per minute; longer fights can use more prayer overall.</p></details>");
     let Some(result) = efficient_result(s) else {
-        html.push_str("<p role=\"status\">Checking switch limits…</p></div></details>");
+        html.push_str("<p role=\"status\">Checking 0–11 changes per switch…</p></div></details>");
         return html;
     };
     let Some((selected, best)) = result.compact.zip(result.best) else {
@@ -6138,8 +6147,8 @@ fn efficient_panel(s: &State, _plan: &Plan) -> String {
     let using = s.saved.options.max_switches == Some(chosen.budget.cap)
         && s.saved.options.inventory_overrides.is_empty()
         && s.saved.options.inventory_quantities.is_empty();
-    html.push_str(&format!("<div class=\"efficient-actions\"><button class=\"phase\" data-action=\"efficient-apply\" {}>{}</button>{}</div>",if using {"disabled"}else{""},if using {"Using compact setup"}else if edited_inventory {"Repack & use compact setup"}else{"Use compact setup"},button("efficient-compare","Compare with fastest","text-button")));
-    html.push_str(&format!("<details><summary>How we choose</summary><p>Limits: {limits}. DPS loss uses effective encounter DPS, not a percentage increase in attack time. Damage checks include known incoming rates and total exposure where modelled. Prayer checks use drain rates, not total points consumed.</p><p>Tests caps 0–11 with the same bank, gear pins, combat settings and supply counts. Keeps identical workload coverage and your switch ceiling. Prioritizes peak bag space, then carried gear and actual changes. Applying restores automatic inventory packing. This bounded search does not prove a global BIS.</p><p>Fastest tested: {}-change cap · {} gear pieces · {:.1}s · {:.1} prayer points. Suggested cap: {}.</p></details></div></details>",benchmark.budget.cap,benchmark.budget.carried_gear,b.seconds,b.prayer_points,chosen.budget.cap));
+    html.push_str(&format!("<div class=\"efficient-actions\"><button class=\"phase\" data-action=\"efficient-apply\" {}>{}</button>{}</div>",if using {"disabled"}else{""},if using {"Using this setup"}else if edited_inventory {"Repack & use this setup"}else{"Use this setup"},button("efficient-compare","Compare with fastest","text-button")));
+    html.push_str(&format!("<details><summary>How we choose</summary><p>Limits: {limits}. DPS loss uses effective encounter DPS, not a percentage increase in attack time. Damage checks include known incoming rates and total exposure where modelled. Prayer checks use drain rates, not total points consumed.</p><p>Tests caps 0–11 with the same bank, gear pins, combat settings and supply counts. Keeps identical workload coverage and searches independently of your current switch limit. Prioritizes actual changes, then carried gear and peak bag space. Applying restores automatic inventory packing. This bounded search does not prove a global BIS.</p><p>Fastest tested: {}-change cap · {} gear pieces · {:.1}s · {:.1} prayer points. Suggested cap: {}.</p></details></div></details>",benchmark.budget.cap,benchmark.budget.carried_gear,b.seconds,b.prayer_points,chosen.budget.cap));
     html
 }
 

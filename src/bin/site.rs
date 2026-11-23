@@ -24,9 +24,8 @@ fn copy_tree(from: &Path, to: &Path) -> std::io::Result<()> {
     Ok(())
 }
 fn copy_runtime_assets() -> Result<(), Box<dyn std::error::Error>> {
-    // The complete public icon pack loads after startup, independently of banks.
+    // The same fixed public packs load for everyone, independently of banks.
     let mut assets = std::collections::BTreeSet::new();
-    assets.insert("item-icons-pack.json".to_string());
     for source in ["index.html", "style.css", "workspace.css"] {
         let text = fs::read_to_string(source)?;
         for reference in text.split("./assets/").skip(1) {
@@ -65,12 +64,29 @@ fn copy_runtime_assets() -> Result<(), Box<dyn std::error::Error>> {
         fs::create_dir_all(destination.parent().ok_or("Invalid runtime asset path")?)?;
         fs::copy(Path::new("assets").join(relative), destination)?;
     }
+    let icons = serde_json::from_slice(&fs::read("assets/item-icons-pack.json")?)?;
+    let (core, extra) = ironbound::icon_assets::packs(icons);
+    for (name, pack) in [("core", core), ("extra", extra)] {
+        let raw = serde_json::to_vec(&pack)?;
+        let compressed = ironbound::icon_assets::compress(&raw)?;
+        println!(
+            "Public icon {name}: {} icons, {} bytes JSON, {} bytes gzip",
+            pack.len(),
+            raw.len(),
+            compressed.len()
+        );
+        fs::write(
+            target.join(format!("item-icons-{name}.json.gz")),
+            compressed,
+        )?;
+    }
     println!(
         "Copied {} referenced runtime assets; source catalogs and duplicate icon PNGs stay out of the static release.",
         assets.len()
     );
     Ok(())
 }
+
 fn pack_icons() -> Result<(), Box<dyn std::error::Error>> {
     const TABLE: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
     let mut icons = std::collections::BTreeMap::new();
@@ -585,6 +601,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             fs::write("dist/pkg/ironbound_bg.wasm.gz", compressed.stdout)?;
             // All browser code and CSS share a content-derived cache key. A Pages
             // deployment must not combine a fresh page with cached older Wasm.
+            copy_runtime_assets()?;
+            let mut icon_version = 0xcbf29ce484222325u64;
+            for file in ["dist/assets/item-icons-core.json.gz", "dist/assets/item-icons-extra.json.gz"] {
+                for byte in fs::read(file)? {
+                    icon_version = (icon_version ^ u64::from(byte)).wrapping_mul(0x100000001b3);
+                }
+            }
+            let icon_version = format!("{icon_version:016x}");
             let mut version = 0xcbf29ce484222325u64;
             for file in [
                 "dist/pkg/ironbound_bg.wasm",
@@ -615,7 +639,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 .replace("./style.css",&format!("./style.css?v={version}"))
                 .replace("./workspace.css",&format!("./workspace.css?v={version}"))
                 .replace("./pkg/ironbound.js",&format!("./pkg/ironbound.js?v={version}"))
-                .replace("</head>",&format!("<meta id=\"item-icon-pack\" content=\"./assets/item-icons-pack.json?v={version}\"></head>"))
+                .replace("</head>",&format!("<meta id=\"item-icon-core\" content=\"./assets/item-icons-core.json.gz?v={icon_version}\"><meta id=\"item-icon-pack\" content=\"./assets/item-icons-extra.json.gz?v={icon_version}\"></head>"))
                 .replace("init().catch",&startup);
             if !index.contains("module_or_path") {
                 return Err(
@@ -626,7 +650,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             fs::write("dist/index.html", index)?;
             fs::copy("style.css", "dist/style.css")?;
             fs::copy("workspace.css", "dist/workspace.css")?;
-            copy_runtime_assets()?;
             let revision = Command::new("git").args(["rev-parse", "HEAD"]).output()?;
             if !revision.status.success() {
                 return Err("Cannot identify build source revision".into());

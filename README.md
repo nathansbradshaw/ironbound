@@ -56,11 +56,13 @@ If browser saving fails, a persistent warning offers a private backup and retry.
 ## Sailing
 
 1. **Change encounter → Sailing**, then choose one sea creature.
-2. In **Boat setup**, fit your boat and assign crew. **Confirm this boat & crew**, then tick any other **Available parts & crew** you own.
-3. Import your gear and supplies. Add supplies **Already aboard** only when they are missing from your import.
-4. Set your trip goal, repair kits and firing uptime. **Calculate current trip**, or **Recommend my boat → Use this setup**.
+2. **Boat setup → Add boat**: name it, choose fitted parts, then assign crew. Save up to **five boats**. Use **Edit** after upgrades.
+3. Import gear and supplies. Add **Supplies already aboard** only when absent from the import.
+4. Open **Trip supplies** to set your goal, kits and uptime. Choose **Calculate trip**, or **Find best setup → Use this setup**.
 
-Shows player/crew cannon DPS, hull damage and seeded trip completion with finite ammunition, repair kits, prayer and confirmed loaded charges. Both guns share stock; kits occupy cargo slots. Recommendations use confirmed boats/parts/crew and available gear/supplies, with a bounded search rather than a global best-in-slot guarantee. Confirmations stay private in account backups; shared links contain boat assumptions only.
+**Plan upgrades** shows what each fitting needs, what is in your imported bank, and the remaining bars/planks after crediting parts and nails you already own. Save future upgrades separately; **Mark upgrades fitted** only after building them. **Fleet upgrade materials** combines all saved plans without spending the same stock twice. Helm/mast construction and shipwright fees are outside this combat planner.
+
+Recommendations compare your saved boats with their fitted parts and assigned crew, using gear and supplies you own. Equipment uses the same OSRS slot layout as Gear. Private account transfer links and backups include your fleet; public setup links contain only the current boat assumptions.
 
 Trip survival is a stationary scenario estimate. Standard NPC hull defence rolls, cannon 0–max rolls and editable repair cadence are model assumptions, not gameplay calibration. Movement, delayed weapon burn and upgraded cannonballs are unsupported; those weapon forecasts are withheld. See **Calculation details** and [sources](SOURCES.md). Ordinary melee and personal protection prayers do not protect the hull.
 

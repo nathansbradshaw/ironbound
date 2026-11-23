@@ -258,3 +258,5 @@
 .encounter-detail .slayer-target>strong{font:18px Scape,monospace;color:#eee2c5}
 .encounter-detail .single-target .slayer-target>strong{display:none}
 .encounter-detail .slayer-target .phase{min-height:36px;font:18px Scape,monospace}
+.reduced-gear{grid-column:1/-1;margin:8px 0 0;padding-top:8px;border-top:1px solid #2b241a;font:18px Scape,monospace;color:#eee2c5}.reduced-gear .text-button{color:#ff981f;font:18px Scape,monospace}.removed-switch-items{list-style:none;padding:0;display:flex;flex-wrap:wrap;gap:8px 16px}.removed-switch-items li{display:flex;gap:6px;align-items:center;font:18px Scape,monospace}.removed-switch-items img{width:28px;height:28px;object-fit:contain}
+.efficient-body .bonus-table{table-layout:fixed;width:100%}.efficient-body .bonus-table th,.efficient-body .bonus-table td{white-space:normal;overflow-wrap:anywhere}

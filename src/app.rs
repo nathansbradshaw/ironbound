@@ -328,7 +328,7 @@ thread_local! {static STATE:RefCell<State>=RefCell::new(State::initial());}
 thread_local! {static LIVE_EDIT:Cell<u64>=const {Cell::new(0)};}
 struct EfficientCache {
     key: String,
-    result: Option<Vec<crate::efficient::Candidate>>,
+    result: Option<crate::efficient::Suggestion>,
 }
 thread_local! {static EFFICIENT:RefCell<Option<EfficientCache>>=const {RefCell::new(None)};}
 fn efficient_key(snapshot: &Snapshot, options: &Options) -> String {
@@ -336,21 +336,15 @@ fn efficient_key(snapshot: &Snapshot, options: &Options) -> String {
 }
 fn efficient_result(s: &State) -> Option<crate::efficient::Suggestion> {
     let key = efficient_key(&s.saved.snapshot, &s.saved.options);
-    EFFICIENT
-        .with(|cache| {
-            cache
-                .borrow()
-                .as_ref()
-                .filter(|c| c.key == key)
-                .and_then(|c| c.result.clone())
-        })
-        .map(|rows| {
-            crate::efficient::choose(
-                rows,
-                crate::efficient::Tolerances::from_options(&s.saved.options),
-            )
-        })
+    EFFICIENT.with(|cache| {
+        cache
+            .borrow()
+            .as_ref()
+            .filter(|c| c.key == key)
+            .and_then(|c| c.result.clone())
+    })
 }
+
 fn ensure_efficient(s: &State) {
     let key = efficient_key(&s.saved.snapshot, &s.saved.options);
     if EFFICIENT.with(|cache| cache.borrow().as_ref().is_some_and(|c| c.key == key)) {
@@ -365,8 +359,12 @@ fn ensure_efficient(s: &State) {
     let snapshot = s.saved.snapshot.clone();
     let options = s.saved.options.clone();
     spawn_local(async move {
-        let mut rows = Vec::new();
-        for cap in 0..=11 {
+        let mut pruning = crate::switch_pruning::Search::new(
+            &snapshot,
+            &options,
+            crate::efficient::Tolerances::from_options(&options),
+        );
+        loop {
             // Yield between bounded searches so fields and navigation stay usable.
             let promise = js_sys::Promise::new(&mut |resolve, _| {
                 let _ = window().set_timeout_with_callback_and_timeout_and_arguments_0(&resolve, 0);
@@ -389,14 +387,20 @@ fn ensure_efficient(s: &State) {
                 });
                 return;
             }
-            rows.push(crate::efficient::Candidate::new(crate::tradeoffs::budget(
-                &snapshot, &options, cap,
-            )));
+            if !pruning.step(&snapshot) {
+                break;
+            }
+            if let Some(status) = document().get_element_by_id("switch-search-status") {
+                status.set_text_content(Some(&format!(
+                    "Tested {} item removals…",
+                    pruning.trials.len()
+                )));
+            }
         }
         EFFICIENT.with(|cache| {
             *cache.borrow_mut() = Some(EfficientCache {
                 key,
-                result: Some(rows),
+                result: Some(pruning.finish()),
             })
         });
         let edit = document().active_element().filter(|e| {
@@ -2205,7 +2209,7 @@ fn act(action: &str) {
         s.message.clear();
         s.export_text = None;
         if action == "wilderness-off" {
-            s.saved.options.wilderness=None; s.saved.options.gear_overrides.clear();
+            s.saved.options.wilderness=None; s.saved.options.gear_overrides.clear(); s.saved.options.switch_pool = None; s.saved.options.switch_pins.clear();
             s.notice("Returned to unrestricted gear planning.",false);
         } else if action == "save-named" {
             let options = s.saved.options.clone();
@@ -2309,22 +2313,23 @@ fn act(action: &str) {
                 s.view = view.into();
                 s.edit_equipment = None;
             }
-        } else if action=="efficient-apply" || action=="efficient-compare" {
+        } else if action == "restore-switch-pool" {
+            s.saved.options.switch_pool = None; s.saved.options.switch_pins.clear();
+            s.saved.options.max_switches = None;
+            s.notice("Full gear pool restored.", false);
+        } else if action == "efficient-apply" {
             if s.shared_setup.is_none() {
-                if let Some(result)=efficient_result(&s) {
-                    if let Some((compact,best))=result.compact.zip(result.best) {
-                        let cap=result.candidates[compact].budget.cap;
-                        if action=="efficient-compare" {
-                            s.saved.budget_caps=[cap,result.candidates[best].budget.cap];
-                            s.budget_comparison_open=true;
-                            s.compact_open=false;
-                        } else {
-                            apply_number(&mut s,"max-switches",&cap.to_string());
-                            s.saved.options.inventory_overrides.clear();
-                            s.saved.options.inventory_quantities.clear();
-                            s.phase=None; s.view="loadout".into();
-                            s.notice("Fewer-switch setup applied. Automatic inventory packing restored.",false);
-                        }
+                if let Some(result) = efficient_result(&s) {
+                    if let Some(index) = result.compact {
+                        let choice = &result.candidates[index].budget;
+                        s.saved.options.max_switches = Some(choice.cap);
+                        s.saved.options.switch_pool = choice.options.switch_pool.clone();
+                        s.saved.options.switch_pins = choice.options.switch_pins.clone();
+                        s.saved.options.inventory_overrides.clear();
+                        s.saved.options.inventory_quantities.clear();
+                        s.phase = None;
+                        s.view = "loadout".into();
+                        s.notice("Reduced setup applied. Use Restore full gear to include every owned item again.",false);
                     }
                 }
             }
@@ -2396,7 +2401,7 @@ fn act(action: &str) {
             };
             s.saved.options.access_override = None;
             s.saved.options.started_barrows = None;
-            s.saved.options.gear_overrides.clear();
+            s.saved.options.gear_overrides.clear(); s.saved.options.switch_pool = None; s.saved.options.switch_pins.clear();
             s.saved.options.inventory_overrides.clear();
             s.saved.options.inventory_quantities.clear();
             s.shared_setup = None;
@@ -2439,7 +2444,7 @@ fn act(action: &str) {
                             .and_then(|m| m.level("Magic"))
                             .is_some_and(|level| level >= 59);
                     }
-                    s.saved.options.gear_overrides.clear();
+                    s.saved.options.gear_overrides.clear(); s.saved.options.switch_pool = None; s.saved.options.switch_pins.clear();
                     s.saved.options.targets = planner::recommend_encounter(
                         &s.saved.snapshot,
                         &s.saved.options,
@@ -2553,7 +2558,7 @@ fn act(action: &str) {
             if let Some(preferences) = s.ranking_draft.take() {
                 s.saved.options.ranking = preferences;
             }
-            s.saved.options.gear_overrides.clear();
+            s.saved.options.gear_overrides.clear(); s.saved.options.switch_pool = None; s.saved.options.switch_pins.clear();
             s.notice(
                 "Manual gear choices cleared. Automatic gear uses your priorities.",
                 false,
@@ -2898,11 +2903,6 @@ fn act(action: &str) {
         s.persist();
     });
     render();
-    if action == "efficient-compare" {
-        if let Some(panel) = document().get_element_by_id("budget-comparison") {
-            panel.scroll_into_view();
-        }
-    }
     if action.starts_with("tab:")
         || action.starts_with("choose-encounter:")
         || ["demo", "restore-account"].contains(&action)
@@ -2971,7 +2971,7 @@ fn import_raw(raw: &str) {
                     s.shared_setup = None;
                     s.saved.options.access_override = None;
                     s.saved.options.started_barrows = None;
-                    s.saved.options.gear_overrides.clear();
+                    s.saved.options.gear_overrides.clear(); s.saved.options.switch_pool = None; s.saved.options.switch_pins.clear();
                     let ready = s.saved.snapshot.selected().is_some_and(|m| {
                         [
                             "Attack",
@@ -6056,6 +6056,9 @@ fn switch_controls(s: &State, p: &Plan) -> String {
     }
     html.push_str("</details></div></details>");
     html.push_str(&usage_html);
+    if s.saved.options.switch_pool.is_some() {
+        html.push_str(&format!("<p class=\"reduced-gear\">Reduced gear pool · {}</p>",button("restore-switch-pool","Restore full gear","text-button")));
+    }
     html.push_str("</section>");
     html
 }
@@ -6070,7 +6073,7 @@ fn efficient_panel(s: &State, _plan: &Plan) -> String {
         "<details id=\"compact-setup\" class=\"panel efficient-panel\" aria-label=\"Fewer gear switches\" {}><summary><h3>Find fewer gear switches</h3></summary><div class=\"efficient-body\">",
         if s.compact_open { "open" } else { "" }
     );
-    html.push_str("<p class=\"small-note\">Find the fewest changes per switch within your thresholds, across all switch limits.</p>");
+    html.push_str("<p class=\"small-note\">Trim the full setup one item at a time, comparing shared armour within your thresholds.</p>");
     html.push_str(&format!("<details id=\"packing-limits\" class=\"packing-limits\" {}><summary>Allowances <span>{}% DPS · {}% damage · {}% prayer</span></summary><div class=\"tradeoff-limits\">",if s.packing_limits_open {"open"}else{""},limits.dps_loss,limits.damage_taken,limits.prayer_drain));
     for (id, label, value) in [
         ("switch-tolerance", "DPS loss", limits.dps_loss),
@@ -6087,9 +6090,9 @@ fn efficient_panel(s: &State, _plan: &Plan) -> String {
     ] {
         html.push_str(&format!("<label class=\"tolerance-control\">{label}<span><input id=\"{id}\" type=\"number\" min=\"0\" max=\"{}\" step=\"1\" inputmode=\"numeric\" value=\"{value}\" aria-describedby=\"tolerance-help\">%</span></label>",crate::efficient::MAX_TOLERANCE_PERCENT));
     }
-    html.push_str("</div><p id=\"tolerance-help\" class=\"small-note\">Effective encounter DPS. Prayer drain is points per minute; longer fights can use more prayer overall.</p></details>");
+    html.push_str("</div><p id=\"tolerance-help\" class=\"small-note\">Prayer limits compare each phase's drain. A longer fight can still use more prayer in total.</p></details>");
     let Some(result) = efficient_result(s) else {
-        html.push_str("<p role=\"status\">Checking 0–11 changes per switch…</p></div></details>");
+        html.push_str("<p id=\"switch-search-status\" role=\"status\">Testing switch items one at a time…</p></div></details>");
         return html;
     };
     let Some((selected, best)) = result.compact.zip(result.best) else {
@@ -6109,6 +6112,8 @@ fn efficient_panel(s: &State, _plan: &Plan) -> String {
     let loss = (1.0 - b.seconds / a.seconds) * 100.0;
     let dps_change = if loss.abs() < 0.05 {
         "Same DPS".into()
+    } else if loss < 0.0 {
+        format!("{:.1}% more DPS", -loss)
     } else {
         format!("{loss:.1}% less DPS")
     };
@@ -6139,19 +6144,87 @@ fn efficient_panel(s: &State, _plan: &Plan) -> String {
     if a.incoming_damage.is_none() || b.incoming_damage.is_none() {
         html.push_str("<p class=\"efficient-unknown\">Incoming damage remains unverified.</p>");
     }
+    let mut shared = String::new();
+    for slot in [0, 1, 2, 4, 5, 7, 9, 10, 12] {
+        let values: std::collections::BTreeSet<_> = std::iter::once(&chosen.budget.plan.equipment)
+            .chain(chosen.budget.plan.phases.iter().map(|p| &p.equipment))
+            .map(|set| set[slot])
+            .collect();
+        let old: std::collections::BTreeSet<_> = std::iter::once(&benchmark.budget.plan.equipment)
+            .chain(benchmark.budget.plan.phases.iter().map(|p| &p.equipment))
+            .map(|set| set[slot])
+            .collect();
+        if values.len() == 1 && values != old {
+            if let Some(id) = values.iter().next().copied().flatten() {
+                shared.push_str(&format!(
+                    "<li>{} <span>{}: {}</span></li>",
+                    image(id),
+                    planner::SLOTS[slot],
+                    esc(&planner::item_name(id))
+                ));
+            }
+        }
+    }
+    if !shared.is_empty() {
+        html.push_str(&format!(
+            "<p>Wear across styles:</p><ul class=\"removed-switch-items\">{shared}</ul>"
+        ));
+    }
     let edited_inventory = !s.saved.options.inventory_overrides.is_empty()
         || !s.saved.options.inventory_quantities.is_empty();
     if edited_inventory {
         html.push_str("<p class=\"small-note\">This suggestion uses automatic packing. Applying replaces your manual inventory slots.</p>");
     }
     let using = s.saved.options.max_switches == Some(chosen.budget.cap)
+        && s.saved.options.switch_pins == chosen.budget.options.switch_pins
+        && s.saved.options.switch_pool == chosen.budget.options.switch_pool
         && s.saved.options.inventory_overrides.is_empty()
         && s.saved.options.inventory_quantities.is_empty();
-    html.push_str(&format!("<div class=\"efficient-actions\"><button class=\"phase\" data-action=\"efficient-apply\" {}>{}</button>{}</div>",if using {"disabled"}else{""},if using {"Using this setup"}else if edited_inventory {"Repack & use this setup"}else{"Use this setup"},button("efficient-compare","Compare with fastest","text-button")));
-    html.push_str(&format!("<details><summary>How we choose</summary><p>Limits: {limits}. DPS loss uses effective encounter DPS, not a percentage increase in attack time. Damage checks include known incoming rates and total exposure where modelled. Prayer checks use drain rates, not total points consumed.</p><p>Tests caps 0–11 with the same bank, gear pins, combat settings and supply counts. Keeps identical workload coverage and searches independently of your current switch limit. Prioritizes actual changes, then carried gear and peak bag space. Applying restores automatic inventory packing. This bounded search does not prove a global BIS.</p><p>Fastest tested: {}-change cap · {} gear pieces · {:.1}s · {:.1} prayer points. Suggested cap: {}.</p></details></div></details>",benchmark.budget.cap,benchmark.budget.carried_gear,b.seconds,b.prayer_points,chosen.budget.cap));
+    html.push_str(&format!("<div class=\"efficient-actions\"><button class=\"phase\" data-action=\"efficient-apply\" {}>{}</button></div>",if using {"disabled"}else{""},if using {"Using this setup"}else if edited_inventory {"Repack & use this setup"}else{"Use this setup"}));
+    if !result.removed.is_empty() {
+        html.push_str("<p>Leave behind:</p><ul class=\"removed-switch-items\">");
+        for id in &result.removed {
+            html.push_str(&format!(
+                "<li>{} {}</li>",
+                image(*id),
+                esc(&planner::item_name(*id))
+            ));
+        }
+        html.push_str("</ul>");
+    }
+    if !result.added.is_empty() {
+        html.push_str("<p>Use instead:</p><ul class=\"removed-switch-items\">");
+        for id in &result.added {
+            html.push_str(&format!(
+                "<li>{} {}</li>",
+                image(*id),
+                esc(&planner::item_name(*id))
+            ));
+        }
+        html.push_str("</ul>");
+    }
+    html.push_str(&format!("<details><summary>Compare with full setup</summary><table class=\"bonus-table\"><thead><tr><th></th><th>Full</th><th>Reduced</th></tr></thead><tbody><tr><th>Changes per switch</th><td>{}</td><td>{}</td></tr><tr><th>Carried gear</th><td>{}</td><td>{}</td></tr><tr><th>Effective DPS</th><td>{:.3}</td><td>{:.3}</td></tr><tr><th>Prayer / min</th><td>{:.2}</td><td>{:.2}</td></tr></tbody></table></details>",benchmark.budget.max_pair,chosen.budget.max_pair,benchmark.budget.carried_gear,chosen.budget.carried_gear,b.effective_dps,a.effective_dps,b.prayer_per_minute,a.prayer_per_minute));
+    html.push_str("<details><summary>Individual switch checks</summary><p>Each check starts from the full setup. Shared armour and complete owned sets are compared too.</p><table class=\"bonus-table\"><thead><tr><th>Change</th><th>Use</th><th>Changes</th><th>DPS loss</th><th>Fits limits</th></tr></thead><tbody>");
+    for trial in result.trials.iter().filter(|t| t.round == 0) {
+        let loss = trial
+            .dps_loss
+            .map(|n| format!("{n:.2}%"))
+            .unwrap_or_else(|| "Unavailable".into());
+        html.push_str(&format!(
+            "<tr><th>{}</th><td>{}</td><td>{}</td><td>{loss}</td><td>{}</td></tr>",
+            esc(&trial.label),
+            esc(&trial.replacement),
+            trial
+                .changes
+                .map(|n| n.to_string())
+                .unwrap_or_else(|| "—".into()),
+            if trial.within_limits { "Yes" } else { "No" }
+        ));
+    }
+    html.push_str("</tbody></table></details>");
+    html.push_str(&format!("<details><summary>How we choose</summary><p>Start from the full owned setup with no current switch ceiling. Test removing each switch item and reusing the remaining gear. Also compare owned common armour and complete Void/Justiciar sets. Keep the valid reduction with the least DPS loss, then repeat. Every cumulative result must meet {limits} against the original full setup; losses never reset between steps. Manual gear pins and required supplies stay protected.</p><p>This greedy search stops when no tested removal or shared-armour reduction qualifies. It does not test every combination. Applying keeps this reduced gear pool until you restore full gear.</p></details></div></details>"));
     html
 }
-
 fn signed_defence(delta: &BTreeMap<String, i32>) -> String {
     let label = |key: &str| match key {
         "stab" => "stab",

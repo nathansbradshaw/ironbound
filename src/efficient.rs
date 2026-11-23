@@ -52,11 +52,10 @@ impl std::fmt::Display for Tolerances {
 pub fn cache_key(snapshot: &crate::account::Snapshot, options: &crate::planner::Options) -> String {
     let mut options = options.clone();
     // Trials set their own ceiling and repack both bags. Applying a lower cap
-    // must not move the benchmark or restart the identical twelve searches.
+    // must not move the benchmark. Threshold changes restart the pruning path.
     options.max_switches = None;
-    options.switch_tolerance = DEFAULT_TOLERANCE_PERCENT;
-    options.damage_tolerance = 0;
-    options.prayer_tolerance = 0;
+    options.switch_pool = None;
+    options.switch_pins.clear();
     options.simulation = Default::default();
     options.inventory_overrides.clear();
     options.inventory_quantities.clear();
@@ -88,7 +87,7 @@ impl Candidate {
             omissions: overview.omissions,
         }
     }
-    fn usable(&self) -> bool {
+    pub(crate) fn usable(&self) -> bool {
         self.budget.feasible
             && self.budget.prep_blockers.is_empty()
             && self.covered > 0
@@ -103,6 +102,9 @@ pub struct Suggestion {
     pub best: Option<usize>,
     pub compact: Option<usize>,
     pub reason: Option<String>,
+    pub removed: Vec<i32>,
+    pub added: Vec<i32>,
+    pub trials: Vec<crate::switch_pruning::Trial>,
 }
 fn within(value: f64, reference: f64, tolerance: u32) -> bool {
     value.is_finite()
@@ -160,11 +162,8 @@ pub fn qualifies(candidate: &Candidate, best: &Candidate, limits: Tolerances) ->
     // Workloads are identical, so effective DPS ratio is inverse attack time.
     let retained = 1.0 - limits.dps_loss.min(MAX_TOLERANCE_PERCENT) as f64 / 100.0;
     b.seconds / a.seconds + 1e-10 >= retained
-        && within(
-            a.prayer_per_minute,
-            b.prayer_per_minute,
-            limits.prayer_drain,
-        )
+        // Check each phase's drain directly. A slower phase can shift the
+        // encounter's time-weighted average without changing prayer bonuses.
         && best.budget.windows.iter().all(|reference| {
             if reference.metrics.defence.is_empty() {
                 return true;
@@ -191,6 +190,9 @@ pub fn choose(candidates: Vec<Candidate>, limits: Tolerances) -> Suggestion {
         best: None,
         compact: None,
         reason: None,
+        removed: vec![],
+        added: vec![],
+        trials: vec![],
     };
     // Establish coverage before speed. A fast plan cannot win by dropping a
     // difficult window. On equal coverage, use the largest tested cap's scope.

@@ -17,6 +17,9 @@ fn candidate(cap: usize, gear: usize, bag: usize, time: f64, prayer: f64) -> Can
     total.prayer_points = prayer;
     total.prayer_per_minute = prayer;
     total.incoming_damage = None;
+    for window in &mut row.budget.windows {
+        window.metrics.prayer_per_minute = prayer;
+    }
     row
 }
 fn limits(value: u32) -> efficient::Tolerances {
@@ -100,6 +103,9 @@ fn ten_percent_dps_loss_does_not_allow_extra_damage_or_prayer_drain() {
     policy.damage_taken = 5;
     assert!(efficient::qualifies(&light, &best, policy));
     light.totals.as_mut().unwrap().prayer_per_minute = 63.0;
+    for window in &mut light.budget.windows {
+        window.metrics.prayer_per_minute = 63.0;
+    }
     assert!(!efficient::qualifies(&light, &best, policy));
     policy.prayer_drain = 5;
     assert!(efficient::qualifies(&light, &best, policy));
@@ -143,7 +149,7 @@ fn dps_percentage_is_exact_and_longer_fights_can_cost_more_prayer_at_the_same_ra
 fn per_window_prayer_drain_cannot_hide_behind_a_lower_encounter_average() {
     let best = candidate(8, 8, 23, 100.0, 60.0);
     let mut light = candidate(2, 3, 18, 101.0, 60.0);
-    light.budget.windows[0].metrics.prayer_per_minute = 1.0;
+    light.budget.windows[0].metrics.prayer_per_minute = 61.0;
     assert!(!efficient::qualifies(
         &light,
         &best,
@@ -263,12 +269,14 @@ fn cache_reuses_caps_but_invalidates_actual_combat_bank_and_supply_changes() {
     let mut o = Options::default();
     let key = efficient::cache_key(&s, &o);
     o.max_switches = Some(2);
-    o.switch_tolerance = 10;
-    o.damage_tolerance = 10;
-    o.prayer_tolerance = 10;
+    o.switch_pool = Some([10828].into());
+    o.switch_pins.insert("Magic:0".into(), 10828);
     o.inventory_overrides.insert(0, 385);
     o.inventory_quantities.insert(0, 4);
     assert_eq!(efficient::cache_key(&s, &o), key);
+    o.switch_tolerance = 10;
+    assert_ne!(efficient::cache_key(&s, &o), key);
+    o.switch_tolerance = efficient::DEFAULT_TOLERANCE_PERCENT;
     o.food += 1;
     assert_ne!(efficient::cache_key(&s, &o), key);
     o.food -= 1;
@@ -302,4 +310,29 @@ fn public_demo_end_to_end_keeps_identical_work_and_respects_stock_and_limits() {
     assert_eq!(chosen.signature, best.signature);
     assert!(efficient::qualifies(chosen, best, Default::default()));
     assert!(chosen.budget.max_inventory_space <= best.budget.max_inventory_space);
+}
+
+#[test]
+fn phase_duration_shifts_do_not_create_a_prayer_gear_penalty() {
+    let mut full = candidate(8, 8, 23, 100.0, 15.0);
+    let mut reduced = candidate(7, 7, 22, 100.4, 15.003);
+    for (i, (a, b)) in full
+        .budget
+        .windows
+        .iter_mut()
+        .zip(&mut reduced.budget.windows)
+        .enumerate()
+    {
+        a.metrics.prayer_per_minute = 14.0 + i as f64;
+        b.metrics.prayer_per_minute = a.metrics.prayer_per_minute;
+    }
+    assert!(efficient::qualifies(
+        &reduced,
+        &full,
+        efficient::Tolerances {
+            dps_loss: 10,
+            damage_taken: 0,
+            prayer_drain: 0
+        }
+    ));
 }

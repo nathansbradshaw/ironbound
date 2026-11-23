@@ -255,6 +255,10 @@ pub struct Options {
     pub food: usize,
     pub prayer_potions: usize,
     pub excluded: BTreeSet<i32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub switch_pool: Option<BTreeSet<i32>>,
+    #[serde(skip_serializing_if = "BTreeMap::is_empty")]
+    pub switch_pins: BTreeMap<String, i32>,
     pub exclude_void: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub wilderness: Option<crate::wilderness::Kit>,
@@ -292,6 +296,8 @@ impl Default for Options {
             food: 8,
             prayer_potions: 3,
             excluded: BTreeSet::new(),
+            switch_pool: None,
+            switch_pins: BTreeMap::new(),
             exclude_void: false,
             wilderness: None,
             access_override: None,
@@ -315,6 +321,7 @@ impl Default for Options {
 impl Options {
     pub fn item_excluded(&self, id: i32) -> bool {
         self.excluded.contains(&id)
+            || self.switch_pool.as_ref().is_some_and(|pool| gear(id).is_some() && !pool.contains(&id))
             || self.exclude_void && crate::rules::void_piece(id)
             || self.wilderness.as_ref().is_some_and(|kit| !kit.permits(id))
     }
@@ -737,6 +744,9 @@ pub fn recommend_encounter(
 
 pub(crate) fn effective_options(o: &Options, m: &Member, owned: &BTreeMap<i32, u32>) -> Options {
     let mut options = o.clone();
+    for (key, id) in &o.switch_pins {
+        options.gear_overrides.entry(key.clone()).or_insert(*id);
+    }
     options.gear_overrides.retain(|key, id| {
         let Some((style, slot)) = key.split_once(':') else {
             return false;

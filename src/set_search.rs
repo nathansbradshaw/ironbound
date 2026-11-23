@@ -37,7 +37,7 @@ fn usable(
 
 /// Merge only truly equivalent variants: stats, weight and all passive
 /// memberships matter. Manual pins are filtered before this collapse.
-fn variants(
+pub(crate) fn variants(
     ids: impl Iterator<Item = i32>,
     slot: usize,
     style: &str,

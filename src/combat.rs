@@ -304,7 +304,7 @@ pub(crate) fn calculate_mode(
         );
     }
     let stats = stats(weapon).ok_or("Weapon stats unavailable.")?;
-    let rule = rules::weapon_for_style(weapon, style)
+    let mut rule = rules::weapon_for_style(weapon, style)
         .ok_or("This weapon's combat mechanics are not modelled for this style.")?;
     let special = rule.weapon.special.as_ref().map(|s| s.kind);
     let zorya_boost = mode != AttackMode::Normal && special == Some(rules::SpecialKind::Zorya);
@@ -332,6 +332,9 @@ pub(crate) fn calculate_mode(
                     "This weapon cannot cast {}. Choose a supported spell or a compatible spellcasting weapon.",
                     recipe.name
                 ));
+            }
+            if recipe.family == "demonbane" {
+                rule.family = &rules::registry().families["demonbane"];
             }
         }
     }

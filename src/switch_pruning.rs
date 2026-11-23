@@ -212,10 +212,12 @@ impl Search {
             &options,
             trial.max_pair.min(11),
         ));
-        let loss = trial
-            .totals
-            .as_ref()
-            .zip(self.baseline.totals.as_ref())
+        // A failed attack window can shorten the apparent workload. Do not
+        // present that missing damage as a DPS gain in the comparison table.
+        let comparable = trial.usable() && trial.signature == self.baseline.signature;
+        let loss = comparable
+            .then(|| trial.totals.as_ref().zip(self.baseline.totals.as_ref()))
+            .flatten()
             .map(|(a, b)| (1.0 - b.seconds / a.seconds) * 100.0);
         let improves = trial.budget.carried_gear < self.current.budget.carried_gear
             && trial.budget.max_pair <= self.current.budget.max_pair;
@@ -225,7 +227,7 @@ impl Search {
             item: removal.item,
             label: removal.label,
             replacement: removal.replacement,
-            changes: trial.budget.feasible.then_some(trial.budget.max_pair),
+            changes: comparable.then_some(trial.budget.max_pair),
             keep,
             round: self.round,
             dps_loss: loss,

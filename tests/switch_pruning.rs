@@ -292,3 +292,23 @@ fn complete_owned_void_is_compared_jointly_and_exclusion_is_respected() {
             .all(|id| !ironbound::rules::void_piece(*id))
     );
 }
+
+#[test]
+fn rejected_weapon_trials_do_not_display_incomparable_dps() {
+    let (s, mut o) = fixture();
+    o.gear_overrides.retain(|key, _| !key.ends_with(":3"));
+    let result = switch_pruning::search(&s, &o, Tolerances::from_options(&o));
+    // Cross-style weapon substitutions cannot complete the same workload.
+    // Their rejected rows must not advertise a spurious negative DPS loss.
+    let invalid_weapons: Vec<_> = result
+        .trials
+        .iter()
+        .filter(|t| t.round == 0 && [19675, 4864].contains(&t.item))
+        .collect();
+    assert!(!invalid_weapons.is_empty());
+    assert!(
+        invalid_weapons
+            .iter()
+            .all(|t| !t.within_limits && t.dps_loss.is_none() && t.changes.is_none())
+    );
+}

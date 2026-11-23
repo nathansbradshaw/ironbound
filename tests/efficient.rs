@@ -26,8 +26,8 @@ fn limits(value: u32) -> efficient::Tolerances {
         prayer_drain: value,
     }
 }
-fn choose(rows: Vec<Candidate>, value: u32, ceiling: usize) -> efficient::Suggestion {
-    efficient::choose(rows, limits(value), ceiling)
+fn choose(rows: Vec<Candidate>, value: u32) -> efficient::Suggestion {
+    efficient::choose(rows, limits(value))
 }
 fn qualifies(candidate: &Candidate, best: &Candidate, value: u32) -> bool {
     efficient::qualifies(candidate, best, limits(value))
@@ -41,7 +41,6 @@ fn chooses_compact_near_best_instead_of_filling_the_largest_ceiling() {
             candidate(8, 8, 23, 100.0, 100.0),
         ],
         3,
-        11,
     );
     assert_eq!(result.best, Some(2));
     assert_eq!(result.compact, Some(1));
@@ -55,7 +54,7 @@ fn a_fast_but_fragile_benchmark_cannot_erase_the_full_budget_defensive_gain() {
         row.budget.windows[0].metrics.incoming[0].dps = Some(1.0);
     }
     defensive.budget.windows[0].metrics.incoming[0].dps = Some(0.5);
-    let result = choose(vec![compact, fastest, defensive], 3, 11);
+    let result = choose(vec![compact, fastest, defensive], 3);
     assert_eq!(result.best, Some(1));
     assert_eq!(result.compact, Some(2));
 }
@@ -68,13 +67,13 @@ fn higher_tolerances_choose_fewer_switches_without_moving_the_benchmark() {
         candidate(8, 8, 23, 100.0, 100.0),
     ];
     for (tolerance, expected) in [(0, 2), (3, 2), (5, 1), (10, 0)] {
-        let result = choose(rows.clone(), tolerance, 11);
+        let result = choose(rows.clone(), tolerance);
         assert_eq!(result.compact, Some(expected));
         assert_eq!(result.best, Some(2));
     }
     let mut previous = usize::MAX;
     for tolerance in 0..=10 {
-        let result = choose(rows.clone(), tolerance, 11);
+        let result = choose(rows.clone(), tolerance);
         let slots = result.candidates[result.compact.unwrap()]
             .budget
             .max_inventory_space;
@@ -163,7 +162,6 @@ fn prayer_cost_is_guarded_alongside_attack_time() {
             candidate(8, 8, 23, 100.0, 100.0),
         ],
         3,
-        11,
     );
     assert_eq!(result.compact, Some(1));
 }
@@ -173,7 +171,7 @@ fn known_incoming_attacks_remain_guarded_when_the_total_is_unknown() {
     let mut best = candidate(8, 8, 23, 100.0, 100.0);
     light.budget.windows[0].metrics.incoming[0].dps = Some(1.04);
     best.budget.windows[0].metrics.incoming[0].dps = Some(1.0);
-    let result = choose(vec![light, best], 3, 11);
+    let result = choose(vec![light, best], 3);
     assert_eq!(result.compact, Some(1));
 }
 #[test]
@@ -205,7 +203,7 @@ fn losing_a_difficult_window_cannot_make_a_plan_the_fastest() {
     let mut partial = candidate(1, 1, 16, 10.0, 10.0);
     partial.covered -= 1;
     partial.signature.pop();
-    let result = choose(vec![partial, candidate(8, 8, 23, 100.0, 100.0)], 3, 11);
+    let result = choose(vec![partial, candidate(8, 8, 23, 100.0, 100.0)], 3);
     assert_eq!(result.best, Some(1));
     assert_eq!(result.compact, Some(1));
 }
@@ -218,12 +216,12 @@ fn missing_supplies_and_infeasible_fallbacks_are_excluded() {
         .push("Required ammunition missing".into());
     let mut fallback = candidate(2, 1, 16, 90.0, 90.0);
     fallback.budget.feasible = false;
-    let result = choose(vec![missing, fallback], 3, 11);
+    let result = choose(vec![missing, fallback], 3);
     assert!(result.compact.is_none() && result.best.is_none());
     assert!(result.reason.is_some());
 }
 #[test]
-fn actual_bag_space_wins_before_the_numeric_cap() {
+fn fewest_actual_changes_win_before_bag_space() {
     let result = choose(
         vec![
             candidate(2, 4, 21, 101.0, 101.0),
@@ -231,20 +229,33 @@ fn actual_bag_space_wins_before_the_numeric_cap() {
             candidate(8, 8, 23, 100.0, 100.0),
         ],
         3,
-        11,
     );
-    assert_eq!(result.compact, Some(1));
+    assert_eq!(result.compact, Some(0));
 }
 #[test]
-fn user_ceiling_does_not_move_the_fastest_reference_or_get_raised() {
+fn current_switch_limit_does_not_hide_a_qualifying_suggestion() {
     let rows = vec![
         candidate(2, 3, 18, 110.0, 100.0),
         candidate(8, 8, 23, 100.0, 100.0),
     ];
-    let result = choose(rows, 3, 2);
+    let result = choose(rows, 3);
     assert_eq!(result.best, Some(1));
-    assert!(result.compact.is_none());
-    assert!(result.reason.unwrap().contains("2-change limit"));
+    assert_eq!(result.compact, Some(1));
+    assert!(result.reason.is_none());
+}
+#[test]
+fn actual_changes_win_even_when_the_tested_cap_is_higher() {
+    let mut lower_changes = candidate(8, 5, 23, 102.0, 100.0);
+    lower_changes.budget.max_pair = 1;
+    let result = choose(
+        vec![
+            candidate(2, 3, 18, 101.0, 100.0),
+            lower_changes,
+            candidate(11, 8, 24, 100.0, 100.0),
+        ],
+        3,
+    );
+    assert_eq!(result.compact, Some(1));
 }
 #[test]
 fn cache_reuses_caps_but_invalidates_actual_combat_bank_and_supply_changes() {
@@ -283,7 +294,7 @@ fn public_demo_end_to_end_keeps_identical_work_and_respects_stock_and_limits() {
     let rows = (0..=11)
         .map(|cap| Candidate::new(tradeoffs::budget(&snapshot, &options, cap)))
         .collect();
-    let result = efficient::choose(rows, Default::default(), 11);
+    let result = efficient::choose(rows, Default::default());
     let chosen = &result.candidates[result.compact.expect("prepared demo suggestion")];
     let best = &result.candidates[result.best.unwrap()];
     assert!(chosen.budget.feasible && chosen.budget.prep_blockers.is_empty());

@@ -185,7 +185,7 @@ pub fn qualifies(candidate: &Candidate, best: &Candidate, limits: Tolerances) ->
         })
         && incoming_guard(candidate, best, limits.damage_taken)
 }
-pub fn choose(candidates: Vec<Candidate>, limits: Tolerances, ceiling: usize) -> Suggestion {
+pub fn choose(candidates: Vec<Candidate>, limits: Tolerances) -> Suggestion {
     let mut result = Suggestion {
         candidates,
         best: None,
@@ -202,7 +202,10 @@ pub fn choose(candidates: Vec<Candidate>, limits: Tolerances, ceiling: usize) ->
         .max_by_key(|(_, c)| (c.covered, c.budget.cap))
         .map(|(i, _)| i);
     let Some(basis) = basis else {
-        result.reason=Some("No supported, prepared setup fits the current switch and bag limits. Review Preparation.".into());
+        result.reason = Some(
+            "No supported, prepared setup fits your bank and packing limits. Review Preparation."
+                .into(),
+        );
         return result;
     };
     let signature = &result.candidates[basis].signature;
@@ -226,21 +229,20 @@ pub fn choose(candidates: Vec<Candidate>, limits: Tolerances, ceiling: usize) ->
         .iter()
         .enumerate()
         .filter(|(_, c)| {
-            c.budget.cap <= ceiling.min(11)
-                && qualifies(c, best, limits)
+            qualifies(c, best, limits)
                 && incoming_guard(c, &result.candidates[basis], limits.damage_taken)
         })
         .min_by(|(_, a), (_, b)| {
             (
-                a.budget.max_inventory_space,
-                a.budget.carried_gear,
                 a.budget.max_pair,
+                a.budget.carried_gear,
+                a.budget.max_inventory_space,
                 a.budget.cap,
             )
                 .cmp(&(
-                    b.budget.max_inventory_space,
-                    b.budget.carried_gear,
                     b.budget.max_pair,
+                    b.budget.carried_gear,
+                    b.budget.max_inventory_space,
                     b.budget.cap,
                 ))
                 .then_with(|| {
@@ -253,13 +255,9 @@ pub fn choose(candidates: Vec<Candidate>, limits: Tolerances, ceiling: usize) ->
         })
         .map(|(i, _)| i);
     if result.compact.is_none() {
-        result.reason = Some(if ceiling < 11 {
-            format!(
-                "No setup within your {ceiling}-change limit meets {limits}. Adjust the individual limits or allow more switches."
-            )
-        } else {
-            format!("No setup meets {limits}. Compare switches to review the tradeoffs.")
-        });
+        result.reason = Some(format!(
+            "No tested setup meets {limits}. Adjust the thresholds or compare the tradeoffs."
+        ));
     }
     result
 }

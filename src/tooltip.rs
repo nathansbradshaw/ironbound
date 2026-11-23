@@ -1,6 +1,6 @@
-//! Escaped, structured item comparisons. One public icon pack loads separately.
+//! Escaped item comparisons. Fixed public icon packs arrive in two stages.
 use crate::{alternatives::Alternative, planner};
-use std::{collections::BTreeMap, sync::OnceLock};
+use std::{collections::BTreeMap, io::Read, sync::RwLock};
 
 fn esc(text: &str) -> String {
     text.replace('&', "&amp;")
@@ -10,16 +10,29 @@ fn esc(text: &str) -> String {
         .replace('\'', "&#39;")
 }
 
-static ICONS: OnceLock<BTreeMap<i32, String>> = OnceLock::new();
+static ICONS: RwLock<BTreeMap<i32, String>> = RwLock::new(BTreeMap::new());
 
 pub fn install_icons(raw: &str) -> Result<(), serde_json::Error> {
-    let icons = serde_json::from_str(raw)?;
-    let _ = ICONS.set(icons);
+    let icons: BTreeMap<i32, String> = serde_json::from_str(raw)?;
+    ICONS.write().expect("icon cache").extend(icons);
     Ok(())
 }
 
+pub fn install_compressed_icons(bytes: &[u8]) -> Result<(), String> {
+    const MAX_BYTES: u64 = 32_000_000;
+    let mut raw = String::new();
+    flate2::read::GzDecoder::new(bytes)
+        .take(MAX_BYTES + 1)
+        .read_to_string(&mut raw)
+        .map_err(|_| "Could not decompress item artwork.")?;
+    if raw.len() as u64 > MAX_BYTES {
+        return Err("Item artwork exceeds the public pack limit.".into());
+    }
+    install_icons(&raw).map_err(|_| "Could not read item artwork.".into())
+}
+
 pub fn item_icon(id: i32) -> String {
-    match ICONS.get().and_then(|icons| icons.get(&id)) {
+    match ICONS.read().expect("icon cache").get(&id) {
         Some(data) => {
             format!(r#"<img src="data:image/png;base64,{data}" alt="" width="32" height="32">"#)
         }

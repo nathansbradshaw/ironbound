@@ -241,3 +241,48 @@ fn shared_wooden_blowpipe_rejects_incompatible_loaded_dragon_darts() {
     shared.combat.loaded_dart = Some(11230);
     assert!(shared.validate().is_err());
 }
+
+#[test]
+fn removing_armour_switches_preserves_internally_loaded_dart_stock() {
+    let bank = snapshot(&[
+        (12926, 1),
+        (11230, 200),
+        (4151, 1),
+        (11840, 1),
+        (6328, 1),
+        (8007, 1),
+    ]);
+    let mut o = options();
+    o.targets.insert(
+        0,
+        Target {
+            id: target().id,
+            style: "Melee".into(),
+        },
+    );
+    let result = ironbound::switch_pruning::search(
+        &bank,
+        &o,
+        ironbound::efficient::Tolerances {
+            dps_loss: 10,
+            damage_taken: 10,
+            prayer_drain: 10,
+        },
+    );
+    let reduced = &result.candidates[result.compact.unwrap_or_else(|| {
+        panic!(
+            "{:?} {:?}",
+            result.reason, result.candidates[0].budget.prep_blockers
+        )
+    })];
+    assert!(
+        reduced.budget.prep_blockers.is_empty(),
+        "{:?}",
+        reduced.budget.prep_blockers
+    );
+    assert_eq!(reduced.budget.plan.loaded_ammo.as_ref().unwrap().id, 11230);
+    assert!(reduced.budget.plan.inventory.iter().all(|p| p.id != 11230));
+    if let Some(pool) = &reduced.budget.options.switch_pool {
+        assert!(pool.contains(&11230));
+    }
+}

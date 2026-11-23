@@ -24,6 +24,8 @@ pub mod coverage;
 pub mod defence;
 pub mod effects;
 pub mod efficient;
+pub mod switch_pruning;
+mod shared_armour;
 pub mod encounter_summary;
 pub mod encounters;
 pub mod equipment_effects;

@@ -60,7 +60,7 @@ pub struct Comparison {
 }
 fn stock(snapshot: &Snapshot, o: &Options) -> BTreeMap<i32, u32> {
     let mut owned = snapshot.available(o.shared);
-    owned.retain(|id, _| !o.excluded.contains(id));
+    owned.retain(|id, _| !o.item_excluded(*id));
     owned
 }
 /// Measure exactly the supplied set/style/target. No item is substituted, and

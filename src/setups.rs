@@ -123,6 +123,9 @@ pub fn validate_options(o: &Options) -> Result<(), String> {
         || o.switch_tolerance > crate::efficient::MAX_TOLERANCE_PERCENT
         || o.damage_tolerance > crate::efficient::MAX_TOLERANCE_PERCENT
         || o.prayer_tolerance > crate::efficient::MAX_TOLERANCE_PERCENT
+        || o.switch_pool.as_ref().is_some_and(|pool| {
+            pool.len() > 64 || pool.iter().any(|id| crate::planner::gear(*id).is_none())
+        })
         || o.switch_slots > 20
         || o.targets.len() > crate::rules::MAX_TARGETS
         || o.targets.iter().any(|t| !t.valid())
@@ -145,19 +148,22 @@ pub fn validate_options(o: &Options) -> Result<(), String> {
                 || value.len() != 16
                 || !value.bytes().all(|b| b.is_ascii_hexdigit())
         })
-        || o.gear_overrides.iter().any(|(key, id)| {
-            let Some((style, slot)) = key.rsplit_once(':') else {
-                return true;
-            };
-            let Ok(slot) = slot.parse::<usize>() else {
-                return true;
-            };
-            !crate::rules::STYLES.contains(&style)
-                || slot >= 14
-                || (*id != 0
-                    && crate::planner::gear(*id)
-                        .is_none_or(|g| g.slot != crate::planner::SLOT_KEYS[slot]))
-        })
+        || o.gear_overrides
+            .iter()
+            .chain(o.switch_pins.iter())
+            .any(|(key, id)| {
+                let Some((style, slot)) = key.rsplit_once(':') else {
+                    return true;
+                };
+                let Ok(slot) = slot.parse::<usize>() else {
+                    return true;
+                };
+                !crate::rules::STYLES.contains(&style)
+                    || slot >= 14
+                    || (*id != 0
+                        && crate::planner::gear(*id)
+                            .is_none_or(|g| g.slot != crate::planner::SLOT_KEYS[slot]))
+            })
     {
         return Err("Setup contains invalid settings. Your current account is unchanged.".into());
     }

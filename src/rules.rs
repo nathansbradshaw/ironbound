@@ -624,6 +624,7 @@ pub fn weapon_ids(style: &str, allow_spells: bool) -> Vec<i32> {
                 r.permits(style)
                     && (allow_spells
                         || ["blue_moon", "ancient"].contains(&r.weapon.family.as_str())
+                        || r.weapon.spell_families.iter().any(|f| f == "demonbane")
                         || !matches!(r.family.formula, Formula::Elemental | Formula::Fixed))
             })
         })
@@ -911,7 +912,9 @@ pub fn spell_name_for_target(
     let Some(rule) = set.get(3).copied().flatten().and_then(weapon) else {
         return fallback;
     };
-    if rule.family.formula != Formula::Elemental {
+    if rule.family.formula != Formula::Elemental
+        && !rule.weapon.spell_families.iter().any(|f| f == "demonbane")
+    {
         return fallback;
     }
     elemental_candidates(member, set, owned, settings)
@@ -937,7 +940,9 @@ pub fn elemental_candidates(
     let Some(rule) = set.get(3).copied().flatten().and_then(weapon) else {
         return vec![];
     };
-    if rule.family.formula != Formula::Elemental {
+    if rule.family.formula != Formula::Elemental
+        && !rule.weapon.spell_families.iter().any(|f| f == "demonbane")
+    {
         return vec![];
     }
     let magic = crate::modifiers::level(member, "Magic", &settings.boosts).unwrap_or(0);

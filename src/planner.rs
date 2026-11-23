@@ -1885,9 +1885,11 @@ fn plan_uncached(snapshot: &Snapshot, options: &Options) -> Plan {
             ));
         }
         mark_applies |= options.combat.mark_darkness
-            && set[3]
-                .and_then(crate::rules::weapon)
-                .is_some_and(|r| r.has(crate::rules::Effect::DemonbaneSpell));
+            && selected_spells.iter().any(|name| {
+                crate::rules::spells()
+                    .iter()
+                    .any(|s| s.name == *name && s.family == "demonbane")
+            });
         for spell in selected_spells {
             trip_spells.insert(if spell.is_empty() {
                 "Built-in spell"

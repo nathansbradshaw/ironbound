@@ -164,3 +164,40 @@
 .ship-fleet,.ship-forecast,.ship-recommendation{margin:18px 0;padding:16px;border:2px solid #77613e;background:#211f18;border-radius:4px}.ship-fleet .actions{display:flex;flex-wrap:wrap;gap:8px}.ship-fleet .ship-picker{margin-top:16px}.ship-fleet h4{margin:18px 0 8px}.ship-forecast .ship-budget{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px}.ship-recommendation .ship-choice-grid{margin-bottom:14px}.ship-recommendation span.ship-choice{min-width:0}.ship-recommendation .ship-choice small{overflow-wrap:anywhere}
 
 .ship-fleet,.ship-forecast,.ship-recommendation{color:#eee2c5}.ship-fleet h3,.ship-fleet h4,.ship-forecast h3,.ship-recommendation h3{color:#ffdc65}.ship-fleet p,.ship-forecast p,.ship-recommendation p{color:#ddcfaf;font-size:13px;line-height:1.55}.ship-fleet button.phase,.ship-recommendation button.phase{min-height:38px;padding:6px 10px;cursor:pointer}.ship-fleet button.primary,.ship-recommendation button.primary{border-color:#d0ad5f;background:#66502a}.ship-forecast details{color:#ddcfaf;font-size:12px;line-height:1.6}.ship-forecast summary{color:#ffdc65;cursor:pointer}.ship-recommendation .ship-choice small{font-size:11px}.ship-recommendation .ship-choice{min-height:80px}
+/* Keep encounter choices beside the title, and raid choices in their own tab. */
+.topbar{justify-content:flex-end;min-height:0;margin-bottom:12px}
+.account-pill{min-height:32px;font-size:14px;color:#583a1d}
+.encounter-title-row{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px 18px}
+.encounter-title-row h1{flex:1 1 260px;min-width:0;margin:0;padding-right:0}
+.encounter-title-row .change-encounter{flex:0 0 auto;min-height:44px;padding:9px 14px;font:21px Scape,monospace;white-space:nowrap}
+.encounter-picker-heading{display:flex;align-items:center;justify-content:space-between;gap:12px;margin:18px 0 10px}
+.encounter-picker-heading h2{font:25px Scape,monospace;color:#583211;margin:0}
+.encounter-picker-heading .button{min-height:40px}
+.coverage-details{margin-top:12px}
+.coverage-details>summary{font:17px Scape,monospace;color:#674a2a;min-height:32px;cursor:pointer}
+.coverage-details .coverage-panel{margin:10px 0 0;padding:14px}
+.coverage-panel>p{font-size:16px;line-height:1.5}
+.planner-tabs:has([data-action="view:raid"]){max-width:650px;grid-template-columns:repeat(4,minmax(0,1fr))}
+.workspace-view>.raid-route{margin:0;padding:0 16px 16px}
+.raid-route .panel-heading{margin:0 -16px;padding:12px 16px}
+.raid-route>.panel-heading>span{font-size:14px;color:#ddd1b8}
+.raid-route>p{font-size:16px;color:#ddd1b8;line-height:1.5;margin-top:14px}
+.raid-route .raid-stage h3{color:#ffcf00;font-size:22px}
+.raid-route .raid-stage>small{flex-basis:100%;color:#ddd1b8;font-size:14px}
+.raid-route .raid-room{border:2px outset #8a7958;background:#413a2d;color:#ffb44f;min-height:48px;font:18px Scape,monospace;cursor:pointer}
+.raid-route .raid-room strong{font:18px Scape,monospace}
+.raid-route .raid-room small{color:#c6bb9e;font-size:14px}
+.raid-route .raid-room:hover:not(:disabled){background:#554932;border-color:#d6b469}
+.raid-route .raid-room.active{background:#615131;border-color:#d5b267;box-shadow:inset 0 0 0 1px #917943;color:#ffff00}
+.raid-route .raid-room:disabled{opacity:1;cursor:default;color:#eee2c5}
+.raid-route .raid-room.active small{color:#eee2c5}
+.account-transfer,.transfer-review{padding:18px;margin:18px 0;color:#eee2c5}
+.account-transfer h2,.transfer-review h1{color:#ffcf00;margin:0 0 14px}
+.account-transfer p,.transfer-review p{font-size:16px;line-height:1.55;margin:12px 0;color:#eee2c5}
+.account-transfer .small-note{font-size:14px;color:#d2c3a4}
+.transfer-actions{display:flex;flex-wrap:wrap;gap:10px;margin-top:18px}
+.transfer-review .button,.account-transfer>.button{min-height:44px}
+.transfer-review strong{color:#ffdc65}
+.transfer-link-label{display:block;font-size:14px;line-height:1.5;margin-top:14px}
+.transfer-link-label textarea{box-sizing:border-box;width:100%;min-width:0;max-width:100%;background:#26231d;color:#eee2c5;border:1px solid #a58b5f;font:13px/1.5 monospace;word-break:break-all;padding:10px;margin-top:6px}
+@media(max-width:580px){.encounter-title-row h1{flex-basis:100%;padding-right:0}.encounter-title-row .change-encounter{min-height:44px}.planner-tabs:has([data-action="view:raid"]){grid-template-columns:repeat(2,minmax(0,1fr))}.account-transfer,.transfer-review{padding:14px}.transfer-actions .button{width:100%}.account-pill{font-size:14px}.raid-route-groups{grid-template-columns:minmax(0,1fr)}}

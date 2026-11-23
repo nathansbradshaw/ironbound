@@ -11,9 +11,11 @@ An OSRS-style bossing planner for Ironmen. Find gear **you actually own**, keep 
 3. Pick an encounter and set your **maximum switches**.
 4. Click a gear or inventory slot to change items. Export with **Copy Inventory Setup**.
 
+**Change encounter** sits beside the fight title. Raids have a **Raid setup** tab with direct boss-selection boxes. **About these damage estimates** explains the calculation limits.
+
 **Gear** is your packing workspace. **Combat** has the numbers; **Preparation** has trip checks. Optional gear policies stay in **Gear options**. Below the setup, **Save bag space** keeps DPS loss, damage taken and prayer drain allowances independent.
 
-Your account stays on that browser. Import it again when using a different device or the hosted site instead of localhost.
+To move between devices, open **Your bank → Move to another device → Copy bank & settings link**. Open the link on your other device and choose **Import bank & settings** after reviewing it. The compressed link includes your bank, levels, goals, named setups and settings; anyone with the link can read them. It is a snapshot, not automatic sync. Ordinary **Copy setup link** links still exclude your bank. Large accounts can use **Download private backup** instead.
 
 **Starting gear + packing list** is what you export. Choose a boss phase to preview its equipped gear and inventory together; return to **Start** to edit the packing list. **Explore example** opens a temporary demo; your saved bank stays safe.
 

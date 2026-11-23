@@ -31,6 +31,7 @@ struct State {
     saved: Saved,
     sailing_slot: String,
     sailing_owned_open: bool,
+    boat_draft: Option<crate::sailing_owned::Draft>,
     sailing_report: Option<(String, Result<crate::sailing_combat::Report, String>)>,
     sailing_recommendation: Option<(
         String,
@@ -172,6 +173,7 @@ impl State {
             save_status: Cell::new(save_status),
             sailing_slot: "hull".into(),
             sailing_owned_open: false,
+            boat_draft: None,
             sailing_report: None,
             sailing_recommendation: None,
             unreadable_save,
@@ -482,6 +484,7 @@ fn apply_number(s: &mut State, id: &str, value: &str) -> bool {
                         .iter_mut()
                         .find(|m| m.name == selected)
                     {
+                        if let Some(tier)=crate::sailing_owned::KIT_IDS.iter().position(|item|*item==id) {m.sailing_owned.loaded.remove(&crate::sailing_owned::LEGACY_KIT_ICONS[tier]);}
                         m.sailing_owned.loaded.insert(id, q);
                         return true;
                     }
@@ -3220,7 +3223,7 @@ fn encounter_detail(s: &State, p: &Plan) -> String {
         .map(|entry| entry.guide_url())
         .unwrap_or_else(|| boss.source().into());
     let mut html = format!(
-        "<section class=\"encounter-detail planner-summary\"><div class=\"encounter-title-row\"><h1>{}</h1><button class=\"button gold change-encounter\" data-action=\"encounter-picker-toggle\" aria-controls=\"boss-bestiary\" aria-expanded=\"{}\">Change encounter</button></div><div class=\"detail-facts\"><span>Gear · {} bag slot{}</span><a href=\"{}\" target=\"_blank\" rel=\"noreferrer\">Wiki guide ↗</a>",
+        "<section class=\"panel encounter-detail planner-summary\" aria-label=\"Selected encounter\"><div class=\"encounter-title-row\"><div class=\"encounter-identity\"><span>Selected encounter</span><h1>{}</h1></div><button class=\"button gold change-encounter\" data-action=\"encounter-picker-toggle\" aria-controls=\"boss-bestiary\" aria-expanded=\"{}\">Change encounter</button></div><div class=\"detail-facts\"><span>{} switch item{}</span><a href=\"{}\" target=\"_blank\" rel=\"noreferrer\">Wiki guide ↗</a>",
         encounter_label(&s.saved.options),
         s.bestiary_open,
         p.switches,
@@ -3232,18 +3235,17 @@ fn encounter_detail(s: &State, p: &Plan) -> String {
     }
     html.push_str("</div>");
     if s.shared_setup.is_some() {
-        html.push_str("<p class=\"plan-coverage\">Shared packing list · levels not included</p>");
-    } else {
-        let rows = crate::coverage::windows(&s.saved.options);
-        let unsupported = rows.iter().any(|r| !r.supported);
-        html.push_str(&format!(
-            "<details class=\"coverage-details\"><summary>{}</summary>{}</details>",
-            if unsupported {
-                "Some damage estimates are unavailable"
-            } else {
-                "About these damage estimates"
-            },
-            coverage_panel(&s.saved.options)
+        html.push_str(
+            "<p class=\"plan-coverage\">Shared setup · rebuild with your bank to compare</p>",
+        );
+    } else if crate::coverage::windows(&s.saved.options)
+        .iter()
+        .any(|r| !r.supported)
+    {
+        html.push_str(&button(
+            "view:prepare",
+            "Check calculation limits",
+            "text-button",
         ));
     }
     html.push_str("</section>");
@@ -3382,7 +3384,7 @@ fn loadout_panel(s: &State, p: &Plan) -> String {
         })
         .unwrap_or_default();
     let mut html = format!(
-        "<section class=\"panel loadout-panel\"><div class=\"panel-heading\"><h2>{} {}</h2>{}</div>{quest_requirement}<div class=\"loadout-content\"><div class=\"equipment-paper\"><div class=\"paper-header\">{}</div><div class=\"equipment-grid\">",
+        "<section class=\"panel loadout-panel\"><div class=\"panel-heading\"><h2>{} {}</h2>{}</div>{quest_requirement}<div class=\"loadout-content\">",
         image(12954),
         "Equipment",
         badge(
@@ -3394,22 +3396,9 @@ fn loadout_panel(s: &State, p: &Plan) -> String {
                 "FROM YOUR BANK"
             },
             "neutral"
-        ),
-        current.map(|p| esc(&p.name)).unwrap_or("Equipment".into())
+        )
     );
-    for (slot_index, class) in [
-        (0, "eq-head"),
-        (1, "eq-cape"),
-        (2, "eq-neck"),
-        (13, "eq-ammo"),
-        (3, "eq-weapon"),
-        (4, "eq-body"),
-        (5, "eq-shield"),
-        (7, "eq-legs"),
-        (9, "eq-hands"),
-        (10, "eq-feet"),
-        (12, "eq-ring"),
-    ] {
+    html.push_str(&crate::equipment_view::paper(current.map(|p| p.name.as_str()).unwrap_or("Equipment"), |slot_index, class| {
         let tooltip = format!(
             "{}: {}",
             planner::SLOTS[slot_index],
@@ -3425,11 +3414,9 @@ fn loadout_panel(s: &State, p: &Plan) -> String {
             slot_index,
         );
         let explanation = format!("{tooltip}\n{reason}");
-        html.push_str(&format!(r#"<button class="equipment-edit {class}" data-action="edit-equipment:{slot_index}" data-item-id="{}" data-explanation="{}" aria-describedby="item-explanation" aria-controls="item-explanation" aria-haspopup="dialog" aria-expanded="false" aria-label="Change {}">{}</button>"#,set[slot_index].map(|id| id.to_string()).unwrap_or_default(),esc(&explanation),esc(&tooltip),slot(set[slot_index],planner::SLOTS[slot_index],"",None)));
-    }
-    html.push_str(
-        "</div></div><details class=\"loadout-notes\"><summary>Spell & exclusions</summary>",
-    );
+        format!(r#"<button class="equipment-edit {class}" data-action="edit-equipment:{slot_index}" data-item-id="{}" data-explanation="{}" aria-describedby="item-explanation" aria-controls="item-explanation" aria-haspopup="dialog" aria-expanded="false" aria-label="Change {}">{}</button>"#,set[slot_index].map(|id| id.to_string()).unwrap_or_default(),esc(&explanation),esc(&tooltip),slot(set[slot_index],planner::SLOTS[slot_index],"",None))
+    }));
+    html.push_str("<details class=\"loadout-notes\"><summary>Spell & exclusions</summary>");
     if let Some((_, effect)) = set[3].and_then(|id| {
         reference::KERIS_VARIANTS
             .iter()
@@ -3475,6 +3462,7 @@ fn loadout_panel(s: &State, p: &Plan) -> String {
     html.push_str("</section>");
     html
 }
+
 fn inventory_panel(s: &State, p: &Plan) -> String {
     let phase = s.phase.and_then(|index| p.phases.get(index));
     let inventory = p.preview_inventory(s.phase);
@@ -3607,7 +3595,7 @@ fn save_banner(s: &State) -> String {
 
 fn named_setups(s: &State) -> String {
     let mut html = format!(
-        "<details class=\"secondary-section setup-library\" {}><summary>Saved setups ({})</summary><label>Setup name<input id=\"setup-name\" maxlength=\"64\" placeholder=\"e.g. Yama learning\"></label>{}<p class=\"small-note\">Configurations stay on this device and in private backups. Loading rechecks your current bank. Enter a name above to rename a row.</p><div class=\"saved-setup-list\">",
+        "<details class=\"secondary-section setup-library\" {}><summary>Saved setups ({})</summary><label>Setup name<input id=\"setup-name\" maxlength=\"64\" placeholder=\"e.g. Yama learning\"></label>{}<p class=\"small-note\">Saved here. Use an account transfer link to move your bank, boats and settings to another device.</p><div class=\"saved-setup-list\">",
         if s.setups_open { "open" } else { "" },
         s.saved.setups.0.len(),
         button("save-named", "Save current setup", "button gold")
@@ -7239,26 +7227,29 @@ fn death_risk_panel(s: &State, plan: &Plan) -> String {
 
 fn sailing_panel(s: &State) -> String {
     let readonly = s.shared_setup.is_some();
-    let mut h = if readonly {
-        String::new()
-    } else {
-        crate::sailing_ui::controls(&s.saved.snapshot, &s.saved.options, s.sailing_owned_open)
-    };
-    h.push_str(&crate::sailing_view::render(
-        &s.saved.options.sailing,
-        if readonly {
-            None
-        } else {
-            s.saved.snapshot.selected()
-        },
-        &s.saved.options.targets,
-        &s.sailing_slot,
-        readonly,
-    ));
     if readonly {
-        return h;
+        return crate::sailing_view::render(
+            &s.saved.options.sailing,
+            None,
+            &s.saved.options.targets,
+            &s.sailing_slot,
+            true,
+        );
     }
+    if let Some(d) = s
+        .boat_draft
+        .as_ref()
+        .filter(|d| d.owner == s.saved.snapshot.selected)
+    {
+        return crate::sailing_fleet_view::wizard(d, &s.saved.snapshot, &s.saved.options);
+    }
+    let mut h =
+        crate::sailing_ui::controls(&s.saved.snapshot, &s.saved.options, s.sailing_owned_open);
     h.push_str(&crate::sailing_ui::scenario(&s.saved.options.sailing));
+    h.push_str(&format!(
+        "<section class=\"panel boat-supply-cost\">{}</section>",
+        crate::sailing_materials::supply_cost(&s.saved.snapshot, &s.saved.options)
+    ));
     if s.busy {
         h.push_str("<p role=\"status\">Comparing your Sailing setups…</p>");
     }
@@ -7287,7 +7278,220 @@ fn sailing_panel(s: &State) -> String {
     }
     h
 }
+
+fn act_boat(action: &str) -> bool {
+    if !action.starts_with("boat-") {
+        return false;
+    }
+    // Read the name from the actual editor on navigation, not from a separately persisted form.
+    let name = document()
+        .get_element_by_id("boat-name")
+        .and_then(|e| e.dyn_into::<HtmlInputElement>().ok())
+        .map(|e| e.value());
+    STATE.with(|state| {
+        let mut s = state.borrow_mut();
+        if s.shared_setup.is_some() || s.busy {
+            return;
+        }
+        let owner = s.saved.snapshot.selected.clone();
+        if action == "boat-cancel" {
+            s.boat_draft = None;
+            return;
+        }
+        if action == "boat-add"
+            || action.starts_with("boat-edit:")
+            || action.starts_with("boat-plan:")
+        {
+            let planning = action.starts_with("boat-plan:");
+            let index = action
+                .strip_prefix("boat-edit:")
+                .or_else(|| action.strip_prefix("boat-plan:"))
+                .and_then(|n| n.parse::<usize>().ok());
+            let Some(m) = s.saved.snapshot.selected() else {
+                return;
+            };
+            if index.is_none() && m.sailing_owned.profiles.len() >= 5 {
+                s.notice("Your fleet already has five boats.", true);
+                return;
+            }
+            let original = index.and_then(|i| m.sailing_owned.profiles.get(i).cloned());
+            if index.is_some() && original.is_none() {
+                return;
+            }
+            let settings = original
+                .as_ref()
+                .map(|p| {
+                    if planning {
+                        p.upgrade.clone().unwrap_or_else(|| p.settings.clone())
+                    } else {
+                        p.settings.clone()
+                    }
+                })
+                .unwrap_or_else(|| s.saved.options.sailing.clone());
+            let name = original
+                .as_ref()
+                .map(|p| p.name.clone())
+                .unwrap_or_else(|| {
+                    (1..=6)
+                        .map(|n| format!("{} {n}", settings.boat.name()))
+                        .find(|name| {
+                            !m.sailing_owned
+                                .profiles
+                                .iter()
+                                .any(|p| p.name.eq_ignore_ascii_case(name))
+                        })
+                        .unwrap_or_default()
+                });
+            s.boat_draft = Some(crate::sailing_owned::Draft {
+                owner,
+                index,
+                original,
+                name,
+                settings,
+                step: usize::from(planning),
+                planning,
+                slot: "hull".into(),
+                remove_pending: false,
+                error: String::new(),
+            });
+            return;
+        }
+        if let Some(i) = action
+            .strip_prefix("boat-select:")
+            .and_then(|n| n.parse::<usize>().ok())
+        {
+            if let Some(p) = s
+                .saved
+                .snapshot
+                .selected()
+                .and_then(|m| m.sailing_owned.profiles.get(i))
+                .cloned()
+            {
+                s.saved.options.sailing = p.for_trip(&s.saved.options.sailing);
+                if let Some(m) = s
+                    .saved
+                    .snapshot
+                    .members
+                    .iter_mut()
+                    .find(|m| m.name == owner)
+                {
+                    m.sailing_owned.active = Some(p.name);
+                }
+                s.persist();
+            }
+            return;
+        }
+        let Some(mut d) = s.boat_draft.take().filter(|d| d.owner == owner) else {
+            return;
+        };
+        if let Some(name) = name {
+            d.name = name;
+        }
+        d.error.clear();
+        match action {
+            "boat-next" => {
+                d.step = (d.step + 1).min(2);
+                d.slot = if d.step == 2 { "person-0" } else { "hull" }.into();
+            }
+            "boat-back" => {
+                d.step = d.step.saturating_sub(1);
+                d.remove_pending = false;
+            }
+            "boat-remove-review" => d.remove_pending = true,
+            "boat-remove-cancel" => d.remove_pending = false,
+            "boat-save" | "boat-remove" | "boat-fit-plan" => {
+                let Some(m) = s
+                    .saved
+                    .snapshot
+                    .members
+                    .iter_mut()
+                    .find(|m| m.name == owner)
+                else {
+                    return;
+                };
+                if d.index
+                    .is_some_and(|i| m.sailing_owned.profiles.get(i) != d.original.as_ref())
+                {
+                    s.notice("This boat changed. Cancel and open the editor again.", true);
+                } else if action == "boat-remove" && d.remove_pending && d.index.is_some() {
+                    let removed = m.sailing_owned.profiles.remove(d.index.unwrap());
+                    if m.sailing_owned.active.as_deref() == Some(&removed.name) {
+                        m.sailing_owned.active = None;
+                    }
+                    s.persist();
+                    s.notice("Boat removed.", false);
+                    return;
+                } else if action == "boat-save" && d.planning {
+                    match d
+                        .index
+                        .ok_or("Select an existing boat".to_string())
+                        .and_then(|i| m.sailing_owned.save_upgrade(i, &d.settings))
+                    {
+                        Ok(()) => {
+                            s.persist();
+                            s.notice("Upgrade plan saved. Your fitted boat is unchanged.", false);
+                            return;
+                        }
+                        Err(e) => d.error = e,
+                    }
+                } else if action == "boat-save" || action == "boat-fit-plan" && d.planning {
+                    match m.sailing_owned.save_boat(d.index, &d.name, &d.settings) {
+                        Ok(()) => {
+                            let i = d.index.unwrap_or(m.sailing_owned.profiles.len() - 1);
+                            let profile = m.sailing_owned.profiles[i].clone();
+                            s.saved.options.sailing = profile.for_trip(&s.saved.options.sailing);
+                            s.persist();
+                            s.notice("Boat saved.", false);
+                            return;
+                        }
+                        Err(e) => d.error = e,
+                    }
+                }
+            }
+            _ => {
+                if let Some(slot) = action
+                    .strip_prefix("boat-slot:")
+                    .filter(|slot| crate::sailing_view::valid_slot(slot))
+                {
+                    d.slot = slot.into();
+                }
+                if let Some((key, value)) = action
+                    .strip_prefix("boat-set:")
+                    .and_then(|v| v.split_once(':'))
+                {
+                    d.settings.update(key, value);
+                    // Only ammunition is a trip choice: keep it compatible while fitting a cannon.
+                    if !d.settings.ammo_compatible() {
+                        let tier =
+                            d.settings
+                                .cannon
+                                .unwrap_or(0)
+                                .min(if d.settings.cannon_count == 2 {
+                                    d.settings
+                                        .second_cannon
+                                        .unwrap_or(d.settings.cannon.unwrap_or(0))
+                                } else {
+                                    6
+                                });
+                        d.settings.cannonball = tier;
+                        d.settings.second_ball = None;
+                    }
+                }
+            }
+        }
+        s.boat_draft = Some(d);
+    });
+    render();
+    if let Ok(Some(panel)) = document().query_selector(".boat-wizard") {
+        panel.scroll_into_view();
+    }
+    true
+}
+
 fn act_sailing(action: &str) -> bool {
+    if act_boat(action) {
+        return true;
+    }
     if action == "sailing-calculate" || action == "sailing-recommend" {
         let recommend = action == "sailing-recommend";
         let inputs = STATE.with(|state| {
@@ -7365,6 +7569,16 @@ fn act_sailing(action: &str) -> bool {
                 ) {
                     Ok(options) => {
                         s.saved.options = options;
+                        let selected = s.saved.snapshot.selected.clone();
+                        if let Some(m) = s
+                            .saved
+                            .snapshot
+                            .members
+                            .iter_mut()
+                            .find(|m| m.name == selected)
+                        {
+                            m.sailing_owned.active = result.saved_boat.clone();
+                        }
                         s.persist();
                         s.notice(
                             "Owned Sailing setup applied. Review Boat setup and your packing list.",
@@ -7405,6 +7619,7 @@ fn act_sailing(action: &str) -> bool {
     render();
     true
 }
+
 fn act_account_transfer(action: &str) -> bool {
     match action {
         "transfer-copy" => {
@@ -7502,7 +7717,7 @@ fn transfer_review(s: &State) -> String {
                 String::new()
             };
             format!(
-                "<section class=\"panel transfer-review\" aria-labelledby=\"transfer-title\"><h1 id=\"transfer-title\">Import bank &amp; settings</h1><p>From the link: <strong>{}</strong> · {} account(s) · {} available item types · {} named setups.</p><p>Includes bank containers, levels, goals, boat confirmations and planner settings. {}</p><p>Nothing changes until you choose Import. Import only a link you trust; its contents have not been verified against RuneScape.</p><div class=\"transfer-actions\">{}{}{}</div></section>",
+                "<section class=\"panel transfer-review\" aria-labelledby=\"transfer-title\"><h1 id=\"transfer-title\">Import bank &amp; settings</h1><p>From the link: <strong>{}</strong> · {} account(s) · {} available item types · {} named setups.</p><p>Includes your bank, levels, goals, saved boats and planner settings. {}</p><p>Nothing changes until you choose Import. Import only a link you trust; its contents have not been verified against RuneScape.</p><div class=\"transfer-actions\">{}{}{}</div></section>",
                 esc(&incoming.snapshot.selected),
                 incoming.snapshot.members.len(),
                 incoming.snapshot.available(true).len(),

@@ -46,17 +46,42 @@ fn face(person: usize) -> String {
     )
 }
 pub fn valid_slot(s: &str) -> bool {
-    ["hull", "keel", "cargo", "cannon", "ammo", "player"].contains(&s)
+    [
+        "hull", "keel", "cargo", "cannon", "cannon2", "ammo", "player",
+    ]
+    .contains(&s)
         || s.split_once('-').is_some_and(|(field, n)| {
             ["person", "role"].contains(&field) && n.parse::<usize>().is_ok_and(|i| i < 5)
         })
 }
-fn picker(b: &Settings, slot: &str) -> String {
+pub fn picker(b: &Settings, slot: &str) -> String {
+    picker_with_stock(b, slot, None)
+}
+pub fn picker_with_stock(
+    b: &Settings,
+    slot: &str,
+    stock: Option<&std::collections::BTreeMap<i32, u32>>,
+) -> String {
+    let cost_choice =
+        |key: &str, value: &str, label: &str, detail: &str, icon: i32, active: bool| {
+            let mut h = choice(key, value, label, detail, icon, active);
+            if let Some(stock) = stock {
+                h = h.replace(
+                    "</button>",
+                    &format!(
+                        "{}</button>",
+                        crate::sailing_materials::choice_status(b, key, value, stock)
+                    ),
+                );
+            }
+            h
+        };
     let title = match slot {
         "hull" => "Hull",
         "keel" => "Keel",
         "cargo" => "Cargo hold",
-        "cannon" => "Cannons",
+        "cannon" => "Cannon 1",
+        "cannon2" => "Cannon 2",
         "ammo" => "Cannonballs",
         "player" => "Your job",
         _ if slot.starts_with("person-") => "Choose a crewmate",
@@ -70,11 +95,11 @@ fn picker(b: &Settings, slot: &str) -> String {
             for (i, name) in WOODS.iter().enumerate() {
                 let mut trial = b.clone();
                 trial.hull = i;
-                h.push_str(&choice(
+                h.push_str(&cost_choice(
                     "hull",
                     &i.to_string(),
                     name,
-                    &format!("{} total HP", trial.hp()),
+                    &format!("{} HP", trial.hp()),
                     32118 + i as i32 * 3,
                     b.hull == i,
                 ));
@@ -82,19 +107,19 @@ fn picker(b: &Settings, slot: &str) -> String {
         }
         "keel" if b.boat != Boat::Raft => {
             for (i, name) in METALS.iter().enumerate() {
-                h.push_str(&choice(
+                h.push_str(&cost_choice(
                     "keel",
                     &i.to_string(),
                     name,
-                    &format!("−{} damage / hit", sailing::FLAT_ARMOUR[i]),
-                    32181 + i as i32 * 2 + if b.boat == Boat::Sloop { 1 } else { 0 },
+                    &format!("Blocks {}", sailing::FLAT_ARMOUR[i]),
+                    32181 + i as i32 * 2,
                     b.keel == i,
                 ));
             }
         }
         "keel" => h.push_str("<p>A raft has no keel.</p>"),
         "cargo" => {
-            h.push_str(&choice(
+            h.push_str(&cost_choice(
                 "cargo",
                 "none",
                 "No hold",
@@ -110,7 +135,7 @@ fn picker(b: &Settings, slot: &str) -> String {
             {
                 let mut trial = b.clone();
                 trial.cargo = Some(i);
-                h.push_str(&choice(
+                h.push_str(&cost_choice(
                     "cargo",
                     &i.to_string(),
                     name,
@@ -120,29 +145,44 @@ fn picker(b: &Settings, slot: &str) -> String {
                 ));
             }
         }
-        "cannon" => {
-            h.push_str(&choice(
-                "cannon",
-                "none",
-                "No cannon",
-                "Empty mount",
-                32199,
-                b.cannon.is_none(),
-            ));
-            for (i, name) in METALS.iter().enumerate() {
-                h.push_str(&choice(
+        "cannon" | "cannon2" => {
+            if slot == "cannon2" {
+                h.push_str(&cost_choice(
+                    "count",
+                    "1",
+                    "Remove second cannon",
+                    "One mount",
+                    32199,
+                    false,
+                ));
+            } else {
+                h.push_str(&cost_choice(
                     "cannon",
+                    "none",
+                    "No cannon",
+                    "Empty mount",
+                    32199,
+                    b.cannon.is_none(),
+                ));
+            }
+            for (i, name) in METALS.iter().enumerate() {
+                h.push_str(&cost_choice(
+                    slot,
                     &i.to_string(),
                     name,
                     &format!("{} Sailing", sailing::CANNON_LEVELS[i]),
                     32199 + i as i32,
-                    b.cannon == Some(i),
+                    if slot == "cannon2" {
+                        b.second_cannon.unwrap_or(b.cannon.unwrap_or(0)) == i
+                    } else {
+                        b.cannon == Some(i)
+                    },
                 ));
             }
         }
         "ammo" => {
             for (i, name) in sailing::BALL_NAMES.iter().enumerate() {
-                h.push_str(&choice(
+                h.push_str(&cost_choice(
                     "ball",
                     &i.to_string(),
                     name,
@@ -161,7 +201,7 @@ fn picker(b: &Settings, slot: &str) -> String {
             .iter()
             .enumerate()
             {
-                h.push_str(&choice(
+                h.push_str(&cost_choice(
                     "player",
                     &i.to_string(),
                     name,
@@ -179,7 +219,7 @@ fn picker(b: &Settings, slot: &str) -> String {
             {
                 let c = &b.crew[seat];
                 if field == "person" {
-                    h.push_str(&choice(
+                    h.push_str(&cost_choice(
                         slot,
                         "none",
                         "Empty seat",
@@ -192,7 +232,7 @@ fn picker(b: &Settings, slot: &str) -> String {
                     }
                 } else {
                     for (i, role) in sailing::ROLES.iter().enumerate() {
-                        h.push_str(&choice(
+                        h.push_str(&cost_choice(
                             slot,
                             &i.to_string(),
                             role,
@@ -214,7 +254,10 @@ fn picker(b: &Settings, slot: &str) -> String {
     h.push_str("</div>");
     if slot == "cannon" {
         h.push_str("<div class=\"ship-mount-count\"><span>Mounts on this side</span>");
-        for (i, label) in [(1, "One"), (2, "Two · sloop")] {
+        for (i, label) in [(1, "One"), (2, "Two · sloop")]
+            .into_iter()
+            .filter(|(n, _)| *n == 1 || b.boat == Boat::Sloop)
+        {
             h.push_str(&format!("<button type=\"button\" class=\"phase {}\" data-action=\"sailing:count:{i}\" aria-pressed=\"{}\">{label}</button>",if b.cannon_count==i{"active"}else{""},b.cannon_count==i));
         }
         h.push_str("</div>");
@@ -235,9 +278,9 @@ pub fn render(
     let slot = if valid_slot(slot) { slot } else { "hull" };
     let hull_icon = 32118 + b.hull as i32 * 3;
     let cannon_icon = 32199 + b.cannon.unwrap_or(0) as i32;
-    let keel_icon = 32181 + b.keel as i32 * 2 + if b.boat == Boat::Sloop { 1 } else { 0 };
+    let keel_icon = 32181 + b.keel as i32 * 2;
     let mut h = String::from(
-        r#"<section class="shipyard"><div class="shipyard-title"><h2>Your boat</h2><p>Click a part to change it.</p></div><fieldset class="ship-controls""#,
+        r#"<section class="panel shipyard"><div class="shipyard-title"><h2>Your boat</h2><p>Click a part to change it.</p></div><fieldset class="ship-controls""#,
     );
     if readonly {
         h.push_str(" disabled");

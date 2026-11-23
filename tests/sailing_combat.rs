@@ -272,10 +272,10 @@ fn private_fleet_and_scenario_controls_use_icon_buttons_without_dropdowns() {
     let html = ironbound::sailing_ui::controls(&s, &o, true)
         + &ironbound::sailing_ui::scenario(&o.sailing);
     assert!(!html.contains("<select"));
-    assert!(html.contains("sailing-own:cannon:5"));
-    assert!(html.contains("Already aboard (not in import)"));
+    assert!(html.contains("boat-add"));
+    assert!(html.contains("Supplies already aboard"));
     assert!(html.contains("sailing-loaded-31914"));
-    assert!(html.contains("sailing:cannon2:5"));
+    assert!(html.contains("sailing:kit:5"));
 }
 #[test]
 fn player_boost_prayer_and_elite_void_follow_nested_floors_without_stance_bonus() {
@@ -418,4 +418,148 @@ fn choosing_a_loaded_dart_does_not_invent_unconfirmed_or_excluded_ammunition() {
     o.excluded.insert(11230);
     let model = Model::build(&s, &o, &plan, &set, "Ranged", target).unwrap();
     assert_eq!(model.stock.get(&11230).copied().unwrap_or(0), 0);
+}
+
+#[test]
+fn saved_boats_enforce_five_unique_names_and_allow_upgrades_without_changing_other_boats() {
+    let mut f = sailing_owned::Fleet::default();
+    let b = Settings::default();
+    for i in 0..5 {
+        f.save_boat(None, &format!("Boat {i}"), &b).unwrap();
+    }
+    let mut snapshot = snapshot();
+    snapshot.members[0].sailing_owned = f.clone();
+    let mut options = options();
+    options.sailing = b.clone();
+    let html = ironbound::sailing_ui::controls(&snapshot, &options, false);
+    assert_eq!(html.matches("aria-pressed=\"true\"").count(), 1);
+    let before = f.clone();
+    assert!(f.save_boat(None, "Sixth", &b).is_err());
+    assert_eq!(f, before);
+    assert!(f.save_boat(Some(0), "boat 1", &b).is_err());
+    assert!(f.save_boat(Some(0), "bad\nname", &b).is_err());
+    let mut upgraded = b.clone();
+    upgraded.hull = 6;
+    f.save_boat(Some(2), "Upgraded", &upgraded).unwrap();
+    assert_eq!(f.profiles.len(), 5);
+    assert_eq!(f.profiles[2].settings.hull, 6);
+    assert_eq!(&f.profiles[..2], &before.profiles[..2]);
+    assert_eq!(&f.profiles[3..], &before.profiles[3..]);
+    let mut invalid = upgraded;
+    invalid.crew[0] = Assignment {
+        person: Some(4),
+        role: 3,
+    };
+    assert!(f.save_boat(Some(2), "Invalid", &invalid).is_err());
+    let mut too_many = f.clone();
+    too_many.profiles.push(f.profiles[0].clone());
+    assert!(!too_many.valid());
+    assert!(
+        serde_json::from_str::<sailing_owned::Fleet>("{}")
+            .unwrap()
+            .profiles
+            .is_empty()
+    );
+}
+#[test]
+fn switching_saved_boats_retains_trip_goal_and_does_not_mutate_the_profile() {
+    let mut f = sailing_owned::Fleet::default();
+    f.save_boat(None, "Fishing skiff", &Settings::default())
+        .unwrap();
+    let p = f.profiles[0].clone();
+    let mut trip = options().sailing;
+    trip.trip_kills = 42;
+    trip.minutes = 31;
+    trip.repair_kits = 7;
+    trip.powered_charges = 123;
+    let selected = p.for_trip(&trip);
+    assert_eq!(selected.boat, Boat::Skiff);
+    assert_eq!(
+        (
+            selected.trip_kills,
+            selected.minutes,
+            selected.repair_kits,
+            selected.powered_charges
+        ),
+        (42, 31, 7, 123)
+    );
+    assert_eq!(f.profiles[0], p);
+    assert!(p.matches(&selected));
+}
+#[test]
+fn recommendations_compare_real_boats_without_combining_fittings_and_reject_stale_upgrades() {
+    let mut s = snapshot();
+    let o = options();
+    let mut a = o.sailing.clone();
+    a.keel = 0;
+    let mut b = o.sailing.clone();
+    b.hull = 0;
+    let f = &mut s.members[0].sailing_owned;
+    f.save_boat(None, "Strong hull", &a).unwrap();
+    f.save_boat(None, "Strong keel", &b).unwrap();
+    // Legacy loose-part confirmations cannot override the actual saved fittings.
+    f.confirm(&o.sailing);
+    let r = recommend::recommend(&s, &o).unwrap();
+    assert!(
+        s.members[0]
+            .sailing_owned
+            .profiles
+            .iter()
+            .any(|p| p.matches(&r.boat))
+    );
+    assert_ne!((r.boat.hull, r.boat.keel), (6, 6));
+    assert!(r.saved_boat.is_some());
+    recommend::apply(&s, &o, &r).unwrap();
+    let chosen = s.members[0]
+        .sailing_owned
+        .profiles
+        .iter()
+        .position(|p| Some(&p.name) == r.saved_boat.as_ref())
+        .unwrap();
+    s.members[0].sailing_owned.profiles[chosen].settings.hull = 1;
+    assert!(recommend::apply(&s, &o, &r).is_err());
+}
+#[test]
+fn boat_fleet_survives_private_transfer_and_backup_but_stays_out_of_public_setup_links() {
+    let mut s = snapshot();
+    let o = options();
+    for i in 0..5 {
+        s.members[0]
+            .sailing_owned
+            .save_boat(None, &format!("Private boat {i}"), &o.sailing)
+            .unwrap();
+    }
+    let mut future = o.sailing.clone();
+    future.hull = 5;
+    s.members[0].sailing_owned.save_upgrade(0, &future).unwrap();
+    let saved = ironbound::setups::Saved {
+        version: 1,
+        snapshot: s.clone(),
+        options: o.clone(),
+        pins: Default::default(),
+        last_setup_fragment: None,
+        budget_caps: [2, 6],
+        setups: Default::default(),
+        death_risk: Default::default(),
+    };
+    let parsed = ironbound::setups::Saved::parse(&serde_json::to_string(&saved).unwrap()).unwrap();
+    assert_eq!(
+        parsed.snapshot.members[0].sailing_owned,
+        s.members[0].sailing_owned
+    );
+    let restored =
+        ironbound::account_transfer::parse(&ironbound::account_transfer::fragment(&saved).unwrap())
+            .unwrap();
+    assert_eq!(
+        restored.snapshot.members[0].sailing_owned,
+        s.members[0].sailing_owned
+    );
+    let public =
+        serde_json::to_string(&share::Setup::from_plan(&planner::plan(&s, &o), &o)).unwrap();
+    assert!(!public.contains("Private boat"));
+    assert!(!public.contains("profiles"));
+    let mut invalid = s;
+    let extra = invalid.members[0].sailing_owned.profiles[0].clone();
+    invalid.members[0].sailing_owned.profiles.push(extra);
+    assert!(Snapshot::parse(&serde_json::to_string(&invalid).unwrap(), String::new()).is_err());
 }

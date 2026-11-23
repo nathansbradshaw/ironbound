@@ -10,6 +10,7 @@ use crate::{
 use serde::Serialize;
 #[derive(Clone, Debug, Serialize)]
 pub struct Recommendation {
+    pub saved_boat: Option<String>,
     pub boat: Settings,
     pub style: String,
     pub equipment: Vec<Option<i32>>,
@@ -106,6 +107,9 @@ pub fn recommend(snapshot: &Snapshot, o: &Options) -> Result<Recommendation, Str
         return Err("Choose one Sailing creature for a trip recommendation.".into());
     }
     let member = snapshot.selected().ok_or("Select your account")?;
+    if !member.sailing_owned.profiles.is_empty() {
+        return recommend_saved(snapshot, o);
+    }
     let fleet = &member.sailing_owned;
     if !fleet.valid() || !fleet.boats.iter().any(|n| *n) {
         return Err("Confirm your boat, parts and recruited crew first.".into());
@@ -500,6 +504,7 @@ pub fn recommend(snapshot: &Snapshot, o: &Options) -> Result<Recommendation, Str
         });
         if better {
             best = Some(Recommendation {
+                saved_boat: None,
                 boat: options.sailing,
                 style: outfit.style.clone(),
                 equipment: outfit.set.clone(),
@@ -527,6 +532,152 @@ pub fn recommend(snapshot: &Snapshot, o: &Options) -> Result<Recommendation, Str
     Ok(best)
 }
 
+/// Compare coherent saved boats without moving their fitted parts or crew between them.
+fn recommend_saved(snapshot: &Snapshot, o: &Options) -> Result<Recommendation, String> {
+    let member = snapshot.selected().ok_or("Select your account")?;
+    if !member.sailing_owned.valid() {
+        return Err("Check your saved boats.".into());
+    }
+    let target = planner::monster(o.targets[0].id).ok_or("Sea creature missing")?;
+    let stock = sailing_owned::stock(snapshot, o);
+    let mut best: Option<Recommendation> = None;
+    let mut compared = 0;
+    let mut screened = 0;
+    let mut errors = Vec::new();
+    for profile in &member.sailing_owned.profiles {
+        let mut options = o.clone();
+        options.sailing = profile.for_trip(&o.sailing);
+        // Supplies are chosen from actual stock for each candidate, independently of manual trip caps.
+        options.sailing.cannonballs = 0;
+        options.sailing.repair_kits = 0;
+        let styles: &[&str] = if options.sailing.player_role == 1 {
+            &["Ranged"]
+        } else {
+            &["Ranged", "Magic"]
+        };
+        for style in styles {
+            options.targets[0].style = (*style).into();
+            let plan = base_plan(snapshot, &options, style);
+            let mut set = plan
+                .phases
+                .iter()
+                .find(|p| p.style == *style)
+                .map(|p| p.equipment.clone())
+                .unwrap_or_else(|| plan.equipment.clone());
+            if options.sailing.player_role == 1 {
+                set = cannon_set(snapshot, &options, target, set);
+            }
+            let base = options.sailing.clone();
+            let firing = base.cannon.is_some()
+                && (base.player_role == 1
+                    || base.crew.iter().any(|c| c.person.is_some() && c.role >= 3));
+            let balls: Vec<usize> = if firing {
+                (0..7)
+                    .filter(|n| stock.get(&BALL_IDS[*n]).copied().unwrap_or(0) > 0)
+                    .collect()
+            } else {
+                vec![base.cannonball]
+            };
+            if balls.is_empty() {
+                errors.push(format!("{}: no cannonballs in stock", profile.name));
+            }
+            for ball in balls {
+                screened += 1;
+                let mut b = base.clone();
+                b.cannonball = ball;
+                b.second_ball = None;
+                if !b.ammo_compatible() {
+                    continue;
+                }
+                let capacity = b
+                    .cargo_capacity()
+                    .saturating_sub(b.cargo_reserved + u32::from(firing));
+                let can_repair = b.manual_repairs
+                    || b.repair_workbench
+                        && b.crew.iter().any(|c| c.person.is_some() && c.role == 2);
+                if can_repair {
+                    if let Some((tier, id)) = KIT_IDS
+                        .iter()
+                        .enumerate()
+                        .filter(|(i, id)| {
+                            stock.get(id).copied().unwrap_or(0) > 0
+                                && sailing_combat::KIT_HEAL[*i] < b.hp()
+                        })
+                        .max_by_key(|(i, id)| {
+                            stock.get(id).copied().unwrap_or(0).min(capacity)
+                                * sailing_combat::KIT_HEAL[*i]
+                        })
+                    {
+                        b.repair_tier = tier;
+                        b.repair_kits = stock.get(id).copied().unwrap_or(0).min(capacity);
+                    }
+                }
+                options.sailing = b;
+                match Model::build(snapshot, &options, &plan, &set, style, target) {
+                    Ok(model) => {
+                        if model.streams.iter().all(|stream| {
+                            !stream.funded(&model.stock, options.sailing.powered_charges)
+                        }) {
+                            errors
+                                .push(format!("{}: no usable ammunition or charges", profile.name));
+                            continue;
+                        }
+                        compared += 1;
+                        let report = model.run(64);
+                        let better = best.as_ref().is_none_or(|old| {
+                            let rate = f64::from(report.completed) / f64::from(report.trials);
+                            let old_rate =
+                                f64::from(old.report.completed) / f64::from(old.report.trials);
+                            rate > old_rate
+                                || rate == old_rate
+                                    && (report.mean_kills > old.report.mean_kills
+                                        || report.mean_kills == old.report.mean_kills
+                                            && report.outgoing_dps > old.report.outgoing_dps)
+                        });
+                        if better {
+                            best = Some(Recommendation {
+                                saved_boat: Some(profile.name.clone()),
+                                boat: options.sailing.clone(),
+                                style: (*style).into(),
+                                equipment: set.clone(),
+                                report,
+                                compared: 0,
+                                screened: 0,
+                            });
+                        }
+                    }
+                    Err(e) => errors.push(format!("{}: {e}", profile.name)),
+                }
+            }
+        }
+    }
+    let mut best = best.ok_or_else(|| {
+        format!(
+            "No usable saved boat setup. {}",
+            errors
+                .first()
+                .map(String::as_str)
+                .unwrap_or("Check levels, crew, ammunition and loaded charges.")
+        )
+    })?;
+    let mut options = o.clone();
+    options.sailing = best.boat.clone();
+    options.targets[0].style = best.style.clone();
+    let plan = base_plan(snapshot, &options, &best.style);
+    best.report = Model::build(
+        snapshot,
+        &options,
+        &plan,
+        &best.equipment,
+        &best.style,
+        target,
+    )?
+    .run(512);
+    best.compared = compared;
+    best.screened = screened;
+    Ok(best)
+}
+
 /// Current manual setup; confirmations are not required for a hypothetical forecast.
 pub fn forecast(snapshot: &Snapshot, o: &Options) -> Result<Report, String> {
     if !crate::sailing::active(o) || o.targets.len() != 1 {
@@ -546,7 +697,15 @@ pub fn forecast(snapshot: &Snapshot, o: &Options) -> Result<Report, String> {
 /// Revalidate against live stock before applying an ephemeral recommendation.
 pub fn apply(snapshot: &Snapshot, o: &Options, r: &Recommendation) -> Result<Options, String> {
     let member = snapshot.selected().ok_or("Select your account")?;
-    if !member.sailing_owned.permits(&r.boat) {
+    if !member.sailing_owned.permits(&r.boat)
+        || r.saved_boat.as_ref().is_some_and(|name| {
+            !member
+                .sailing_owned
+                .profiles
+                .iter()
+                .any(|p| p.name == *name && p.matches(&r.boat))
+        })
+    {
         return Err("Your available boat parts or crew changed. Recommend again.".into());
     }
     let mut next = o.clone();

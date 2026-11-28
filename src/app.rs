@@ -1458,6 +1458,7 @@ pub fn start() -> Result<(), JsValue> {
             "food",
             "potions",
             "raid-level",
+            "titan-strategy",
             "access",
             "started",
             "inventory-filter",
@@ -1481,6 +1482,22 @@ pub fn start() -> Result<(), JsValue> {
                 return;
             }
             match id.as_str() {
+                "titan-strategy" => {
+                    if crate::royal_titans::active(&s.saved.options)
+                        && let Some(select) = el.dyn_ref::<HtmlSelectElement>()
+                        && let Some(&(strategy, _, _)) = crate::royal_titans::Strategy::CHOICES
+                            .iter()
+                            .find(|choice| choice.1 == select.value())
+                    {
+                        strategy.apply(&mut s.saved.options);
+                        s.saved.options.switch_pool = None;
+                        s.saved.options.switch_pins.clear();
+                        s.phase = None;
+                        s.compare_target = None;
+                        s.edit_style = None;
+                        s.edit_equipment = None;
+                    }
+                }
                 "blue-moon-melee" => {
                     if let Some(sel) = el.dyn_ref::<HtmlSelectElement>() {
                         let value = sel.value();
@@ -2484,6 +2501,9 @@ fn act(action: &str) {
                         _ => Boss::Custom,
                     };
                     s.saved.options.targets = entry.targets.clone();
+                    if entry.name == crate::royal_titans::NAME {
+                        s.saved.options.royal_titans.apply(&mut s.saved.options);
+                    }
                     if crate::guidance::profile(&s.saved.options)
                         .is_some_and(|profile| profile.recommended_mark_darkness)
                     {
@@ -3247,6 +3267,22 @@ fn encounter_detail(s: &State, p: &Plan) -> String {
         html.push_str(&format!("<label class=\"raid-control\">Raid level <input id=\"raid-level\" type=\"number\" min=\"0\" max=\"150\" value=\"{}\" title=\"Solo, path level 0. Supports levels 0–150; invocation mechanics remain partial.\"></label>",s.saved.options.raid_level));
     }
     html.push_str("</div>");
+    if crate::royal_titans::active(&s.saved.options) {
+        let strategy = s.saved.options.royal_titans;
+        html.push_str("<div class=\"titan-strategy\">");
+        if s.shared_setup.is_some() {
+            html.push_str(&format!("<p class=\"plan-coverage\">{}</p>", esc(strategy.label())));
+        } else {
+            html.push_str("<label>Strategy <select id=\"titan-strategy\">");
+            for &(choice, key, label) in crate::royal_titans::Strategy::CHOICES {
+                let selected = if choice == strategy { " selected" } else { "" };
+                html.push_str(&format!("<option value=\"{key}\"{selected}>{}</option>", esc(label)));
+            }
+            html.push_str("</select></label>");
+        }
+        html.push_str(&format!("<p class=\"plan-coverage\">{}</p>", esc(strategy.advice())));
+        html.push_str("<details><summary>Fight tips</summary><ul><li>Melee up close and switch to ranged when the titans withdraw. Bring both low before finishing either one to limit prayer-piercing stomps.</li><li>Water clears fire elementals and Fire clears ice elementals. Matching casts deal max damage when they hit. Aim for +70 Magic attack bonus, or +39 with full Magic Void, for reliable hits.</li><li>Fire Wave and Water Wave can one-shot their matching elementals at 75 Magic. Bring Blast or stronger for walls. The Twinflame staff supplies Fire and Water runes.</li></ul></details></div>");
+    }
     if s.shared_setup.is_some() {
         html.push_str(
             "<p class=\"plan-coverage\">Shared setup · rebuild with your bank to compare</p>",
@@ -4774,6 +4810,7 @@ fn prayer_book(s: &State, member: &account::Member) -> String {
 fn choose_plan_spell(s: &mut State, selection: crate::rules::SpellSelection) {
     if !selection.is_auto()
         && s.saved.options.boss == Boss::Custom
+        && !crate::royal_titans::active(&s.saved.options)
         && !s.saved.options.targets.iter().any(|t| t.style == "Magic")
     {
         let id = comparison_monster(s).map(|t| t.id);

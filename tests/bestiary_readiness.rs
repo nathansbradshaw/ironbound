@@ -262,7 +262,8 @@ fn nightmare_screens_require_both_melee_and_magic_and_keep_encounter_scope() {
 
 #[test]
 fn tribrid_and_yama_ratings_require_every_mandatory_style() {
-    let account = strong_account();
+    let mut account = strong_account();
+    account.members[0].bank.as_mut().unwrap().extend([555, 5_000]);
     for (style, bosses) in [
         (
             "Ranged",
@@ -550,7 +551,8 @@ fn weak_or_unknown_gear_and_entry_locks_can_coexist() {
 
 #[test]
 fn huey_and_titans_have_scoped_gear_screens_separate_from_access() {
-    let account = strong_account();
+    let mut account = strong_account();
+    account.members[0].bank.as_mut().unwrap().extend([555, 5_000]);
     for name in ["The Hueycoatl", "The Royal Titans"] {
         let row = result(name, &account, &Options::default());
         assert_ne!(row.readiness, Readiness::Unknown);

@@ -909,6 +909,9 @@ pub fn spell_name_for_target(
     if !settings.spell_selection.is_auto() {
         return fallback;
     }
+    if let Some(spell) = crate::royal_titans::spell_for_add(member, set, owned, settings, target.id) {
+        return spell;
+    }
     let Some(rule) = set.get(3).copied().flatten().and_then(weapon) else {
         return fallback;
     };

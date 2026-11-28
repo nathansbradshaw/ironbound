@@ -6,6 +6,7 @@ use ironbound::{
     encounters,
     modifiers::{self, Reductions},
     planner::{self, Boss, Options, Target},
+    royal_titans::{self, Strategy},
 };
 fn member() -> Member {
     let mut m = Member::default();
@@ -276,7 +277,202 @@ fn titan_elemental_magic_accuracy_uses_bonus_not_levels_or_weakness() {
     let fire = calc(14150, &s, "Magic", "Water Bolt");
     let ice = calc(14151, &s, "Magic", "Fire Bolt");
     assert_eq!((fire.max_hit, ice.max_hit), (24, 24));
-    close(fire.dps, 0.4 * 301.0 / 25.0 / 3.0);
+    close(fire.dps, 0.4 * 24.0 / 3.0);
+    for result in [fire, ice] {
+        assert!(
+            result
+                .hit_distribution
+                .iter()
+                .all(|(damage, _)| [0, 24].contains(damage))
+        );
+        close(
+            result
+                .hit_distribution
+                .iter()
+                .filter(|(damage, _)| *damage == 0)
+                .map(|(_, p)| p)
+                .sum(),
+            0.6,
+        );
+    }
+}
+
+#[test]
+fn titan_waves_one_shot_only_a_matching_elemental_when_they_land() {
+    for (id, matching, other) in [
+        (14150, "Water Wave", "Fire Wave"),
+        (14151, "Fire Wave", "Water Wave"),
+    ] {
+        let s = gear(1381, None);
+        let correct = calc(id, &s, "Magic", matching);
+        assert_eq!(correct.max_hit, 40);
+        close(correct.accuracy, 0.4);
+        close(attack_budget::for_hp(&correct, 40, 0).unwrap().attacks, 2.5);
+        let wrong = calc(id, &s, "Magic", other);
+        close(wrong.accuracy, 0.4);
+        assert!(
+            wrong
+                .hit_distribution
+                .iter()
+                .any(|(d, p)| *d > 0 && *d < wrong.max_hit && *p > 0.0)
+        );
+        let powered = calc(id, &gear(11907, None), "Magic", "");
+        assert!(
+            powered
+                .hit_distribution
+                .iter()
+                .any(|(d, p)| *d > 0 && *d < powered.max_hit && *p > 0.0)
+        );
+        let twinflame = calc(id, &gear(30634, None), "Magic", matching);
+        // Twinflame adds 10% of the base 20, then echoes 40% of the resulting 42.
+        assert_eq!(twinflame.max_hit, 58);
+        assert!(
+            twinflame
+                .hit_distribution
+                .iter()
+                .all(|(d, _)| [0, 58].contains(d))
+        );
+    }
+}
+
+fn titans_trip() -> (account::Snapshot, Options) {
+    let mut snapshot = account::demo();
+    snapshot.members[0].bank = Some(vec![
+        1434, 1, 9185, 1, 9142, 200, 1381, 1, 11907, 1, 565, 20, 554, 100, 555, 100, 8007, 5,
+    ]);
+    let options = Options {
+        boss: Boss::Custom,
+        targets: encounters::catalog()
+            .iter()
+            .find(|entry| entry.name == royal_titans::NAME)
+            .unwrap()
+            .targets
+            .clone(),
+        combat: Settings {
+            spell_casts: 10,
+            ..Default::default()
+        },
+        food: 0,
+        prayer_potions: 0,
+        ..Default::default()
+    };
+    (snapshot, options)
+}
+
+#[test]
+fn titans_plan_both_elements_and_require_each_for_export() {
+    let (mut snapshot, mut options) = titans_trip();
+    for recommended in [true, false] {
+        options.recommended = Some(recommended);
+        let plan = planner::plan(&snapshot, &options);
+        assert!(plan.exportable(), "{:?}", plan.missing);
+        assert_eq!(plan.spell, "Fire Wave / Water Wave");
+        assert!(
+            plan.phases
+                .iter()
+                .filter(|phase| phase.style == "Magic")
+                .all(|phase| phase.equipment[3] == Some(1381))
+        );
+        for (id, quantity) in [(554, 70), (555, 70), (565, 10)] {
+            assert!(
+                plan.inventory
+                    .iter()
+                    .any(|p| p.id == id && p.quantity == quantity)
+            );
+        }
+    }
+
+    snapshot.members[0].bank.as_mut().unwrap()[15] = 0;
+    let plan = planner::plan(&snapshot, &options);
+    assert!(!plan.exportable());
+    assert_eq!(plan.spell, "Fire Wave");
+    assert!(
+        plan.missing
+            .iter()
+            .any(|message| message.contains("Water spell"))
+    );
+    assert!(
+        !plan
+            .missing
+            .iter()
+            .any(|message| message.contains("Fire spell"))
+    );
+
+    options.pin_gear("Magic:3".into(), 11907, true);
+    let plan = planner::plan(&snapshot, &options);
+    assert!(!plan.exportable());
+    assert!(
+        plan.missing
+            .iter()
+            .any(|message| message.contains("Water spell"))
+    );
+    assert!(
+        plan.missing
+            .iter()
+            .any(|message| message.contains("Fire spell"))
+    );
+}
+
+#[test]
+fn titans_duo_roles_pack_only_assigned_spells_and_survive_sharing() {
+    let (snapshot, mut options) = titans_trip();
+    for (strategy, spell, required_runes) in [
+        (Strategy::SoloBoth, "Fire Wave / Water Wave", vec![554, 555]),
+        (Strategy::DuoBoth, "Fire Wave / Water Wave", vec![554, 555]),
+        (Strategy::DuoFire, "Fire Wave", vec![554]),
+        (Strategy::DuoWater, "Water Wave", vec![555]),
+        (Strategy::DuoPartner, "", vec![]),
+        (Strategy::SoloSkip, "", vec![]),
+        (Strategy::DuoSkip, "", vec![]),
+    ] {
+        strategy.apply(&mut options);
+        let plan = planner::plan(&snapshot, &options);
+        assert!(plan.exportable(), "{strategy:?} {:?}", plan.missing);
+        assert_eq!(plan.spell, spell);
+        let runes = plan
+            .inventory
+            .iter()
+            .filter(|p| [554, 555].contains(&p.id))
+            .map(|p| p.id)
+            .collect::<Vec<_>>();
+        assert_eq!(runes, required_runes);
+        assert_eq!(plan.phases.len(), 4 + required_runes.len());
+        let setup = ironbound::share::Setup::from_plan(&plan, &options);
+        let restored = ironbound::share::Setup::parse(&setup.fragment().unwrap())
+            .unwrap()
+            .options();
+        assert_eq!(restored.royal_titans, strategy);
+        assert_eq!(restored.targets, options.targets);
+        assert!(
+            ironbound::export::bank_tags(&plan, &options)
+                .unwrap()
+                .contains(royal_titans::NAME)
+        );
+    }
+}
+
+#[test]
+fn titans_twinflame_provides_both_elements_but_a_pinned_spell_covers_only_its_target() {
+    let (mut snapshot, mut options) = titans_trip();
+    let bank = snapshot.members[0].bank.as_mut().unwrap();
+    bank[6] = 30634;
+    bank[13] = 0;
+    bank[15] = 0;
+    bank.extend([556, 100]);
+    let plan = planner::plan(&snapshot, &options);
+    assert_eq!(plan.spell, "Fire Wave / Water Wave");
+    assert!(plan.exportable(), "{:?}", plan.missing);
+    assert!(!plan.inventory.iter().any(|p| [554, 555].contains(&p.id)));
+
+    options.combat.spell_selection = ironbound::rules::SpellSelection::Spell("Water Wave".into());
+    let plan = planner::plan(&snapshot, &options);
+    assert!(!plan.exportable());
+    assert_eq!(plan.spell, "Water Wave");
+    assert!(
+        plan.missing
+            .iter()
+            .any(|message| message.contains("Fire spell") && message.contains("Auto"))
+    );
 }
 #[test]
 fn elemental_void_accuracy_applies_once_and_requires_the_complete_set() {

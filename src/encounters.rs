@@ -404,6 +404,7 @@ impl Entry {
             );
         }
         let page = match self.name.as_str() {
+            crate::royal_titans::NAME => "Royal_Titans",
             "Tormented Demons" => "Tormented_Demon",
             "Sliske's wights" => "Desert_Treasure_II",
             "Chambers of Xeric (3-player)" => "Chambers_of_Xeric",
@@ -426,7 +427,8 @@ impl Entry {
 
     /// Equipment style changes do not change which boss is being fought.
     pub fn matches(&self, targets: &[Target]) -> bool {
-        !self.targets.is_empty()
+        (self.name == crate::royal_titans::NAME && crate::royal_titans::matches_targets(targets))
+            || !self.targets.is_empty()
             && self.targets.len() == targets.len()
             && targets.iter().all(Target::valid)
             && self.targets.iter().zip(targets).all(|(a, b)| a.id == b.id)

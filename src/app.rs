@@ -1107,6 +1107,7 @@ pub fn start() -> Result<(), JsValue> {
             } else if el.id().starts_with("rank-") || el.id().starts_with("plan-rank-") {
                 update_gear_ranking(&el.id(), &el.value());
             } else if el.id() == "inventory-search" {
+                inventory_quantity_error(None);
                 STATE.with(|state| {
                     let mut s = state.borrow_mut();
                     s.inventory_query = el.value();
@@ -1118,10 +1119,10 @@ pub fn start() -> Result<(), JsValue> {
                 STATE.with(|state| {
                     let mut s = state.borrow_mut();
                     s.gear_search = el.value();
-                    if let Some(results) = document().get_element_by_id("gear-pick-results") {
-                        results.set_inner_html(&gear_choices(&s));
-                    }
+                    refresh_gear_choices(&s);
                 });
+            } else if el.id() == "inventory-stack" {
+                inventory_quantity_error(None);
             } else if live_number(&el.id()) {
                 let changed = STATE
                     .with(|state| apply_number(&mut state.borrow_mut(), &el.id(), &el.value()));
@@ -2207,6 +2208,52 @@ fn act(action: &str) {
         }
         _ => {}
     }
+    if let Some(id) = action
+        .strip_prefix("pick-inventory:")
+        .and_then(|v| v.parse::<i32>().ok())
+    {
+        let result = STATE.with(|state| {
+            let mut s = state.borrow_mut();
+            let Some(index) = s.edit_inventory else {
+                return Ok(());
+            };
+            let free = inventory_available(&s, &s.plan(), index, id);
+            if free == 0 {
+                return Err(format!(
+                    "No {} available for this slot.",
+                    planner::item_name(id)
+                ));
+            }
+            let quantity = if planner::is_stackable(id) {
+                let max = free.min(i32::MAX as u32);
+                let Some(quantity) = input("inventory-stack")
+                    .parse::<u32>()
+                    .ok()
+                    .filter(|quantity| (1..=max).contains(quantity))
+                else {
+                    return Err(format!(
+                        "{} available: {max}. Enter a whole number from 1 to {max}.",
+                        planner::item_name(id)
+                    ));
+                };
+                quantity
+            } else {
+                1
+            };
+            s.message.clear();
+            s.export_text = None;
+            s.saved.options.inventory_overrides.insert(index, id);
+            s.saved.options.inventory_quantities.insert(index, quantity);
+            s.edit_inventory = None;
+            s.persist();
+            Ok(())
+        });
+        match result {
+            Ok(()) => render(),
+            Err(error) => inventory_quantity_error(Some(&error)),
+        }
+        return;
+    }
     STATE.with(|state| {
         let mut s = state.borrow_mut();
         s.message.clear();
@@ -2514,39 +2561,34 @@ fn act(action: &str) {
                 s.edit_equipment = Some(slot);
                 s.gear_search.clear();
             }
+        } else if action == "restore-gear-slot" {
+            if let Some(slot) = s.edit_equipment {
+                let key = s.saved.options.gear_override_key(comparison_style(&s), slot);
+                s.saved.options.remove_gear_override(&key);
+                if key == "Ranged:3" {
+                    s.saved.options.combat.loaded_ammo_confirmed = false;
+                }
+                s.edit_equipment = None;
+                s.notice(format!("{} restored to automatic.", planner::SLOTS[slot]), false);
+            }
         } else if let Some(slot) = action
             .strip_prefix("auto-gear:")
             .and_then(|v| v.parse::<usize>().ok())
         {
             let style = comparison_style(&s).to_string();
-            let query = s.gear_search.to_lowercase();
+            let query = s.gear_search.trim().to_lowercase();
             let top = ranked_gear(&s).0.into_iter().find(|row| {
-                row.usable
-                    && row.score.is_some()
-                    && (query.is_empty()
-                        || planner::item_name(row.gear.id)
-                            .to_lowercase()
-                            .contains(&query))
+                row.is_ranked() && row.matches_search(&query)
             });
             if let Some(row) = top {
-                let key_style =
-                    if s.saved.options.fewer_switches && [0, 1, 2, 9, 10, 12].contains(&slot) {
-                        planner::primary_style(&s.saved.options)
-                    } else {
-                        &style
-                    };
-                let key = format!("{key_style}:{slot}");
                 if let Some(preferences) = s.ranking_draft.take() {
                     s.saved.options.ranking = preferences;
                 }
-                s.saved.options.pin_gear(key, row.gear.id, false);
+                let current = planned_style(&s, &s.plan(), &style);
+                let displaced = s.saved.options.equip_gear(&style, slot, row.gear.id, false, &current);
                 s.edit_equipment = None;
-                s.notice("Top result equipped using your ranking weights.", false);
-            } else {
-                s.notice(
-                    "Set an available stat above 0 to choose a ranked result.",
-                    true,
-                );
+                let notice = gear_equip_notice("Top result equipped using your ranking weights.", displaced);
+                s.notice(notice, false);
             }
         } else if action == "rank-apply" {
             s.saved.options.recommended = Some(false);
@@ -2621,22 +2663,14 @@ fn act(action: &str) {
                                 }
                             }
                         }
-                        let key = format!(
-                            "{}:{slot}",
-                            if s.saved.options.fewer_switches
-                                && [0, 1, 2, 9, 10, 12].contains(&slot)
-                            {
-                                planner::primary_style(&s.saved.options)
-                            } else {
-                                &selected_style
-                            }
-                        );
-                        s.saved.options.pin_gear(key, id, true);
+                        let current = planned_style(&s, &s.plan(), &selected_style);
+                        let displaced = s.saved.options.equip_gear(&selected_style, slot, id, true, &current);
                         s.edit_equipment = None;
-                        s.notice(
-                            "Equipment updated. Inventory edits kept; review any packing conflicts below.",
-                            false,
+                        let notice = gear_equip_notice(
+                            "Equipment updated. Inventory edits kept.",
+                            displaced,
                         );
+                        s.notice(notice, false);
                     }
                 }
             }
@@ -2663,26 +2697,6 @@ fn act(action: &str) {
                 }
                 s.saved.options.inventory_quantities.remove(&index);
                 s.edit_inventory = None;
-            }
-        } else if let Some(id) = action
-            .strip_prefix("pick-inventory:")
-            .and_then(|v| v.parse::<i32>().ok())
-        {
-            if let Some(index) = s.edit_inventory {
-                let free = inventory_available(&s, &s.plan(), index, id);
-                if free > 0 {
-                    let quantity = if planner::is_stackable(id) {
-                        input("inventory-stack")
-                            .parse::<u32>()
-                            .unwrap_or(1)
-                            .clamp(1, free.min(i32::MAX as u32))
-                    } else {
-                        1
-                    };
-                    s.saved.options.inventory_overrides.insert(index, id);
-                    s.saved.options.inventory_quantities.insert(index, quantity);
-                    s.edit_inventory = None;
-                }
             }
         } else if action == "compare-spell-auto" {
             choose_plan_spell(&mut s, crate::rules::SpellSelection::Auto);
@@ -2952,27 +2966,15 @@ fn import_raw(raw: &str) {
     if raw.trim_start_matches('\u{feff}').starts_with("Item id\t") {
         let name = input("player-name");
         match Snapshot::from_bank_tsv(raw, &name, now) {
-            Ok(mut snapshot) => {
+            Ok(snapshot) => {
                 STATE.with(|state| {
                     let mut s = state.borrow_mut();
-                    if s.saved.snapshot.source != "Demo" {
-                        if let Some(old) = s.saved.snapshot.selected() {
-                            snapshot.members[0].skills = old.skills.clone();
-                            snapshot.members[0].level_overrides = old.level_overrides.clone();
-                            snapshot.members[0].sailing_owned = old.sailing_owned.clone();
-                            snapshot.members[0].last_updated = old.last_updated.clone();
-                            snapshot.members[0].name = old.name.clone();
-                            snapshot.selected = old.name.clone();
-                        }
+                    if let Some(saved) = s.demo_return.take() {
+                        s.saved = saved;
                     }
-                    s.demo_return = None;
-                    s.saved.snapshot = snapshot;
-                    s.saved.death_risk = Default::default();
+                    let (unavailable_pins, restored_pool) = s.saved.replace_bank(snapshot);
                     s.unreadable_save = None;
                     s.shared_setup = None;
-                    s.saved.options.access_override = None;
-                    s.saved.options.started_barrows = None;
-                    s.saved.options.clear_gear_overrides(); s.saved.options.switch_pool = None; s.saved.options.switch_pins.clear();
                     let ready = s.saved.snapshot.selected().is_some_and(|m| {
                         [
                             "Attack",
@@ -2989,14 +2991,20 @@ fn import_raw(raw: &str) {
                     s.tab = if ready { "bossing" } else { "account" }.into();
                     s.phase = None;
                     s.persist();
-                    s.notice(
-                        if ready {
-                            "Bank updated on this device."
-                        } else {
-                            "Bank imported. Add your combat levels below to build a setup."
-                        },
-                        false,
-                    );
+                    let mut message = if ready {
+                        "Bank updated on this device.".to_string()
+                    } else {
+                        "Bank imported. Add your combat levels below to build a setup.".to_string()
+                    };
+                    if unavailable_pins > 0 {
+                        message.push_str(&format!(
+                            " Saved gear choices missing from this bank: {unavailable_pins}. Those slots use available gear until the items return."
+                        ));
+                    }
+                    if restored_pool {
+                        message.push_str(" Full gear pool restored because the reduced pool is missing items.");
+                    }
+                    s.notice(message, false);
                 });
                 render();
             }
@@ -4116,7 +4124,7 @@ fn inventory_editor(s: &State, index: usize) -> String {
         .map(|i| i.quantity)
         .unwrap_or(1);
     format!(
-        r#"<div class="picker-backdrop"><section class="gear-picker inventory-picker" role="dialog" aria-modal="true" aria-labelledby="inventory-picker-title"><div class="panel-heading"><h2 id="inventory-picker-title">Inventory · slot {}</h2>{}</div><div class="picker-controls"><label>Search your items<input id="inventory-search" type="search" placeholder="Search owned items…" value="{}" autocomplete="off"></label><label>Item type<select id="inventory-filter">{filters}</select></label></div><div class="picker-actions"><label class="inventory-stack-label">Stack quantity<input id="inventory-stack" type="number" min="1" max="2147483647" value="{}"></label>{} {}</div><p class="picker-note">Food: HP per slot. Potions: restoration or boost within each role, then doses. Stack quantity applies to reviewed runes/ammo.</p><div class="picker-scroll" id="inventory-pick-results">{}</div></section></div>"#,
+        r#"<div class="picker-backdrop"><section class="gear-picker inventory-picker" role="dialog" aria-modal="true" aria-labelledby="inventory-picker-title"><div class="panel-heading"><h2 id="inventory-picker-title">Inventory · slot {}</h2>{}</div><div class="picker-controls"><label>Search your items<input id="inventory-search" type="search" placeholder="Search owned items…" value="{}" autocomplete="off"></label><label>Item type<select id="inventory-filter">{filters}</select></label></div><div class="picker-actions"><label class="inventory-stack-label">Stack quantity<input id="inventory-stack" type="number" min="1" max="2147483647" value="{}" aria-describedby="inventory-quantity-error"></label>{} {}</div><p class="ranking-notice" id="inventory-quantity-error" role="alert" hidden></p><p class="picker-note">Food: HP per slot. Potions: restoration or boost within each role, then doses. Stack quantity applies to reviewed runes/ammo.</p><div class="picker-scroll" id="inventory-pick-results">{}</div></section></div>"#,
         index + 1,
         button("close-inventory", "Close ×", "phase"),
         esc(&s.inventory_query),
@@ -4125,6 +4133,32 @@ fn inventory_editor(s: &State, index: usize) -> String {
         button("empty-inventory", "Leave empty", "phase"),
         inventory_choices(s)
     )
+}
+
+fn inventory_quantity_error(message: Option<&str>) {
+    if let Some(error) = document().get_element_by_id("inventory-quantity-error") {
+        match message {
+            Some(message) => {
+                let _ = error.remove_attribute("hidden");
+                error.set_text_content(Some(message));
+            }
+            None => {
+                error.set_text_content(None);
+                let _ = error.set_attribute("hidden", "");
+            }
+        }
+    }
+    if let Some(input) = document()
+        .get_element_by_id("inventory-stack")
+        .and_then(|e| e.dyn_into::<HtmlInputElement>().ok())
+    {
+        if message.is_some() {
+            let _ = input.set_attribute("aria-invalid", "true");
+            let _ = input.focus();
+        } else {
+            let _ = input.remove_attribute("aria-invalid");
+        }
+    }
 }
 
 fn inventory_available(s: &State, p: &Plan, slot: usize, id: i32) -> u32 {
@@ -6832,7 +6866,7 @@ fn ranking_controls(s: &State, prefix: &str) -> String {
     if !s.saved.options.gear_overrides.is_empty() {
         html.push_str(&format!(
             "<p>Manual gear choices stay fixed. {}</p>",
-            button("rank-reset", "Reset item choices", "phase")
+            button("rank-reset", "Reset all item choices", "phase")
         ));
     }
     html
@@ -6862,9 +6896,7 @@ fn update_gear_ranking(id: &str, value: &str) {
             return;
         }
         s.ranking_draft = Some(preferences);
-        if let Some(results) = document().get_element_by_id("gear-pick-results") {
-            results.set_inner_html(&gear_choices(&s));
-        }
+        refresh_gear_choices(&s);
         for prefix in ["rank", "plan-rank"] {
             if let Some(note) = document().get_element_by_id(&format!("{prefix}-status")) {
                 note.set_text_content(Some("Apply to update gear."));
@@ -6885,8 +6917,32 @@ fn gear_picker(s: &State) -> String {
         return String::new();
     };
     let style = comparison_style(s);
+    let key = s.saved.options.gear_override_key(style, slot);
+    let restore = if s.saved.options.gear_overrides.contains_key(&key) {
+        button("restore-gear-slot", "Restore automatic", "phase")
+    } else {
+        String::new()
+    };
+    let (results, can_equip_top) = gear_choices(s);
+    let top_disabled = if can_equip_top { "" } else { "disabled" };
+    let current = planned_style(s, &s.plan(), style);
+    let hand_note = if slot == 5
+        && let Some(id) = current[3].filter(|&id| planner::is_two_handed(id))
+    {
+        format!(
+            "<p class=\"picker-note\">Equipping a shield will unequip {} (two-handed).</p>",
+            esc(&planner::item_name(id))
+        )
+    } else if slot == 3 && let Some(id) = current[5] {
+        format!(
+            "<p class=\"picker-note\">A two-handed weapon will unequip {}.</p>",
+            esc(&planner::item_name(id))
+        )
+    } else {
+        String::new()
+    };
     format!(
-        r#"<div class="picker-backdrop"><section class="gear-picker" role="dialog" aria-modal="true" aria-labelledby="gear-picker-title"><div class="panel-heading"><h2 id="gear-picker-title">{} · owned equipment</h2>{}</div><div class="picker-controls"><label>Search your items<input id="gear-search" type="search" value="{}" placeholder="Search owned items…" autocomplete="off"></label></div>{}<p class="picker-note">{style} vs {} · setup totals</p><div class="picker-actions">{} {}</div><div class="picker-scroll"><div id="gear-pick-results" class="gear-pick-results" aria-live="polite">{}</div><details class="secondary-section"><summary>Upgrade reference</summary><div class="bis-scale">{}</div></details></div></section></div>"#,
+        r#"<div class="picker-backdrop"><section class="gear-picker" role="dialog" aria-modal="true" aria-labelledby="gear-picker-title"><div class="panel-heading"><h2 id="gear-picker-title">{} · owned equipment</h2>{}</div><div class="picker-controls"><label>Search your items<input id="gear-search" type="search" value="{}" placeholder="Search owned items…" autocomplete="off"></label></div>{}<p class="picker-note">{style} vs {} · setup totals</p>{hand_note}<div class="picker-actions"><button type="button" id="equip-top-gear" data-action="auto-gear:{slot}" class="phase" {top_disabled}>Equip top result</button> {restore} {}</div><div class="picker-scroll"><div id="gear-pick-results" class="gear-pick-results" aria-live="polite">{results}</div><details class="secondary-section"><summary>Upgrade reference</summary><div class="bis-scale">{}</div></details></div></section></div>"#,
         planner::SLOTS[slot],
         button("close-picker", "Close ×", "phase"),
         esc(&s.gear_search),
@@ -6894,15 +6950,37 @@ fn gear_picker(s: &State) -> String {
         esc(comparison_monster(s)
             .map(|m| m.name.as_str())
             .unwrap_or("selected encounter")),
-        button(&format!("auto-gear:{slot}"), "Equip top result", "phase"),
         button(
             &format!("pick-gear:{style}:{slot}:0"),
             "Leave empty",
             "phase"
         ),
-        gear_choices(s),
         bis_scale(s)
     )
+}
+
+fn gear_equip_notice(message: &str, displaced: Option<i32>) -> String {
+    match displaced {
+        Some(id) => format!(
+            "{message} Unequipped {} because a shield cannot be worn with a two-handed weapon.",
+            planner::item_name(id)
+        ),
+        None => message.to_string(),
+    }
+}
+
+fn refresh_gear_choices(s: &State) {
+    if let Some(results) = document().get_element_by_id("gear-pick-results") {
+        let (html, can_equip_top) = gear_choices(s);
+        results.set_inner_html(&html);
+        if let Some(button) = document().get_element_by_id("equip-top-gear") {
+            if can_equip_top {
+                let _ = button.remove_attribute("disabled");
+            } else {
+                let _ = button.set_attribute("disabled", "");
+            }
+        }
+    }
 }
 
 struct GearChoice {
@@ -6911,6 +6989,30 @@ struct GearChoice {
     metrics: crate::ranking::Metrics,
     score: Option<f64>,
     reason: Option<String>,
+}
+
+impl GearChoice {
+    fn is_ranked(&self) -> bool {
+        self.usable && self.score.is_some()
+    }
+
+    fn matches_search(&self, query: &str) -> bool {
+        query.is_empty()
+            || planner::item_name(self.gear.id)
+                .to_lowercase()
+                .contains(query)
+    }
+}
+
+fn trial_gear(set: &[Option<i32>], slot: usize, id: i32) -> Vec<Option<i32>> {
+    let mut trial = set.to_vec();
+    trial[slot] = Some(id);
+    if slot == 3 && planner::is_two_handed(id) {
+        trial[5] = None;
+    } else if slot == 5 && trial[3].is_some_and(planner::is_two_handed) {
+        trial[3] = None;
+    }
+    trial
 }
 
 fn ranked_gear(s: &State) -> (Vec<GearChoice>, Vec<&'static str>) {
@@ -6947,11 +7049,7 @@ fn ranked_gear(s: &State) -> (Vec<GearChoice>, Vec<&'static str>) {
                 None
             };
             let usable = reason.is_none();
-            let mut trial = set.clone();
-            trial[slot] = Some(g.id);
-            if slot == 3 && g.two_handed {
-                trial[5] = None;
-            }
+            let mut trial = trial_gear(&set, slot, g.id);
             let trial_style = if slot == 3
                 && s.saved.options.boss == Boss::Custom
                 && s.saved.options.targets.len() == 1
@@ -7093,37 +7191,33 @@ fn ranked_gear(s: &State) -> (Vec<GearChoice>, Vec<&'static str>) {
     (items, ranking.unavailable)
 }
 
-fn gear_choices(s: &State) -> String {
+fn gear_choices(s: &State) -> (String, bool) {
     let Some(slot) = s.edit_equipment else {
-        return String::new();
+        return (String::new(), false);
     };
     let style = comparison_style(s);
     let p = s.plan();
     let set = planned_style(s, &p, style);
     let owned = s.saved.snapshot.available(s.saved.options.shared);
-    let query = s.gear_search.to_lowercase();
+    let query = s.gear_search.trim().to_lowercase();
     let (items, unavailable) = ranked_gear(s);
     let items: Vec<_> = items
         .into_iter()
-        .filter(|row| {
-            query.is_empty()
-                || planner::item_name(row.gear.id)
-                    .to_lowercase()
-                    .contains(&query)
-        })
+        .filter(|row| row.matches_search(&query))
         .collect();
+    let can_equip_top = items.iter().any(GearChoice::is_ranked);
     let mut html = format!(
         "<p class=\"picker-note\">{} owned items · combined score / 100</p>",
         items.len()
     );
-    if s.ranking_draft
+    let zero_weights = s.ranking_draft
         .as_ref()
         .unwrap_or(&s.saved.options.ranking)
         .weights
         .values()
         .iter()
-        .all(|v| *v == 0.0)
-    {
+        .all(|v| *v == 0.0);
+    if zero_weights && !items.is_empty() {
         html.push_str(
             "<p class=\"ranking-notice\">Set at least one importance above 0 to rank gear.</p>",
         );
@@ -7133,6 +7227,10 @@ fn gear_choices(s: &State) -> String {
     html.push_str("<details class=\"ranking-help\"><summary>How scores work</summary><p>Each stat is scaled across all usable owned items in this slot. Search does not change scores. Figures describe the resulting setup. Missing enabled stats rank below complete results. Defence uses bonuses, not a full fight simulation.</p></details>");
     if items.is_empty() {
         html.push_str("<p>No owned items match this search.</p>");
+    } else if !can_equip_top && !zero_weights {
+        html.push_str(
+            "<p class=\"picker-note\">No ranked results. You can still choose an item below.</p>",
+        );
     }
     let metric = |value: Option<f64>, decimals: usize| {
         value
@@ -7159,7 +7257,7 @@ fn gear_choices(s: &State) -> String {
             if set[slot] == Some(g.id) { "selected" } else { "" }, g.id, image(g.id), esc(&planner::item_name(g.id)),
             metric(row.metrics.dps, 3), metric(row.metrics.defence, 0), metric(row.metrics.prayer, 0), metric(row.metrics.weight, 3), esc(&state)));
     }
-    html
+    (html, can_equip_top)
 }
 
 fn bis_scale(s: &State) -> String {
@@ -7182,11 +7280,7 @@ fn bis_scale(s: &State) -> String {
     );
     for (rank, g) in choices.into_iter().enumerate() {
         let have = owned.contains_key(&g.id);
-        let mut trial = set.clone();
-        trial[slot] = Some(g.id);
-        if slot == 3 && g.two_handed {
-            trial[5] = None;
-        }
+        let trial = trial_gear(&set, slot, g.id);
         let dps = comparison_monster(s)
             .and_then(|m| {
                 combat::calculate_configured(

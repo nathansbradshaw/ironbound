@@ -163,6 +163,50 @@ fn conflicting_pinned_weapon_stays_visible_and_blocks_export() {
 }
 
 #[test]
+fn non_ranged_pin_explains_the_phase_conflict_with_type_on_auto() {
+    let bank = stock();
+    let mut o = options(RangedType::Auto);
+    o.pin_gear("Ranged:3".into(), 4587, true);
+    let p = planner::plan(&bank, &o);
+    assert!(!p.exportable());
+    assert!(p.missing.iter().any(|message| {
+        message.contains("Dragon scimitar cannot be used for Ranged")
+            && message.contains("Restore automatic")
+    }));
+    assert!(
+        !p.missing
+            .iter()
+            .any(|message| message.contains("match Auto"))
+    );
+}
+
+#[test]
+fn shield_and_two_handed_weapon_picks_replace_conflicting_gear() {
+    let bank = stock();
+    let mut o = options(RangedType::Auto);
+    let bow = 861;
+    let shield = 3842;
+    o.pin_gear("Ranged:3".into(), bow, true);
+    let current = planner::equipment_for_style(&bank, &o, "Ranged");
+    assert_eq!(current[3], Some(bow));
+    assert_eq!(current[5], None);
+    assert_eq!(o.equip_gear("Ranged", 5, shield, true, &current), Some(bow));
+    let current = planner::equipment_for_style(&bank, &o, "Ranged");
+    assert_eq!(current[3], None);
+    assert_eq!(current[5], Some(shield));
+
+    o.remove_gear_override("Ranged:3");
+    let current = planner::equipment_for_style(&bank, &o, "Ranged");
+    assert_eq!(current[3], Some(9185));
+    assert_eq!(current[5], Some(shield));
+    assert_eq!(o.equip_gear("Ranged", 3, bow, true, &current), Some(shield));
+    let current = planner::equipment_for_style(&bank, &o, "Ranged");
+    assert_eq!(current[3], Some(bow));
+    assert_eq!(current[5], None);
+    assert!(!o.gear_overrides.contains_key("Ranged:5"));
+}
+
+#[test]
 fn manual_ammunition_stays_equipped_when_incompatible_or_short() {
     let mut bank = stock();
     bank.members[0].bank.as_mut().unwrap().extend([882, 2]);

@@ -23,6 +23,50 @@ pub struct Saved {
     pub death_risk: crate::death_risk::Settings,
 }
 impl Saved {
+    /// Refresh from a parsed RuneLite bank table. Keep pins even if stock
+    /// disappears, so the planner can use them again after a later refresh.
+    pub fn replace_bank(&mut self, mut bank: Snapshot) -> (usize, bool) {
+        let refresh = self.snapshot.source != "Demo" && self.snapshot.selected().is_some();
+        if refresh
+            && let Some(old) = self.snapshot.selected()
+            && let Some(new) = bank.members.first_mut()
+        {
+            new.skills = old.skills.clone();
+            new.level_overrides = old.level_overrides.clone();
+            new.sailing_owned = old.sailing_owned.clone();
+            new.last_updated = old.last_updated.clone();
+            new.name = old.name.clone();
+            bank.selected = old.name.clone();
+        }
+        self.snapshot = bank;
+        self.death_risk = Default::default();
+        self.options.access_override = None;
+        self.options.started_barrows = None;
+
+        if !refresh {
+            self.options.clear_gear_overrides();
+            self.options.switch_pool = None;
+            self.options.switch_pins.clear();
+            return (0, false);
+        }
+        let observed = self.snapshot.available(self.options.shared);
+        let unavailable_pins = self
+            .options
+            .gear_overrides
+            .values()
+            .filter(|&&id| id != 0 && !observed.contains_key(&id))
+            .count();
+        let restore_pool = self.options.switch_pool.as_ref().is_some_and(|pool| {
+            let stock = crate::planner::stock_with_quest_gear(&self.snapshot, &self.options);
+            pool.iter().any(|id| !stock.contains_key(id))
+        });
+        if restore_pool {
+            self.options.switch_pool = None;
+            self.options.switch_pins.clear();
+        }
+        (unavailable_pins, restore_pool)
+    }
+
     pub fn parse(raw: &str) -> Result<Self, String> {
         if raw.len() > 4_000_000 {
             return Err("Account backup exceeds 4 MB.".into());

@@ -1691,6 +1691,9 @@ pub fn start() -> Result<(), JsValue> {
                     s.saved.options.exclude_void = !el
                         .dyn_ref::<HtmlInputElement>()
                         .is_some_and(|e| e.checked());
+                    if s.saved.options.exclude_void {
+                        s.saved.options.manual_gear.retain(|_, id| !crate::rules::void_piece(*id));
+                    }
                 }
                 "safety" => {
                     if let Ok(sel) = el.dyn_into::<HtmlSelectElement>() {
@@ -1780,7 +1783,7 @@ pub fn start() -> Result<(), JsValue> {
                 _ if id.starts_with("gear-") => {
                     if let Ok(sel) = el.dyn_into::<HtmlSelectElement>() {
                         if let Ok(value) = sel.value().parse::<i32>() {
-                            s.saved.options.gear_overrides.insert(id[5..].into(), value);
+                            s.saved.options.pin_gear(id[5..].into(), value, false);
                         }
                     }
                 }
@@ -2209,7 +2212,7 @@ fn act(action: &str) {
         s.message.clear();
         s.export_text = None;
         if action == "wilderness-off" {
-            s.saved.options.wilderness=None; s.saved.options.gear_overrides.clear(); s.saved.options.switch_pool = None; s.saved.options.switch_pins.clear();
+            s.saved.options.wilderness=None; s.saved.options.clear_gear_overrides(); s.saved.options.switch_pool = None; s.saved.options.switch_pins.clear();
             s.notice("Returned to unrestricted gear planning.",false);
         } else if action == "save-named" {
             let options = s.saved.options.clone();
@@ -2401,7 +2404,7 @@ fn act(action: &str) {
             };
             s.saved.options.access_override = None;
             s.saved.options.started_barrows = None;
-            s.saved.options.gear_overrides.clear(); s.saved.options.switch_pool = None; s.saved.options.switch_pins.clear();
+            s.saved.options.clear_gear_overrides(); s.saved.options.switch_pool = None; s.saved.options.switch_pins.clear();
             s.saved.options.inventory_overrides.clear();
             s.saved.options.inventory_quantities.clear();
             s.shared_setup = None;
@@ -2444,7 +2447,7 @@ fn act(action: &str) {
                             .and_then(|m| m.level("Magic"))
                             .is_some_and(|level| level >= 59);
                     }
-                    s.saved.options.gear_overrides.clear(); s.saved.options.switch_pool = None; s.saved.options.switch_pins.clear();
+                    s.saved.options.clear_gear_overrides(); s.saved.options.switch_pool = None; s.saved.options.switch_pins.clear();
                     s.saved.options.targets = planner::recommend_encounter(
                         &s.saved.snapshot,
                         &s.saved.options,
@@ -2536,7 +2539,7 @@ fn act(action: &str) {
                 if let Some(preferences) = s.ranking_draft.take() {
                     s.saved.options.ranking = preferences;
                 }
-                s.saved.options.gear_overrides.insert(key, row.gear.id);
+                s.saved.options.pin_gear(key, row.gear.id, false);
                 s.edit_equipment = None;
                 s.notice("Top result equipped using your ranking weights.", false);
             } else {
@@ -2558,7 +2561,7 @@ fn act(action: &str) {
             if let Some(preferences) = s.ranking_draft.take() {
                 s.saved.options.ranking = preferences;
             }
-            s.saved.options.gear_overrides.clear(); s.saved.options.switch_pool = None; s.saved.options.switch_pins.clear();
+            s.saved.options.clear_gear_overrides(); s.saved.options.switch_pool = None; s.saved.options.switch_pins.clear();
             s.notice(
                 "Manual gear choices cleared. Automatic gear uses your priorities.",
                 false,
@@ -2580,14 +2583,11 @@ fn act(action: &str) {
                 if let (Ok(slot), Ok(id)) = (parts[1].parse::<usize>(), parts[2].parse::<i32>()) {
                     if slot < 14
                         && (id == 0
-                            || (planner::gear(id)
-                                .is_some_and(|g| g.slot == planner::SLOT_KEYS[slot])
-                                && s.saved.snapshot.available(s.saved.options.shared).contains_key(&id)
-                                && !s.saved.options.item_excluded(id)
-                                && s.saved
-                                    .snapshot
-                                    .selected()
-                                    .is_some_and(|m| planner::can_use(id, m))))
+                            || planner::owned_gear_fits(
+                                slot,
+                                id,
+                                &s.saved.snapshot.available(s.saved.options.shared),
+                            ))
                     {
                         let mut selected_style = parts[0].to_string();
                         if slot == 3 {
@@ -2617,7 +2617,7 @@ fn act(action: &str) {
                                         |ammo| !crate::rules::ammo_ids(id).contains(ammo),
                                     )
                                 {
-                                    s.saved.options.gear_overrides.remove("Ranged:13");
+                                    s.saved.options.remove_gear_override("Ranged:13");
                                 }
                             }
                         }
@@ -2631,7 +2631,7 @@ fn act(action: &str) {
                                 &selected_style
                             }
                         );
-                        s.saved.options.gear_overrides.insert(key, id);
+                        s.saved.options.pin_gear(key, id, true);
                         s.edit_equipment = None;
                         s.notice(
                             "Equipment updated. Inventory edits kept; review any packing conflicts below.",
@@ -2894,6 +2894,7 @@ fn act(action: &str) {
         {
             if !s.saved.options.excluded.remove(&id) {
                 s.saved.options.excluded.insert(id);
+                s.saved.options.manual_gear.retain(|_, pinned| *pinned != id);
             }
             s.notice(
                 "Gear preference updated. The packing list has been rebuilt.",
@@ -2971,7 +2972,7 @@ fn import_raw(raw: &str) {
                     s.shared_setup = None;
                     s.saved.options.access_override = None;
                     s.saved.options.started_barrows = None;
-                    s.saved.options.gear_overrides.clear(); s.saved.options.switch_pool = None; s.saved.options.switch_pins.clear();
+                    s.saved.options.clear_gear_overrides(); s.saved.options.switch_pool = None; s.saved.options.switch_pins.clear();
                     let ready = s.saved.snapshot.selected().is_some_and(|m| {
                         [
                             "Attack",
@@ -4861,8 +4862,8 @@ fn magic_spell_book(s: &State, set: &[Option<i32>]) -> String {
 }
 fn choose_plan_ranged(s: &mut State, selection: crate::rules::RangedType) {
     s.saved.options.combat.ranged_type = selection;
-    s.saved.options.gear_overrides.remove("Ranged:3");
-    s.saved.options.gear_overrides.remove("Ranged:13");
+    s.saved.options.remove_gear_override("Ranged:3");
+    s.saved.options.remove_gear_override("Ranged:13");
     if selection.key().is_some()
         && s.saved.options.boss == Boss::Custom
         && !s.saved.options.targets.iter().any(|t| t.style == "Ranged")
@@ -5934,12 +5935,7 @@ fn tier_table(s: &State) -> String {
                     "<details><summary>{more} more owned choices</summary>"
                 ));
             }
-            let disabled = if g.usable && !g.excluded {
-                ""
-            } else {
-                "disabled"
-            };
-            html.push_str(&format!(r#"<button class="tier-item {}" data-action="pick-gear:{style}:{slot}:{}" {disabled}>{}<span>{}<small>{}</small></span></button>"#,if set[slot]==Some(g.id){"tier-selected"}else{""},g.id,image(g.id),esc(&planner::item_name(g.id)),dps.map(|d|format!("{d:.3} DPS")).unwrap_or_else(||if g.excluded{"Excluded".into()}else if !g.usable{"Skill requirements unconfirmed / unmet".into()}else{"DPS not supported".into()})));
+            html.push_str(&format!(r#"<button class="tier-item {}" data-action="pick-gear:{style}:{slot}:{}">{}<span>{}<small>{}</small></span></button>"#,if set[slot]==Some(g.id){"tier-selected"}else{""},g.id,image(g.id),esc(&planner::item_name(g.id)),dps.map(|d|format!("{d:.3} DPS")).unwrap_or_else(||if g.excluded{"Excluded from recommendations".into()}else if !g.usable{"Skill requirements unmet or unconfirmed".into()}else{"DPS not supported".into()})));
         }
         if more > 0 {
             html.push_str("</details>");
@@ -6927,7 +6923,7 @@ fn ranked_gear(s: &State) -> (Vec<GearChoice>, Vec<&'static str>) {
     let style = comparison_style(s);
     let p = s.plan();
     let set = planned_style(s, &p, style);
-    let owned = s.saved.snapshot.available(false);
+    let owned = s.saved.snapshot.available(s.saved.options.shared);
     // Rank the entire usable pool. Searching must not change scores or relative order.
     let mut items: Vec<_> = planner::equipment()
         .iter()
@@ -6939,11 +6935,18 @@ fn ranked_gear(s: &State) -> (Vec<GearChoice>, Vec<&'static str>) {
                         || rule.family.ammo.is_empty()
                         || rule.family.ammo.contains(&g.id)
                 });
-            let usable = compatible
-                && planner::can_use(g.id, member)
-                && !s.saved.options.item_excluded(g.id)
-                && (slot != 13
-                    || owned.get(&g.id).copied().unwrap_or(0) >= s.saved.options.combat.ammo_shots);
+            let reason = if !compatible {
+                Some("Incompatible with the equipped weapon")
+            } else if !planner::can_use(g.id, member) {
+                Some("Skill requirements unmet or unconfirmed")
+            } else if slot == 13 && owned[&g.id] < s.saved.options.combat.ammo_shots {
+                Some("Below your ammunition budget")
+            } else if s.saved.options.item_excluded(g.id) {
+                Some("Excluded from recommendations")
+            } else {
+                None
+            };
+            let usable = reason.is_none();
             let mut trial = set.clone();
             trial[slot] = Some(g.id);
             if slot == 3 && g.two_handed {
@@ -7014,11 +7017,9 @@ fn ranked_gear(s: &State) -> (Vec<GearChoice>, Vec<&'static str>) {
                 .as_ref()
                 .and_then(|r| r.as_ref().ok())
                 .map(|r| r.dps);
-            let reason = if !compatible {
-                Some("Not compatible with the equipped weapon".into())
-            } else {
-                calculation.and_then(Result::err)
-            };
+            let reason = calculation
+                .and_then(Result::err)
+                .or_else(|| reason.map(str::to_owned));
             let known_bonuses = trial
                 .iter()
                 .flatten()
@@ -7099,7 +7100,7 @@ fn gear_choices(s: &State) -> String {
     let style = comparison_style(s);
     let p = s.plan();
     let set = planned_style(s, &p, style);
-    let owned = s.saved.snapshot.available(false);
+    let owned = s.saved.snapshot.available(s.saved.options.shared);
     let query = s.gear_search.to_lowercase();
     let (items, unavailable) = ranked_gear(s);
     let items: Vec<_> = items
@@ -7140,17 +7141,10 @@ fn gear_choices(s: &State) -> String {
     };
     for row in items {
         let g = row.gear;
-        let state = if !row.usable {
-            "Excluded or skill/ammo requirements unmet"
-        } else if set[slot] == Some(g.id) {
-            "Equipped"
+        let state = if set[slot] == Some(g.id) {
+            format!("Equipped · owned × {}", owned[&g.id])
         } else {
-            ""
-        };
-        let state = if state.is_empty() {
             format!("Owned × {}", owned[&g.id])
-        } else {
-            format!("{state} · owned × {}", owned[&g.id])
         };
         let state = if let Some(reason) = &row.reason {
             format!("{state} · {reason}")
@@ -7161,9 +7155,9 @@ fn gear_choices(s: &State) -> String {
             .score
             .map(|n| format!("{n:.1}"))
             .unwrap_or_else(|| "—".into());
-        html.push_str(&format!(r#"<button class="gear-pick {}" data-action="pick-gear:{style}:{slot}:{}" {}>{}<span><strong>{}</strong><small>{} DPS · {} defence · {} prayer · {} kg</small><small>{state}</small></span><b class="ranking-score" aria-label="Combined score {score} out of 100">{score}<small>/ 100</small></b></button>"#,
-            if set[slot] == Some(g.id) { "selected" } else { "" }, g.id, if row.usable { "" } else { "disabled" }, image(g.id), esc(&planner::item_name(g.id)),
-            metric(row.metrics.dps, 3), metric(row.metrics.defence, 0), metric(row.metrics.prayer, 0), metric(row.metrics.weight, 3)));
+        html.push_str(&format!(r#"<button class="gear-pick {}" data-action="pick-gear:{style}:{slot}:{}">{}<span><strong>{}</strong><small>{} DPS · {} defence · {} prayer · {} kg</small><small>{}</small></span><b class="ranking-score" aria-label="Combined score {score} out of 100">{score}<small>/ 100</small></b></button>"#,
+            if set[slot] == Some(g.id) { "selected" } else { "" }, g.id, image(g.id), esc(&planner::item_name(g.id)),
+            metric(row.metrics.dps, 3), metric(row.metrics.defence, 0), metric(row.metrics.prayer, 0), metric(row.metrics.weight, 3), esc(&state)));
     }
     html
 }
@@ -7175,7 +7169,7 @@ fn bis_scale(s: &State) -> String {
     let style = comparison_style(s);
     let p = s.plan();
     let set = planned_style(s, &p, style);
-    let owned = s.saved.snapshot.available(false);
+    let owned = s.saved.snapshot.available(s.saved.options.shared);
     let Some(member) = s.saved.snapshot.selected() else {
         return String::new();
     };
@@ -7208,8 +7202,14 @@ fn bis_scale(s: &State) -> String {
             })
             .map(|r| format!("{:.3} DPS", r.dps))
             .unwrap_or_else(|| "Effect not modelled".into());
-        let eligible = planner::can_use(g.id, member);
-        html.push_str(&format!(r#"<article class="bis-item {}"><small>Tier {}</small>{}<strong>{}</strong><span>{}</span><small>{}</small>{}</article>"#,if have{"owned"}else{""},rank+1,image(g.id),esc(&planner::item_name(g.id)),esc(&dps),if have{"Owned"}else{"Not owned"},if have&&eligible{button(&format!("pick-gear:{style}:{slot}:{}",g.id),"Equip","phase")}else if !have{button(&format!("goal-item:{}",g.id),"Track upgrade","phase")}else{"<span>Check skill requirements</span>".into()}));
+        let ownership = if !have {
+            "Not owned"
+        } else if !planner::can_use(g.id, member) {
+            "Owned · skill requirements unmet or unconfirmed"
+        } else {
+            "Owned"
+        };
+        html.push_str(&format!(r#"<article class="bis-item {}"><small>Tier {}</small>{}<strong>{}</strong><span>{}</span><small>{ownership}</small>{}</article>"#,if have{"owned"}else{""},rank+1,image(g.id),esc(&planner::item_name(g.id)),esc(&dps),if have{button(&format!("pick-gear:{style}:{slot}:{}",g.id),"Equip","phase")}else{button(&format!("goal-item:{}",g.id),"Track upgrade","phase")}));
     }
     html.push_str("</div>");
     if slot == 3 && crate::rules::base_style(style) == "Melee" {

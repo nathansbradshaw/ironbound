@@ -161,6 +161,33 @@ fn conflicting_pinned_weapon_stays_visible_and_blocks_export() {
         &o.combat
     ));
 }
+
+#[test]
+fn manual_ammunition_stays_equipped_when_incompatible_or_short() {
+    let mut bank = stock();
+    bank.members[0].bank.as_mut().unwrap().extend([882, 2]);
+    let mut o = options(RangedType::Heavy);
+    o.pin_gear("Ranged:3".into(), 9185, true);
+    o.pin_gear("Ranged:13".into(), 882, true);
+    let p = planner::plan(&bank, &o);
+    assert_eq!(ranged(&p)[13], Some(882));
+    assert!(!p.exportable());
+    assert!(
+        p.missing
+            .iter()
+            .any(|m| m.contains("cannot fire Bronze arrow"))
+    );
+    assert!(
+        p.missing
+            .iter()
+            .any(|m| m.contains("Not enough Bronze arrow"))
+    );
+
+    o.pin_gear("Ranged:13".into(), 0, true);
+    let p = planner::plan(&bank, &o);
+    assert_eq!(ranged(&p)[13], None);
+    assert!(!p.exportable());
+}
 #[test]
 fn auto_restores_an_unrestricted_owned_choice() {
     let bank = stock();

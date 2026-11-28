@@ -213,6 +213,41 @@ fn exclusions_are_honoured() {
     assert!(!p.inventory.iter().any(|p| p.id == 1381));
 }
 #[test]
+fn manual_legs_stay_equipped_despite_recommendation_filters() {
+    let mut s = account::demo();
+    let skirt = 4585;
+    s.members[0].bank.as_mut().unwrap().extend([i64::from(skirt), 1]);
+    let mut o = Options::default();
+    o.excluded.insert(skirt);
+    assert_ne!(planner::plan(&s, &o).equipment[7], Some(skirt));
+    assert!(!planner::planning_stock(&s, &o).contains_key(&skirt));
+
+    o.pin_gear("Magic:7".into(), skirt, true);
+    let mut o: Options = serde_json::from_value(serde_json::to_value(&o).unwrap()).unwrap();
+    let p = planner::plan(&s, &o);
+    assert_eq!(p.equipment[7], Some(skirt));
+    assert!(p.exportable(), "{:?}", p.missing);
+    assert_eq!(planner::equipment_for_style(&s, &o, "Magic")[7], Some(skirt));
+
+    s.members[0].level_overrides.insert("Defence".into(), 1);
+    let p = planner::plan(&s, &o);
+    assert_eq!(p.equipment[7], Some(skirt));
+    assert!(!p.exportable());
+    assert!(
+        p.missing
+            .iter()
+            .any(|m| m.contains("Dragon plateskirt has unmet"))
+    );
+
+    o.pin_gear("Magic:4".into(), skirt, true);
+    assert_ne!(planner::plan(&s, &o).equipment[4], Some(skirt));
+    o.pin_gear("Magic:7".into(), 1079, true);
+    assert!(!s.available(false).contains_key(&1079));
+    assert_ne!(planner::plan(&s, &o).equipment[7], Some(1079));
+    o.clear_gear_overrides();
+    assert_ne!(planner::plan(&s, &o).equipment[7], Some(skirt));
+}
+#[test]
 fn underlevelled_weapons_are_not_selected() {
     let mut s = account::demo();
     s.members[0].skills.as_mut().unwrap()[SKILLS.iter().position(|s| *s == "Magic").unwrap()] =

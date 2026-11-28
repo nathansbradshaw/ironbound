@@ -366,8 +366,16 @@ pub fn solve(
     ideals: Vec<StyleSet>,
     o: &Options,
 ) -> Result<(Vec<StyleSet>, Report), String> {
-    let effective = planner::effective_options(o, m, owned);
-    let o = &effective;
+    let effective = planner::effective_options(o, m, owned, owned);
+    solve_with_effective_options(m, owned, ideals, &effective)
+}
+
+pub(crate) fn solve_with_effective_options(
+    m: &Member,
+    owned: &BTreeMap<i32, u32>,
+    ideals: Vec<StyleSet>,
+    o: &Options,
+) -> Result<(Vec<StyleSet>, Report), String> {
     let limit = o.max_switches.unwrap_or(11).min(11);
     let bag = o.switch_slots.min(20);
     let anchor = ideals

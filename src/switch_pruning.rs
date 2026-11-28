@@ -134,7 +134,8 @@ impl Search {
         full.max_switches = None;
         if let Some(member) = snapshot.selected() {
             let owned = planner::planning_stock(snapshot, &full);
-            full = planner::effective_options(&full, member, &owned);
+            let observed = snapshot.available(full.shared);
+            full = planner::effective_options(&full, member, &owned, &observed);
         }
         let baseline = Candidate::new(tradeoffs::budget(snapshot, &full, 11));
         let mut current = baseline.clone();

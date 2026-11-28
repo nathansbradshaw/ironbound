@@ -150,6 +150,7 @@ pub fn validate_options(o: &Options) -> Result<(), String> {
         })
         || o.gear_overrides
             .iter()
+            .chain(o.manual_gear.iter())
             .chain(o.switch_pins.iter())
             .any(|(key, id)| {
                 let Some((style, slot)) = key.rsplit_once(':') else {

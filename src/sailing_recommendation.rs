@@ -41,7 +41,7 @@ struct Candidate {
 fn base_plan(snapshot: &Snapshot, o: &Options, style: &str) -> Plan {
     let mut t = o.clone();
     t.targets[0].style = style.into();
-    t.gear_overrides.clear();
+    t.clear_gear_overrides();
     t.inventory_overrides.clear();
     t.inventory_quantities.clear();
     t.recommended = Some(false);
@@ -712,7 +712,7 @@ pub fn apply(snapshot: &Snapshot, o: &Options, r: &Recommendation) -> Result<Opt
     next.sailing = r.boat.clone();
     next.targets[0].style = r.style.clone();
     next.recommended = Some(false);
-    next.gear_overrides.clear();
+    next.clear_gear_overrides();
     next.inventory_overrides.clear();
     next.inventory_quantities.clear();
     for (slot, id) in r.equipment.iter().enumerate() {

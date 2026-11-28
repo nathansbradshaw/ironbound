@@ -284,7 +284,7 @@ pub fn apply(options: &mut Options, entry: &Entry, preview: &Preview) {
         .collect();
     options.combat = Default::default();
     options.recommended = Some(false);
-    options.gear_overrides.clear();
+    options.clear_gear_overrides();
     for style in rules::STYLES {
         for (slot, id) in preview.equipment.iter().enumerate() {
             options

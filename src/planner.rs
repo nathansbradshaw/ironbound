@@ -268,6 +268,10 @@ pub struct Options {
     pub raid_level: u32,
     pub targets: Vec<Target>,
     pub gear_overrides: BTreeMap<String, i32>,
+    // Explicit picker choices may bypass recommendation filters. Keep the ID
+    // alongside the slot so a later automatic pin cannot inherit the exception.
+    #[serde(skip_serializing_if = "BTreeMap::is_empty")]
+    pub manual_gear: BTreeMap<String, i32>,
     pub inventory_overrides: BTreeMap<usize, i32>,
     pub inventory_quantities: BTreeMap<usize, u32>,
     pub max_switches: Option<usize>,
@@ -306,6 +310,7 @@ impl Default for Options {
             raid_level: 0,
             targets: vec![],
             gear_overrides: BTreeMap::new(),
+            manual_gear: BTreeMap::new(),
             inventory_overrides: BTreeMap::new(),
             inventory_quantities: BTreeMap::new(),
             max_switches: None,
@@ -319,12 +324,36 @@ impl Default for Options {
     }
 }
 impl Options {
+    pub fn pin_gear(&mut self, key: String, id: i32, manual: bool) {
+        if manual && id != 0 {
+            self.manual_gear.insert(key.clone(), id);
+        } else {
+            self.manual_gear.remove(&key);
+        }
+        self.gear_overrides.insert(key, id);
+    }
+
+    pub fn clear_gear_overrides(&mut self) {
+        self.gear_overrides.clear();
+        self.manual_gear.clear();
+    }
+
+    pub fn remove_gear_override(&mut self, key: &str) {
+        self.gear_overrides.remove(key);
+        self.manual_gear.remove(key);
+    }
+
     pub fn item_excluded(&self, id: i32) -> bool {
         self.excluded.contains(&id)
             || self.switch_pool.as_ref().is_some_and(|pool| gear(id).is_some() && !pool.contains(&id))
             || self.exclude_void && crate::rules::void_piece(id)
             || self.wilderness.as_ref().is_some_and(|kit| !kit.permits(id))
     }
+}
+
+pub(crate) fn owned_gear_fits(slot: usize, id: i32, owned: &BTreeMap<i32, u32>) -> bool {
+    owned.get(&id).is_some_and(|&quantity| quantity > 0)
+        && gear(id).is_some_and(|g| SLOT_KEYS.get(slot) == Some(&g.slot.as_str()))
 }
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 pub struct Packed {
@@ -659,8 +688,11 @@ pub fn equipment_for_style(
         return vec![None; 14];
     };
     let owned = planning_stock(snapshot, options);
+    let observed = snapshot.available(options.shared);
     let stock_member = member_with_stock(m, &owned);
     let m = &stock_member;
+    let effective = effective_options(options, m, &owned, &observed);
+    let options = &effective;
     let mut set = style_set(style, options.boss, m, &owned, equipment(), options);
     if options.fewer_switches && style != primary_style(options) {
         let primary = style_set(
@@ -742,7 +774,12 @@ pub fn recommend_encounter(
     .unwrap_or_else(|| targets.to_vec())
 }
 
-pub(crate) fn effective_options(o: &Options, m: &Member, owned: &BTreeMap<i32, u32>) -> Options {
+pub(crate) fn effective_options(
+    o: &Options,
+    m: &Member,
+    owned: &BTreeMap<i32, u32>,
+    observed: &BTreeMap<i32, u32>,
+) -> Options {
     let mut options = o.clone();
     for (key, id) in &o.switch_pins {
         options.gear_overrides.entry(key.clone()).or_insert(*id);
@@ -756,10 +793,12 @@ pub(crate) fn effective_options(o: &Options, m: &Member, owned: &BTreeMap<i32, u
         };
         crate::rules::STYLES.contains(&style)
             && (*id == 0
-                || owned.get(id).copied().unwrap_or(0) > 0
-                    && !o.item_excluded(*id)
-                    && can_use(*id, m)
-                    && gear(*id).is_some_and(|g| g.slot == SLOT_KEYS[slot]))
+                || (o.manual_gear.get(key) == Some(id) && owned_gear_fits(slot, *id, observed))
+                || (owned_gear_fits(slot, *id, owned) && !o.item_excluded(*id) && can_use(*id, m)))
+    });
+    options.manual_gear.retain(|key, id| {
+        options.gear_overrides.get(key) == Some(id)
+            && observed.get(id).is_some_and(|&quantity| quantity > 0)
     });
     options
 }
@@ -771,8 +810,6 @@ fn style_set(
     catalog: &[Gear],
     options: &Options,
 ) -> Vec<Option<i32>> {
-    let effective = effective_options(options, m, owned);
-    let options = &effective;
     let mut set = vec![None; 14];
     let slot_keys = [
         "head", "cape", "neck", "weapon", "body", "shield", "", "legs", "", "hands", "feet", "",
@@ -810,16 +847,7 @@ fn style_set(
     align_ranged_weapon(&mut set, style, m, owned, options);
     for (slot, value) in set.iter_mut().enumerate() {
         if let Some(id) = options.gear_overrides.get(&format!("{style}:{slot}")) {
-            if *id == 0 {
-                *value = None;
-            } else if owned.get(id).copied().unwrap_or(0) > 0
-                && can_use(*id, m)
-                && catalog
-                    .iter()
-                    .any(|g| g.id == *id && g.slot == slot_keys[slot])
-            {
-                *value = Some(*id);
-            }
+            *value = (*id != 0).then_some(*id);
         }
     }
     if let Some(w) = set[3] {
@@ -845,11 +873,13 @@ fn style_set(
                             && can_use(*id, m)
                     })
             });
-        if let Some(id) = options.gear_overrides.get("Ranged:13") {
-            let allowed = crate::rules::ammo_ids(set[3].unwrap_or(0)).contains(id);
-            if allowed && owned.get(id).copied().unwrap_or(0) >= options.combat.ammo_shots {
-                set[13] = Some(*id);
-            }
+        if let Some(id) = options.gear_overrides.get("Ranged:13")
+            && (*id == 0
+                || options.manual_gear.get("Ranged:13") == Some(id)
+                || crate::rules::ammo_ids(set[3].unwrap_or(0)).contains(id)
+                    && owned.get(id).copied().unwrap_or(0) >= options.combat.ammo_shots)
+        {
+            set[13] = (*id != 0).then_some(*id);
         }
     }
     refine_dps(&mut set, style, boss, m, owned, catalog, options);
@@ -868,8 +898,10 @@ fn style_set(
             )
             .into_iter()
             .filter(|(_, candidate)| {
-                !options.gear_overrides.contains_key(&format!("{style}:9"))
-                    || candidate[9] == set[9]
+                [9, 13].into_iter().all(|slot| {
+                    !options.gear_overrides.contains_key(&format!("{style}:{slot}"))
+                        || candidate[slot] == set[slot]
+                })
             })
             .collect(),
             m,
@@ -1526,6 +1558,8 @@ fn plan_uncached(snapshot: &Snapshot, options: &Options) -> Plan {
     let m = &stock_member;
     let profile = crate::guidance::profile(options);
     let observed = snapshot.available(options.shared);
+    let effective = effective_options(options, m, &owned, &observed);
+    let options = &effective;
     out.owned = observed.keys().filter(|id| !options.item_excluded(**id)).count();
     out.supported = owned
         .keys()
@@ -1685,7 +1719,7 @@ fn plan_uncached(snapshot: &Snapshot, options: &Options) -> Plan {
             }
         }
         if ideals.iter().all(|s| s.equipment[3].is_some()) {
-            match crate::optimization::solve(m, &owned, ideals, options) {
+            match crate::optimization::solve_with_effective_options(m, &owned, ideals, options) {
                 Ok((chosen, report)) => {
                     if let Some(primary) = chosen.iter().find(|s| s.style == primary) {
                         out.equipment = primary.equipment.clone();
@@ -1861,6 +1895,33 @@ fn plan_uncached(snapshot: &Snapshot, options: &Options) -> Plan {
     // Deduct worn ammunition properly; a worn ammo slot is one stack, not one projectile.
     if let Some(id) = out.equipment[13] {
         allocated.insert(id, equipped_quantity(13, id, options.combat.ammo_shots));
+    }
+    let mut manually_equipped = BTreeSet::new();
+    for (set, style) in std::iter::once((&out.equipment, primary))
+        .chain(out.phases.iter().map(|phase| (&phase.equipment, phase.style.as_str())))
+    {
+        for id in set.iter().flatten() {
+            if options.manual_gear.values().any(|pinned| pinned == id)
+                && manually_equipped.insert(*id)
+                && !can_use(*id, m)
+            {
+                out.missing.push(format!(
+                    "{} has unmet or unconfirmed equipment requirements.",
+                    item_name(*id)
+                ));
+            }
+        }
+        if style == "Ranged"
+            && let (Some(weapon), Some(ammo)) = (set[3], set[13])
+            && options.manual_gear.get("Ranged:13") == Some(&ammo)
+            && !crate::rules::ammo_ids(weapon).is_empty()
+            && !crate::rules::ammo_ids(weapon).contains(&ammo)
+        {
+            let issue = format!("{} cannot fire {}.", item_name(weapon), item_name(ammo));
+            if !out.missing.contains(&issue) {
+                out.missing.push(issue);
+            }
+        }
     }
     let mut spell_runes = BTreeMap::<i32, u32>::new();
     let mut trip_spells = std::collections::BTreeSet::new();
@@ -2235,7 +2296,12 @@ fn plan_uncached(snapshot: &Snapshot, options: &Options) -> Plan {
         break;
     }
     for (id, quantity) in &total {
-        if *quantity > owned.get(id).copied().unwrap_or(0) {
+        let stock = if manually_equipped.contains(id) {
+            &observed
+        } else {
+            &owned
+        };
+        if *quantity > stock.get(id).copied().unwrap_or(0) {
             out.missing.push(format!(
                 "Not enough {} for the edited setup.",
                 item_name(*id)

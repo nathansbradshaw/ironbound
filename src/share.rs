@@ -18,6 +18,8 @@ pub struct Switch {
 pub struct Setup {
     #[serde(default, skip_serializing_if = "crate::sailing::is_default")]
     pub sailing: crate::sailing::Settings,
+    #[serde(default, skip_serializing_if = "crate::royal_titans::Strategy::is_default")]
+    pub royal_titans: crate::royal_titans::Strategy,
     #[serde(default)]
     pub exclude_void: bool,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -63,6 +65,11 @@ impl Setup {
         Self {
             sailing: if crate::sailing::active(o) {
                 o.sailing.clone()
+            } else {
+                Default::default()
+            },
+            royal_titans: if crate::royal_titans::active(o) {
+                o.royal_titans
             } else {
                 Default::default()
             },
@@ -329,6 +336,7 @@ impl Setup {
     pub fn options(&self) -> Options {
         Options {
             sailing: self.sailing.clone(),
+            royal_titans: self.royal_titans,
             exclude_void: self.exclude_void,
             wilderness: self.wilderness.clone(),
             switch_tolerance: self.switch_tolerance,

@@ -47,17 +47,28 @@ pub fn assess(
     let mut damage = 0.0;
     let mut coverage = 0;
     let mut complete = true;
+    let titan_adds = style == "Magic" && crate::royal_titans::active(o);
     for (id, _) in targets(o).into_iter().filter(|(_, s)| *s == style) {
         let Some(target) = planner::monster(id) else {
             complete = false;
             continue;
+        };
+        let titan_add = titan_adds && crate::royal_titans::element(id).is_some();
+        let spell = if titan_add {
+            let Some(spell) = crate::royal_titans::spell_for_add(m, set, owned, &o.combat, id) else {
+                complete = false;
+                continue;
+            };
+            spell
+        } else {
+            crate::rules::spell_name_for_target(m, set, owned, &o.combat, target, o.raid_level)
         };
         let Ok(mut out) = crate::combat::calculate_configured(
             m,
             set,
             style,
             target,
-            crate::rules::spell_name_for_target(m, set, owned, &o.combat, target, o.raid_level),
+            spell,
             o.raid_level,
             &o.combat,
         ) else {
@@ -123,7 +134,15 @@ pub fn assess(
             && incoming
                 .as_ref()
                 .is_none_or(|r| r.healing_per_second == 0.0);
-        let duration = if finite {
+        let duration = if titan_add {
+            let Ok(hp) = crate::combat::current_target_hp(target, o.raid_level, &o.combat) else {
+                continue;
+            };
+            let Ok(timing) = crate::attack_budget::for_hp(&out, hp, 0) else {
+                continue;
+            };
+            timing.seconds
+        } else if finite {
             let budget = if crate::encounters::window(id).is_some_and(|w| w.hp_scaling.is_some()) {
                 crate::attack_budget::for_dynamic_window(
                     m,

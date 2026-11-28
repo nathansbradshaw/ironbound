@@ -116,6 +116,9 @@ pub fn inventory_setup(plan: &Plan, options: &Options, _account: &str) -> Result
         " Ranged ammunition type: {}.",
         options.combat.ranged_type.label()
     ));
+    if crate::royal_titans::active(options) {
+        notes.push_str(&format!(" Royal Titans strategy: {}.", options.royal_titans.label()));
+    }
     if let Some(kit) = &options.wilderness {
         notes.push_str(&format!(" Scaredy cat kit: up to 3 valuable gear pieces; disposable fillers <= {} GP per piece/stack (public snapshot {}). {}",kit.filler_cap,crate::wilderness::prices().captured_at,crate::wilderness::CAUTION));
     }

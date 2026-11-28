@@ -22,6 +22,12 @@
 .detail-facts a{margin-left:0}
 .detail-facts .raid-control{display:flex;align-items:center;gap:6px;flex-wrap:nowrap;margin:0;padding:0;border:0}
 .raid-control input{min-height:28px;width:50px}
+.titan-strategy{margin-top:12px;font:17px/1.25 Scape,monospace;color:#ddd1b8}
+.titan-strategy label{display:flex;flex-wrap:wrap;align-items:center;gap:6px 10px}
+.titan-strategy select{min-height:32px;max-width:100%}
+.titan-strategy details{margin-top:6px}
+.titan-strategy summary{color:#ff981f}
+.titan-strategy ul{padding-left:24px;margin:6px 0}
 .coverage-details{margin-top:7px}
 .coverage-details>summary{font:17px Scape,monospace;color:#583211;min-height:25px}
 .coverage-details .coverage-panel{margin-top:10px;padding:12px}

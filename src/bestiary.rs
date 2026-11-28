@@ -465,7 +465,7 @@ fn profile(name: &str) -> Option<Profile> {
             70,
             &["Melee", "Ranged", "Magic"],
             0,
-            "Both titans, their out-of-reach ranged windows and elemental adds need all three styles. Add counts, barriers, duo contribution, movement, incoming attacks and full-trip supplies are not scored.",
+            "This screen assumes you cover both elements. Open the planner to split Fire and Water with a partner, delegate both, or choose melee and ranged without add clearing. Team contribution and incoming damage are not scored.",
         ),
         "Nightmare" | "The Nightmare" => (
             90,
@@ -657,6 +657,15 @@ fn assess_gear_catalog(snapshot: &Snapshot, preferences: &Options) -> Vec<Assess
         let supplied = provided_stock.as_ref().is_some_and(|(_, supplied)| *supplied);
         let owned = provided_stock.as_ref().map(|(stock, _)| stock).unwrap_or(&owned);
         let mut entry_sets = sets.clone();
+        if entry.name == crate::royal_titans::NAME {
+            let titan_options = Options {
+                targets: entry.targets.clone(),
+                recommended: Some(true),
+                ..options.clone()
+            };
+            entry_sets.retain(|(style, _)| *style != "Magic");
+            entry_sets.push(("Magic", planner::equipment_for_style(snapshot, &titan_options, "Magic")));
+        }
         if entry.name=="Nex" || matches!(entry.category(),"Raids") && p.styles.len()>=3 {
             // Raid screens must consider owned specialist weapons and bolts.
             // A generic bank winner can miss fire spells or HP-dependent ammo.
@@ -774,13 +783,26 @@ fn assess_gear_catalog(snapshot: &Snapshot, preferences: &Options) -> Vec<Assess
                         if (target.id == 100178) != shield_role || !shield_role && rules::base_style(&target.style) != *required { continue; }
                     } else if !pickaxe_role && requires_all(&entry.name) && rules::base_style(&target.style) != *required { continue; }
                     let Some(monster) = planner::monster(target.id) else { valid = false; break; };
+                    if entry.name == crate::royal_titans::NAME && actual_style == "Magic"
+                        && crate::royal_titans::spell_for_add(&member, set, owned, &options.combat, target.id).is_none()
+                    {
+                        valid = false;
+                        break;
+                    }
                     let spell = rules::spell_name_for_target(&member, set, &owned, &options.combat, monster, 0);
                     if actual_style == "Magic" && (!rules::casting_supported_for_style(&member, set, &owned, &options.combat, style) || rules::spell_requirement(&member, set, &owned, &options.combat, spell).is_some()) { valid = false; break; }
                     match combat::calculate_configured(&member, set, style, monster, spell, 0, &options.combat) { Ok(result) if result.dps.is_finite() => lowest = lowest.min(result.dps), _ => { valid = false; break; } }
                 }
                 if valid && lowest.is_finite() && best.as_ref().is_none_or(|b| lowest > b.0) { best = Some((lowest, *style, weapon, level, armour)); }
             }
-            if let Some(choice) = best { choices.push(choice); } else if requires_all(&entry.name) { return Assessment { readiness: Readiness::Struggle, requirements: Requirements::default(), reason: format!("No usable owned {required} setup with supported damage. Check weapons, ammunition and runes."), detail: p.note.into(), wilderness: false, preview: None }; }
+            if let Some(choice) = best { choices.push(choice); } else if requires_all(&entry.name) {
+                let reason = if entry.name == crate::royal_titans::NAME && *required == "Magic" {
+                    "No usable owned Magic setup for add clearing. Bring a compatible staff and runes for both Fire and Water on the Standard spellbook.".into()
+                } else {
+                    format!("No usable owned {required} setup with supported damage. Check weapons, ammunition and runes.")
+                };
+                return Assessment { readiness: Readiness::Struggle, requirements: Requirements::default(), reason, detail: p.note.into(), wilderness: false, preview: None };
+            }
         }
         if choices.is_empty() { return Assessment { readiness: Readiness::Struggle, requirements: Requirements::default(), reason: "No usable owned setup with supported damage. Check weapons, ammunition and runes.".into(), detail: p.note.into(), wilderness: false, preview: None }; }
         if !requires_all(&entry.name) {

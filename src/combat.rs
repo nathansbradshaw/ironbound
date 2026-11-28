@@ -1100,7 +1100,14 @@ pub(crate) fn calculate_mode(
         )
     } else {
         conditional_hit(
-            min_hit,
+            // A matching spell still rolls for accuracy, then deals its max on success.
+            if elemental.as_ref().is_some_and(|stats| {
+                crate::royal_titans::element(monster.id) == Some(stats.element.as_str())
+            }) {
+                max_hit
+            } else {
+                min_hit
+            },
             max_hit,
             flat_armour,
             if respiratory_finisher {

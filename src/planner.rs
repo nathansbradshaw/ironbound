@@ -244,6 +244,8 @@ impl Target {
 #[serde(default)]
 pub struct Options {
     pub sailing: crate::sailing::Settings,
+    #[serde(skip_serializing_if = "crate::royal_titans::Strategy::is_default")]
+    pub royal_titans: crate::royal_titans::Strategy,
     pub simulation: crate::simulation::Settings,
     pub confirmations: BTreeMap<String, String>,
     pub recommended: Option<bool>,
@@ -289,6 +291,7 @@ impl Default for Options {
     fn default() -> Self {
         Self {
             sailing: Default::default(),
+            royal_titans: Default::default(),
             simulation: Default::default(),
             confirmations: BTreeMap::new(),
             recommended: None,
@@ -324,6 +327,12 @@ impl Default for Options {
     }
 }
 impl Options {
+    fn allow_spell_weapons(&self) -> bool {
+        self.boss == Boss::Barrows
+            || crate::royal_titans::active(self)
+                && self.targets.iter().any(|t| crate::royal_titans::element(t.id).is_some())
+    }
+
     pub fn gear_override_key(&self, style: &str, slot: usize) -> String {
         let style = if self.fewer_switches && [0, 1, 2, 9, 10, 12].contains(&slot) {
             primary_style(self)
@@ -606,9 +615,9 @@ pub fn missing_combat_levels(snapshot: &Snapshot) -> Vec<&'static str> {
 }
 
 // Reviewed, finite item priorities. This is a starter planner, not an exact-DPS optimiser.
-fn candidates(style: &str, slot: usize, boss: Boss) -> Vec<i32> {
+fn candidates(style: &str, slot: usize, allow_spells: bool) -> Vec<i32> {
     if slot == 3 {
-        return crate::rules::weapon_ids(style, boss == Boss::Barrows);
+        return crate::rules::weapon_ids(style, allow_spells);
     }
     if slot == 13 && crate::rules::base_style(style) == "Ranged" {
         return crate::rules::all_ammo_ids();
@@ -646,13 +655,9 @@ fn candidates(style: &str, slot: usize, boss: Boss) -> Vec<i32> {
     choices.to_vec()
 }
 pub fn catalog_ids() -> BTreeSet<i32> {
-    [Boss::Barrows, Boss::Toa, Boss::Custom]
+    ["Magic", "Ranged", "Melee"]
         .into_iter()
-        .flat_map(|b| {
-            ["Magic", "Ranged", "Melee"]
-                .into_iter()
-                .flat_map(move |s| (0..14).flat_map(move |slot| candidates(s, slot, b).into_iter()))
-        })
+        .flat_map(|style| (0..14).flat_map(move |slot| candidates(style, slot, true)))
         .collect()
 }
 #[derive(Clone, Debug)]
@@ -672,7 +677,7 @@ pub fn owned_tiers(
     };
     let owned = snapshot.available(false);
     let ids: Vec<_> = if slot == 3 || slot == 13 {
-        candidates(style, slot, options.boss).to_vec()
+        candidates(style, slot, options.allow_spell_weapons())
     } else {
         equipment()
             .iter()
@@ -861,8 +866,9 @@ fn style_set(
         "head", "cape", "neck", "weapon", "body", "shield", "", "legs", "", "hands", "feet", "",
         "ring", "ammo",
     ];
+    let allow_spells = options.allow_spell_weapons();
     for (slot, value) in set.iter_mut().enumerate() {
-        *value = candidates(style, slot, boss).iter().copied().find(|id| {
+        *value = candidates(style, slot, allow_spells).into_iter().find(|id| {
             owned.get(id).copied().unwrap_or(0) > 0
                 && can_use(*id, m)
                 && catalog
@@ -1172,6 +1178,24 @@ fn choose_equipment(
     judge_magic: Option<&Vec<Option<i32>>>,
 ) -> usize {
     if !crate::recommendation::enabled(options) {
+        let titan_adds = crate::royal_titans::active(options) && style == "Magic";
+        let coverage: Vec<_> = if titan_adds {
+            trials
+                .iter()
+                .map(|set| {
+                    options
+                        .targets
+                        .iter()
+                        .filter(|t| {
+                            crate::royal_titans::spell_for_add(m, set, owned, &options.combat, t.id)
+                                .is_some()
+                        })
+                        .count()
+                })
+                .collect()
+        } else {
+            vec![]
+        };
         let metrics: Vec<_> = trials
             .iter()
             .map(|set| {
@@ -1196,13 +1220,19 @@ fn choose_equipment(
                 crate::ranking::equipment_metrics(set, dps, options.ranking.defence)
             })
             .collect();
-        if options.ranking.weights.dps > 0.0 && metrics.iter().all(|row| row.dps.is_none()) {
+        if !titan_adds
+            && options.ranking.weights.dps > 0.0
+            && metrics.iter().all(|row| row.dps.is_none())
+        {
             return 0;
         }
         let scores = crate::ranking::rank(&metrics, &options.ranking.weights).scores;
         let mut best = 0;
         for i in 1..trials.len() {
-            if scores[i].is_some()
+            let coverage_order = coverage.get(i).cmp(&coverage.get(best));
+            if coverage_order.is_gt()
+                || coverage_order.is_eq()
+                && scores[i].is_some()
                 && (scores[i] > scores[best]
                     || scores[i] == scores[best]
                         && equipment_tiebreak(&trials[i], style)
@@ -1304,6 +1334,7 @@ fn refine_dps_seed(
         let chosen = choose(&trials);
         *set = trials[chosen].clone();
     }
+    let allow_spells = options.allow_spell_weapons();
     for _ in 0..2 {
         let mut changed = false;
         for slot in [3, 0, 1, 2, 4, 5, 7, 9, 10, 12, 13] {
@@ -1318,7 +1349,7 @@ fn refine_dps_seed(
                 continue;
             }
             let ids: Vec<_> = if slot == 3 || slot == 13 {
-                candidates(style, slot, boss).to_vec()
+                candidates(style, slot, allow_spells)
             } else {
                 catalog
                     .iter()
@@ -1613,13 +1644,14 @@ fn plan_uncached(snapshot: &Snapshot, options: &Options) -> Plan {
     let observed = snapshot.available(options.shared);
     let effective = effective_options(options, m, &owned, &observed);
     let options = &effective;
+    let allow_spells = options.allow_spell_weapons();
     out.owned = observed.keys().filter(|id| !options.item_excluded(**id)).count();
     out.supported = owned
         .keys()
         .filter(|id| {
             ["Magic", "Ranged", "Melee"]
                 .iter()
-                .any(|s| (0..14).any(|slot| candidates(s, slot, options.boss).contains(id)))
+                .any(|s| (0..14).any(|slot| candidates(s, slot, allow_spells).contains(id)))
         })
         .count();
     for (skill, minimum) in if options.boss == Boss::Custom {
@@ -1849,7 +1881,11 @@ fn plan_uncached(snapshot: &Snapshot, options: &Options) -> Plan {
                 });
             }
         }
-        out.warnings.push("Custom groups share one carried equipment pool. Standard attack estimates and verified defence profiles guide choices; special mechanics and supply consumption remain partial.".into());
+        if crate::royal_titans::active(options) {
+            out.warnings.push("Royal Titans estimates cover individual attack windows. Add waves, barrier timing, incoming damage and your partner's contribution are outside the estimate.".into());
+        } else {
+            out.warnings.push("Custom groups share one carried equipment pool. Standard attack estimates and verified defence profiles guide choices; special mechanics and supply consumption remain partial.".into());
+        }
     } else {
         for (name, style, set, note) in [
             (
@@ -1990,6 +2026,25 @@ fn plan_uncached(snapshot: &Snapshot, options: &Options) -> Plan {
     let mut spell_runes = BTreeMap::<i32, u32>::new();
     let mut trip_spells = std::collections::BTreeSet::new();
     let mut mark_applies = false;
+    let titans = crate::royal_titans::active(options);
+    if titans {
+        for (check, spell) in crate::royal_titans::spell_checks(m, &magic, &owned, options) {
+            if let Some(spell) = spell {
+                trip_spells.insert(spell);
+                for (id, quantity) in
+                    crate::rules::rune_supplies_for_set(spell, options.combat.spell_casts, &magic)
+                {
+                    spell_runes
+                        .entry(id)
+                        .and_modify(|q| *q = (*q).max(quantity))
+                        .or_insert(quantity);
+                }
+            } else {
+                out.missing.push(format!("{}. {}", check.name, check.detail));
+            }
+            out.checks.push(check);
+        }
+    }
     for (set, style) in std::iter::once((&out.equipment, primary_style(options)))
         .chain(out.phases.iter().map(|p| (&p.equipment, p.style.as_str())))
     {
@@ -1998,6 +2053,9 @@ fn plan_uncached(snapshot: &Snapshot, options: &Options) -> Plan {
         }
         let mut selected_spells = std::collections::BTreeSet::new();
         for (id, style) in crate::recommendation::targets(options) {
+            if titans && crate::royal_titans::element(id).is_some() {
+                continue;
+            }
             if crate::rules::base_style(style) == "Magic" {
                 if let Some(target) = monster(id) {
                     selected_spells.insert(crate::rules::spell_name_for_target(
@@ -2012,6 +2070,9 @@ fn plan_uncached(snapshot: &Snapshot, options: &Options) -> Plan {
             }
         }
         if selected_spells.is_empty() {
+            if titans {
+                continue;
+            }
             selected_spells.insert(crate::rules::spell_name_configured(
                 m,
                 set,
@@ -2061,7 +2122,7 @@ fn plan_uncached(snapshot: &Snapshot, options: &Options) -> Plan {
         }
     }
     out.spell = trip_spells.into_iter().collect::<Vec<_>>().join(" / ");
-    if out.spell.is_empty()
+    if !titans && out.spell.is_empty()
         && !options.combat.spell_selection.is_auto()
         && crate::recommendation::targets(options)
             .iter()

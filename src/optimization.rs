@@ -131,6 +131,13 @@ fn value(
     let mut total = 0.0;
     for (id, _) in relevant {
         let target = planner::monster(id)?;
+        if style == "Magic"
+            && crate::royal_titans::active(o)
+            && crate::royal_titans::spell_for_add(m, reference, owned, &o.combat, id).is_some()
+            && crate::royal_titans::spell_for_add(m, set, owned, &o.combat, id).is_none()
+        {
+            return None;
+        }
         let r = combat::calculate_configured(
             m,
             set,

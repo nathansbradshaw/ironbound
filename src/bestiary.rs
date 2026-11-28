@@ -459,7 +459,7 @@ fn profile(name: &str) -> Option<Profile> {
             80,
             &["Melee"],
             0,
-            "Unboosted body/head/tail gear screen. Pillar uptime, team contribution, phase transitions, movement, incoming damage and full-trip supplies are not scored.",
+            "Unboosted body, head and tail gear screen. Open the planner for team prayer roles and lit-pillar comparisons. Pillar uptime, team contribution, movement and incoming damage are not scored.",
         ),
         "The Royal Titans" => (
             70,

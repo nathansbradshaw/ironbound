@@ -96,7 +96,7 @@ fn seconds(
             .map(|b| b.seconds / split)
             .map_err(Clone::clone);
     }
-    if finite_burn {
+    if finite_burn || window.target_id == crate::huey::BODY || crate::huey::is_tail(window.target_id) {
         if healing > 0.0 {
             return Err("Finite burn timing with NPC healing needs a full-fight scenario.".into());
         }
@@ -176,6 +176,9 @@ pub fn budgets(left: &tradeoffs::Budget, right: &tradeoffs::Budget) -> Overview 
             "Incoming bounds use the lowest and highest recorded normal-attack scenarios in each window. Unknown scenarios make the total unverified; specials are excluded.".into(),
         ],
     };
+    if crate::huey::active(&left.options) {
+        result.assumptions.push("Hueycoatl uses the same 4,050 HP for every team size. These attack times use only your damage and the selected summit pillar state throughout the comparison.".into());
+    }
     for name in left
         .unmodelled_phases
         .iter()
@@ -319,7 +322,9 @@ pub fn budgets(left: &tradeoffs::Budget, right: &tradeoffs::Budget) -> Overview 
                     left_seconds: at,
                     right_seconds: bt,
                 });
-                if encounters::window(k.0).is_some_and(|w| w.comparison_probe) {
+                if !matches!(k.0, crate::huey::HEAD | crate::huey::LIT_HEAD)
+                    && encounters::window(k.0).is_some_and(|w| w.comparison_probe)
+                {
                     result.assumptions.push(format!(
                         "{}: one declared probe workload, not a prediction of spawn count.",
                         wa.name

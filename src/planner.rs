@@ -244,6 +244,8 @@ impl Target {
 #[serde(default)]
 pub struct Options {
     pub sailing: crate::sailing::Settings,
+    #[serde(skip_serializing_if = "crate::huey::Settings::is_default")]
+    pub huey: crate::huey::Settings,
     #[serde(skip_serializing_if = "crate::royal_titans::Strategy::is_default")]
     pub royal_titans: crate::royal_titans::Strategy,
     pub simulation: crate::simulation::Settings,
@@ -291,6 +293,7 @@ impl Default for Options {
     fn default() -> Self {
         Self {
             sailing: Default::default(),
+            huey: Default::default(),
             royal_titans: Default::default(),
             simulation: Default::default(),
             confirmations: BTreeMap::new(),
@@ -1883,6 +1886,17 @@ fn plan_uncached(snapshot: &Snapshot, options: &Options) -> Plan {
         }
         if crate::royal_titans::active(options) {
             out.warnings.push("Royal Titans estimates cover individual attack windows. Add waves, barrier timing, incoming damage and your partner's contribution are outside the estimate.".into());
+        } else if crate::huey::active(options) {
+            out.checks.push(Check {
+                name: "43 Prayer for protection prayers".into(),
+                state: m.level("Prayer").map(|level| level >= 43),
+                detail: if options.huey.per_pillar().is_some() {
+                    "Match the feathers on the climb. At the summit, use your assigned overhead when charging pillars."
+                } else {
+                    "Match your overhead to the incoming feathers throughout the fight."
+                }.into(),
+            });
+            out.warnings.push("Hueycoatl estimates cover the selected attack windows. Your team's contribution, pillar uptime, movement and incoming damage require separate checks.".into());
         } else {
             out.warnings.push("Custom groups share one carried equipment pool. Standard attack estimates and verified defence profiles guide choices; special mechanics and supply consumption remain partial.".into());
         }
@@ -2273,6 +2287,9 @@ fn plan_uncached(snapshot: &Snapshot, options: &Options) -> Plan {
                 .push("More supported food for the requested slots".into());
             break;
         }
+    }
+    if crate::huey::active(options) {
+        crate::huey::pack_tail_switch(options, m, &owned, &mut out, &mut essentials);
     }
     for (index, id) in &options.inventory_overrides {
         if *index >= 28 || *id < 0 {

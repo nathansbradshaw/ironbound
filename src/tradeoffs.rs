@@ -72,6 +72,7 @@ pub fn measure(
     style: &str,
     target_id: i32,
 ) -> Metrics {
+    let settings = crate::huey::combat_settings(o, target_id);
     let bonuses = combat::bonuses(set);
     let stats_known =
         set.len() == 14 && set.iter().flatten().all(|id| combat::stats(*id).is_some());
@@ -84,7 +85,7 @@ pub fn measure(
         dps: None,
         dps_reason: None,
         defence: equipment_defence,
-        prayer_per_minute: prayer::drain_per_minute(prayer::bonus(set), &o.combat),
+        prayer_per_minute: prayer::drain_per_minute(prayer::bonus(set), &settings),
         incoming: vec![],
         attack: None,
         dynamic_budget: None,
@@ -151,7 +152,7 @@ pub fn measure(
             target,
             rules::spell_name_for_target(&member, set, &owned, &o.combat, target, o.raid_level),
             o.raid_level,
-            &o.combat,
+            &settings,
         )
     };
     match outgoing {
@@ -193,7 +194,7 @@ pub fn measure(
     }
     for attack in attacks {
         let measured = if equipment_usable {
-            defence::estimate(&member, set, target, &attack, &o.combat)
+            defence::estimate(&member, set, target, &attack, &settings)
         } else {
             Err("Equipment combat stats or base wear requirements are unavailable or unmet.".into())
         };

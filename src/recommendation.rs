@@ -129,8 +129,9 @@ pub fn assess(
         let weight = o.phase_priorities.get(&id).copied().unwrap_or(1).min(10) as f64;
         let progress = crate::encounters::progress_hp(id, style)
             .unwrap_or_else(|| target.skills.get("hp").copied().unwrap_or(100) as f64);
-        let finite = crate::rules::base_style(style) == "Ranged"
-            && (out.burn.is_some() || crate::attack_budget::eclipse_available(m, owned, o))
+        let finite = (crate::huey::is_tail(id)
+            || crate::rules::base_style(style) == "Ranged"
+                && (out.burn.is_some() || crate::attack_budget::eclipse_available(m, owned, o)))
             && incoming
                 .as_ref()
                 .is_none_or(|r| r.healing_per_second == 0.0);

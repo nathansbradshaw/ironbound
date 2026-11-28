@@ -32,6 +32,7 @@ pub mod equipment_effects;
 pub mod explanations;
 pub mod export;
 pub mod guidance;
+pub mod huey;
 pub mod icon_assets;
 pub mod inventory;
 pub mod modifiers;

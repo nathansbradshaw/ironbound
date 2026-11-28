@@ -456,11 +456,12 @@ pub(crate) fn solve_with_effective_options(
             let target = planner::monster(id)?;
             let before = &ideals.iter().find(|s| s.style == style)?.equipment;
             let after = &best.0.iter().find(|s| s.style == style)?.equipment;
+            let settings = crate::huey::combat_settings(o, id);
             let incoming = |set: &Set| {
                 crate::defence::attacks(target)
                     .first()
                     .and_then(|attack| {
-                        crate::defence::estimate(m, set, target, attack, &o.combat).ok()
+                        crate::defence::estimate(m, set, target, attack, &settings).ok()
                     })
                     .map(|r| r.damage_per_second)
             };
@@ -471,11 +472,11 @@ pub(crate) fn solve_with_effective_options(
                 incoming_after: incoming(after),
                 prayer_before: crate::prayer::drain_per_minute(
                     crate::prayer::bonus(before),
-                    &o.combat,
+                    &settings,
                 ),
                 prayer_after: crate::prayer::drain_per_minute(
                     crate::prayer::bonus(after),
-                    &o.combat,
+                    &settings,
                 ),
                 before: combat::calculate_configured(
                     m,
@@ -484,7 +485,7 @@ pub(crate) fn solve_with_effective_options(
                     target,
                     spell(m, before, owned, o, target),
                     o.raid_level,
-                    &o.combat,
+                    &settings,
                 )
                 .ok()
                 .map(|r| r.dps),
@@ -495,7 +496,7 @@ pub(crate) fn solve_with_effective_options(
                     target,
                     spell(m, after, owned, o, target),
                     o.raid_level,
-                    &o.combat,
+                    &settings,
                 )
                 .ok()
                 .map(|r| r.dps),

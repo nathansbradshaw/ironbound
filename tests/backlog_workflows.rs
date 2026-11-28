@@ -24,6 +24,55 @@ fn saved(options: Options) -> Saved {
 }
 
 #[test]
+fn bank_refresh_keeps_manual_gear_and_rechecks_the_reduced_pool() {
+    let mut state = saved(Options::default());
+    state.snapshot.source = "Imported bank".into();
+    state.options.pin_gear("Magic:7".into(), 2497, true);
+    state.options.pin_gear("Magic:1".into(), 10499, true);
+    state.options.pin_gear("Magic:10".into(), 0, true);
+    state.options.switch_pool = Some([2497, 10499].into_iter().collect());
+    state.options.switch_pins.insert("Ranged:7".into(), 2497);
+    let header = "Item id\tItem name\tItem quantity";
+    let bank = |contents: &str| {
+        account::Snapshot::from_bank_tsv(&format!("{header}\n{contents}"), "", "Now".into())
+            .unwrap()
+    };
+    let with_both = "2497\tBlack d'hide chaps\t1\n10499\tAva's accumulator\t1";
+    assert_eq!(state.replace_bank(bank(with_both)), (0, false));
+    assert_eq!(state.options.manual_gear.len(), 2);
+    assert_eq!(state.options.gear_overrides["Magic:10"], 0);
+    assert!(state.options.switch_pool.is_some());
+    assert_eq!(state.options.switch_pins.get("Ranged:7"), Some(&2497));
+    assert!(state.snapshot.selected().unwrap().level("Magic").is_some());
+
+    assert_eq!(
+        state.replace_bank(bank("10499\tAva's accumulator\t1")),
+        (1, true)
+    );
+    assert!(state.options.switch_pool.is_none());
+    assert!(state.options.switch_pins.is_empty());
+    assert_eq!(state.options.manual_gear.get("Magic:7"), Some(&2497));
+    assert_ne!(
+        planner::plan(&state.snapshot, &state.options).equipment[7],
+        Some(2497)
+    );
+    assert_eq!(state.replace_bank(bank(with_both)), (0, false));
+    assert_eq!(
+        planner::plan(&state.snapshot, &state.options).equipment[7],
+        Some(2497)
+    );
+
+    let key = state.options.gear_override_key("Magic", 7);
+    state.options.remove_gear_override(&key);
+    assert!(!state.options.manual_gear.contains_key(&key));
+    assert!(!state.options.gear_overrides.contains_key(&key));
+    assert_eq!(
+        planner::plan(&state.snapshot, &state.options).equipment[1],
+        Some(10499)
+    );
+}
+
+#[test]
 fn old_account_backup_migrates_without_losing_bank_or_current_options() {
     let mut original = saved(Options::default());
     original.budget_caps = [3, 7];

@@ -324,6 +324,15 @@ impl Default for Options {
     }
 }
 impl Options {
+    pub fn gear_override_key(&self, style: &str, slot: usize) -> String {
+        let style = if self.fewer_switches && [0, 1, 2, 9, 10, 12].contains(&slot) {
+            primary_style(self)
+        } else {
+            style
+        };
+        format!("{style}:{slot}")
+    }
+
     pub fn pin_gear(&mut self, key: String, id: i32, manual: bool) {
         if manual && id != 0 {
             self.manual_gear.insert(key.clone(), id);
@@ -331,6 +340,34 @@ impl Options {
             self.manual_gear.remove(&key);
         }
         self.gear_overrides.insert(key, id);
+    }
+
+    pub fn equip_gear(
+        &mut self,
+        style: &str,
+        slot: usize,
+        id: i32,
+        manual: bool,
+        current: &[Option<i32>],
+    ) -> Option<i32> {
+        let mut displaced = None;
+        if slot == 5
+            && id != 0
+            && let Some(weapon) = current[3].filter(|&id| is_two_handed(id))
+        {
+            self.pin_gear(self.gear_override_key(style, 3), 0, false);
+            if style == "Ranged" {
+                self.combat.loaded_ammo_confirmed = false;
+            }
+            displaced = Some(weapon);
+        } else if slot == 3 && is_two_handed(id) {
+            let shield = self.gear_override_key(style, 5);
+            self.remove_gear_override(&shield);
+            self.switch_pins.remove(&shield);
+            displaced = current[5];
+        }
+        self.pin_gear(self.gear_override_key(style, slot), id, manual);
+        displaced
     }
 
     pub fn clear_gear_overrides(&mut self) {
@@ -349,6 +386,10 @@ impl Options {
             || self.exclude_void && crate::rules::void_piece(id)
             || self.wilderness.as_ref().is_some_and(|kit| !kit.permits(id))
     }
+}
+
+pub(crate) fn is_two_handed(id: i32) -> bool {
+    gear(id).is_some_and(|g| g.two_handed)
 }
 
 pub(crate) fn owned_gear_fits(slot: usize, id: i32, owned: &BTreeMap<i32, u32>) -> bool {
@@ -667,15 +708,20 @@ pub(crate) fn member_with_stock(m: &Member, owned: &BTreeMap<i32, u32>) -> Membe
     member.equipment = None;
     member
 }
-/// Bank stock plus explicitly reviewed quest-provided gear for these targets.
-/// Keep this separate from Snapshot::available, which reports observed items.
-pub fn planning_stock(snapshot: &Snapshot, options: &Options) -> BTreeMap<i32, u32> {
+pub(crate) fn stock_with_quest_gear(snapshot: &Snapshot, options: &Options) -> BTreeMap<i32, u32> {
     let mut stock = snapshot.available(options.shared);
     if options.boss == Boss::Custom && let Some(member) = snapshot.selected() {
         for target in &options.targets {
             crate::quest_bosses::include_provided_weapon(target.id, &mut stock, member, options);
         }
     }
+    stock
+}
+
+/// Bank stock plus explicitly reviewed quest-provided gear for these targets.
+/// Keep this separate from Snapshot::available, which reports observed items.
+pub fn planning_stock(snapshot: &Snapshot, options: &Options) -> BTreeMap<i32, u32> {
+    let mut stock = stock_with_quest_gear(snapshot, options);
     stock.retain(|id, _| !options.item_excluded(*id));
     stock
 }
@@ -850,11 +896,7 @@ fn style_set(
             *value = (*id != 0).then_some(*id);
         }
     }
-    if let Some(w) = set[3] {
-        if catalog.iter().any(|g| g.id == w && g.two_handed) {
-            set[5] = None;
-        }
-    }
+    resolve_hand_slots(&mut set, style, options);
     if style == "Ranged" {
         set[13] = crate::rules::ammo_ids(set[3].unwrap_or(0))
             .iter()
@@ -898,7 +940,7 @@ fn style_set(
             )
             .into_iter()
             .filter(|(_, candidate)| {
-                [9, 13].into_iter().all(|slot| {
+                [5, 9, 13].into_iter().all(|slot| {
                     !options.gear_overrides.contains_key(&format!("{style}:{slot}"))
                         || candidate[slot] == set[slot]
                 })
@@ -921,6 +963,19 @@ fn style_set(
         set[3] = None;
     }
     set
+}
+
+fn resolve_hand_slots(set: &mut [Option<i32>], style: &str, options: &Options) {
+    if set[3].is_some_and(is_two_handed) {
+        if set[5].is_some()
+            && options.gear_overrides.contains_key(&format!("{style}:5"))
+            && !options.gear_overrides.contains_key(&format!("{style}:3"))
+        {
+            set[3] = None;
+        } else {
+            set[5] = None;
+        }
+    }
 }
 fn align_spell_weapon(
     set: &mut [Option<i32>],
@@ -1388,9 +1443,7 @@ fn guided_trials(
                 trial[slot] = if *id == 0 { None } else { Some(*id) };
             }
         }
-        if trial[3].is_some_and(|id| gear(id).is_some_and(|g| g.two_handed)) {
-            trial[5] = None;
-        }
+        resolve_hand_slots(trial, style, options);
     }
     trials.sort();
     trials.dedup();
@@ -1645,11 +1698,22 @@ fn plan_uncached(snapshot: &Snapshot, options: &Options) -> Plan {
                 )
             });
     }
-    if needs_ranged && ranged[3].is_some_and(|id| !options.combat.ranged_type.permits_weapon(id)) {
-        out.missing.push(format!(
-            "The pinned ranged weapon does not match {}. Choose a compatible weapon or Auto.",
-            options.combat.ranged_type.label()
-        ));
+    if needs_ranged
+        && let Some(id) = ranged[3]
+        && !options.combat.ranged_type.permits_weapon(id)
+    {
+        let name = item_name(id);
+        let issue = if !crate::rules::RangedType::Auto.permits_weapon(id) {
+            format!(
+                "{name} cannot be used for Ranged. In that phase's weapon slot, choose a ranged weapon or select Restore automatic."
+            )
+        } else {
+            format!(
+                "{name} does not match {} Ranged. Choose a weapon of that type, or change Ranged type in Combat.",
+                options.combat.ranged_type.label()
+            )
+        };
+        out.missing.push(issue);
     }
     if needs_ranged
         && ranged[3].is_some_and(|id| !crate::rules::ammo_ids(id).is_empty())

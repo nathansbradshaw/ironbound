@@ -3363,6 +3363,7 @@ fn huey_controls(settings: crate::huey::Settings, shared: bool) -> String {
                 let selected = if role == settings.role { " selected" } else { "" };
                 html.push_str(&format!("<option value=\"{key}\"{selected}>{label}</option>"));
             }
+            html.push_str("</select></label>");
             let (unlit, lit) = if settings.pillars_lit { ("", " selected") } else { (" selected", "") };
             html.push_str(&format!("<label>Pillar state <select id=\"huey-pillars\"><option value=\"unlit\"{unlit}>Unlit</option><option value=\"lit\"{lit}>Lit · +30% summit damage</option></select></label>"));
         }

@@ -390,7 +390,9 @@ fn ensure_efficient(s: &State) {
             if !pruning.step(&snapshot) {
                 break;
             }
-            if let Some(status) = document().get_element_by_id("switch-search-status") {
+            if !pruning.trials.is_empty()
+                && let Some(status) = document().get_element_by_id("switch-search-status")
+            {
                 status.set_text_content(Some(&format!(
                     "Tested {} item removals…",
                     pruning.trials.len()
@@ -2422,7 +2424,12 @@ fn act(action: &str) {
                         s.saved.options.inventory_quantities.clear();
                         s.phase = None;
                         s.view = "loadout".into();
-                        s.notice("Reduced setup applied. Use Restore full gear to include every owned item again.",false);
+                        let message = if choice.options.switch_pool.is_some() {
+                            "Reduced setup applied. Use Restore full gear to include every owned item again."
+                        } else {
+                            "Switch limit applied. Use Restore full gear to clear the limit."
+                        };
+                        s.notice(message, false);
                     }
                 }
             }
@@ -6211,6 +6218,10 @@ fn switch_controls(s: &State, p: &Plan) -> String {
     html.push_str(&usage_html);
     if s.saved.options.switch_pool.is_some() {
         html.push_str(&format!("<p class=\"reduced-gear\">Reduced gear pool · {}</p>",button("restore-switch-pool","Restore full gear","text-button")));
+    } else if crate::huey::split_gear_supported(&s.saved.options)
+        && s.saved.options.max_switches.is_some_and(|cap| cap < 11)
+    {
+        html.push_str(&format!("<p class=\"reduced-gear\">Switch limit applied · {}</p>",button("restore-switch-pool","Restore full gear","text-button")));
     }
     html.push_str("</section>");
     html
@@ -6222,11 +6233,16 @@ fn efficient_panel(s: &State, _plan: &Plan) -> String {
     }
     ensure_efficient(s);
     let limits = crate::efficient::Tolerances::from_options(&s.saved.options);
+    let phase_search = crate::huey::split_gear_supported(&s.saved.options);
     let mut html = format!(
         "<details id=\"compact-setup\" class=\"panel efficient-panel\" aria-label=\"Fewer gear switches\" {}><summary><h3>Find fewer gear switches</h3></summary><div class=\"efficient-body\">",
         if s.compact_open { "open" } else { "" }
     );
-    html.push_str("<p class=\"small-note\">Trim the full setup one item at a time, comparing shared armour within your thresholds.</p>");
+    html.push_str(if phase_search {
+        "<p class=\"small-note\">Compare complete body/head and tail loadouts at different switch limits.</p>"
+    } else {
+        "<p class=\"small-note\">Trim the full setup one item at a time, comparing shared armour within your thresholds.</p>"
+    });
     html.push_str(&format!("<details id=\"packing-limits\" class=\"packing-limits\" {}><summary>Allowances <span>{}% DPS · {}% damage · {}% prayer</span></summary><div class=\"tradeoff-limits\">",if s.packing_limits_open {"open"}else{""},limits.dps_loss,limits.damage_taken,limits.prayer_drain));
     for (id, label, value) in [
         ("switch-tolerance", "DPS loss", limits.dps_loss),
@@ -6245,7 +6261,11 @@ fn efficient_panel(s: &State, _plan: &Plan) -> String {
     }
     html.push_str("</div><p id=\"tolerance-help\" class=\"small-note\">Prayer limits compare each phase's drain. A longer fight can still use more prayer in total.</p></details>");
     let Some(result) = efficient_result(s) else {
-        html.push_str("<p id=\"switch-search-status\" role=\"status\">Testing switch items one at a time…</p></div></details>");
+        html.push_str(if phase_search {
+            "<p id=\"switch-search-status\" role=\"status\">Testing packed phase loadouts…</p></div></details>"
+        } else {
+            "<p id=\"switch-search-status\" role=\"status\">Testing switch items one at a time…</p></div></details>"
+        });
         return html;
     };
     let Some((selected, best)) = result.compact.zip(result.best) else {
@@ -6356,7 +6376,16 @@ fn efficient_panel(s: &State, _plan: &Plan) -> String {
         }
         html.push_str("</ul>");
     }
-    html.push_str(&format!("<details><summary>Compare with full setup</summary><table class=\"bonus-table\"><thead><tr><th></th><th>Full</th><th>Reduced</th></tr></thead><tbody><tr><th>Changes per switch</th><td>{}</td><td>{}</td></tr><tr><th>Carried gear</th><td>{}</td><td>{}</td></tr><tr><th>Effective DPS</th><td>{:.3}</td><td>{:.3}</td></tr><tr><th>Prayer / min</th><td>{:.2}</td><td>{:.2}</td></tr></tbody></table></details>",benchmark.budget.max_pair,chosen.budget.max_pair,benchmark.budget.carried_gear,chosen.budget.carried_gear,b.effective_dps,a.effective_dps,b.prayer_per_minute,a.prayer_per_minute));
+    let (comparison_label, reference_label) = if phase_search {
+        ("Compare with fastest tested setup", "Fastest")
+    } else {
+        ("Compare with full setup", "Full")
+    };
+    html.push_str(&format!("<details><summary>{comparison_label}</summary><table class=\"bonus-table\"><thead><tr><th></th><th>{reference_label}</th><th>Reduced</th></tr></thead><tbody><tr><th>Changes per switch</th><td>{}</td><td>{}</td></tr><tr><th>Carried gear</th><td>{}</td><td>{}</td></tr><tr><th>Effective DPS</th><td>{:.3}</td><td>{:.3}</td></tr><tr><th>Prayer / min</th><td>{:.2}</td><td>{:.2}</td></tr></tbody></table></details>",benchmark.budget.max_pair,chosen.budget.max_pair,benchmark.budget.carried_gear,chosen.budget.carried_gear,b.effective_dps,a.effective_dps,b.prayer_per_minute,a.prayer_per_minute));
+    if phase_search {
+        html.push_str(&format!("<details><summary>How we choose</summary><p>Rebuild the body/head set and the tail set from owned gear at each tested switch limit. Compare the same body, head and tail workloads under your current pillar settings. Choose the fewest changes within {limits}, then prefer fewer carried items. A two-handed swap can change both the weapon and off-hand slots.</p></details></div></details>"));
+        return html;
+    }
     html.push_str("<details><summary>Individual switch checks</summary><p>Each check starts from the full setup. Shared armour and complete owned sets are compared too.</p><table class=\"bonus-table\"><thead><tr><th>Change</th><th>Use</th><th>Changes</th><th>DPS loss</th><th>Fits limits</th></tr></thead><tbody>");
     for trial in result.trials.iter().filter(|t| t.round == 0) {
         let loss = trial

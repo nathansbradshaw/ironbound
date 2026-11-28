@@ -1540,11 +1540,13 @@ pub fn plan(snapshot: &Snapshot, options: &Options) -> Plan {
         return p;
     }
     let mut result = plan_uncached(snapshot, &options, None);
-    if crate::huey::active(&options)
-        && options.targets.iter().all(|target| target.style == "Crush")
-        && crate::recommendation::enabled(&options)
+    if crate::huey::split_gear_supported(&options)
         && options.max_switches != Some(0)
-        && let Some(tail) = result.phases.get(2)
+        && let Some(tail) = options
+            .targets
+            .iter()
+            .position(|target| crate::huey::is_tail(target.id))
+            .and_then(|index| result.phases.get(index))
         && let Some(member) = snapshot.selected()
         && let Some(shared_seconds) = crate::huey::attack_seconds(&options, member, &result)
     {
@@ -1729,7 +1731,9 @@ fn plan_uncached(snapshot: &Snapshot, options: &Options, huey_tail_seed: Option<
     };
     let opening_options = huey_tail_seed.map(|_| {
         let mut opening = options.clone();
-        opening.targets.retain(|target| !crate::huey::is_tail(target.id));
+        opening.targets.retain(|target| {
+            crate::huey::GearRole::for_target(target.id) == Some(crate::huey::GearRole::BodyAndHead)
+        });
         opening
     });
     out.equipment = style_set(

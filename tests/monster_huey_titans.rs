@@ -3,10 +3,12 @@ use ironbound::{
     account::{self, Member},
     attack_budget, combat, coverage,
     defence::{self, Settings},
+    efficient::Tolerances,
     encounters, huey,
     modifiers::{self, Reductions},
     planner::{self, Boss, Options, Target},
     royal_titans::{self, Strategy},
+    switch_pruning,
 };
 fn member() -> Member {
     let mut m = Member::default();
@@ -707,13 +709,18 @@ fn huey_tail_uses_its_own_packed_set_and_respects_switch_limit() {
     }
 }
 
-#[test]
-fn huey_compares_a_faster_head_set_even_when_the_shared_set_wins_on_tail() {
-    let (mut snapshot, mut options) = huey_trip();
+fn huey_split_trip() -> (account::Snapshot, Options) {
+    let (mut snapshot, options) = huey_trip();
     snapshot.members[0].bank = Some(vec![
         28810, 1, 12954, 1, 28997, 1, 11200, 1, 6585, 1, 1725, 1, 11840, 1, 7462, 1, 29043, 1,
         8007, 2,
     ]);
+    (snapshot, options)
+}
+
+#[test]
+fn huey_compares_a_faster_head_set_even_when_the_shared_set_wins_on_tail() {
+    let (snapshot, mut options) = huey_split_trip();
     options.max_switches = Some(0);
     let shared = planner::plan(&snapshot, &options);
     assert_eq!(shared.equipment[3], Some(28997));
@@ -732,6 +739,47 @@ fn huey_compares_a_faster_head_set_even_when_the_shared_set_wins_on_tail() {
         assert_eq!(plan.phases[1].equipment, plan.equipment);
         assert_eq!(plan.phases[2].equipment[3], Some(28997));
         assert!(plan.inventory.iter().any(|item| item.id == 28997));
+    }
+}
+
+#[test]
+fn huey_fewer_switches_keeps_both_crush_roles_with_two_changed_slots() {
+    let (snapshot, mut options) = huey_split_trip();
+    // The search must start from the full setup despite the current ceiling.
+    options.max_switches = Some(0);
+    for (players, pillars_lit) in [(1, false), (2, false), (3, true), (12, true)] {
+        huey::Settings {
+            players,
+            pillars_lit,
+            ..Default::default()
+        }
+        .apply(&mut options);
+        let result = switch_pruning::search(&snapshot, &options, Tolerances::default());
+        let full = &result.candidates[result.best.unwrap()];
+        let compact = &result.candidates[result.compact.unwrap()];
+        assert_eq!(full.budget.max_pair, 3);
+        assert_eq!(compact.covered, 3);
+        assert_eq!(compact.signature, full.signature);
+        assert_eq!(compact.budget.cap, 2);
+        assert_eq!(compact.budget.max_pair, 2);
+        assert_eq!(compact.budget.carried_gear, 1);
+        assert_eq!(compact.budget.options.huey, options.huey);
+
+        let applied = planner::plan(&snapshot, &compact.budget.options);
+        let [body, head, tail] = applied.phases.as_slice() else {
+            panic!("Huey requires all three phases");
+        };
+        assert_eq!(applied.equipment, body.equipment);
+        assert_eq!(body.equipment, head.equipment);
+        assert_eq!(head.equipment[3], Some(28810));
+        assert_eq!(head.equipment[5], Some(12954));
+        assert_eq!(tail.equipment[3], Some(28997));
+        assert_eq!(tail.equipment[5], None);
+        assert_eq!(tail.equipment[2], head.equipment[2]);
+        assert_eq!(result.removed.len(), 1);
+        assert!([1725, 6585].contains(&result.removed[0]));
+        assert_ne!(head.equipment[2], Some(result.removed[0]));
+        assert_eq!(tail.equipment, compact.budget.windows[2].equipment);
     }
 }
 

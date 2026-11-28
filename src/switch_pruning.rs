@@ -1,4 +1,4 @@
-//! Greedy, item-by-item reductions from the unrestricted owned setup.
+//! Search for a smaller packed setup within the encounter's combat allowances.
 use crate::{
     account::Snapshot,
     efficient::{Candidate, Suggestion, Tolerances},
@@ -33,6 +33,7 @@ pub struct Search {
     original_pins: BTreeSet<i32>,
     limits: Tolerances,
     pending: Vec<Removal>,
+    phase_candidates: Option<Vec<Candidate>>,
     best: Option<Candidate>,
     done: bool,
     round: usize,
@@ -50,6 +51,17 @@ fn pool(plan: &planner::Plan) -> BTreeSet<i32> {
         )
         .chain(plan.loaded_ammo.iter().map(|ammo| ammo.id))
         .collect()
+}
+fn gear_changes(full: &planner::Plan, reduced: &planner::Plan) -> (Vec<i32>, Vec<i32>) {
+    let full = pool(full);
+    let reduced = pool(reduced);
+    (
+        full.difference(&reduced).copied().collect(),
+        reduced.difference(&full).copied().collect(),
+    )
+}
+fn complete_phase_plan(candidate: &Candidate) -> bool {
+    candidate.covered == candidate.budget.options.targets.len() && candidate.omissions.is_empty()
 }
 fn removable(c: &Candidate, pins: &BTreeSet<i32>) -> Vec<Removal> {
     let supplies: BTreeSet<_> = c
@@ -138,8 +150,11 @@ impl Search {
             full = planner::effective_options(&full, member, &owned, &observed);
         }
         let baseline = Candidate::new(tradeoffs::budget(snapshot, &full, 11));
+        let phase_candidates = crate::huey::split_gear_supported(&full).then(Vec::new);
         let mut current = baseline.clone();
-        current.budget.options.switch_pool = Some(pool(&baseline.budget.plan));
+        if phase_candidates.is_none() {
+            current.budget.options.switch_pool = Some(pool(&baseline.budget.plan));
+        }
         let original_pins = baseline
             .budget
             .options
@@ -147,8 +162,8 @@ impl Search {
             .values()
             .copied()
             .collect();
-        let done = !baseline.usable();
-        let pending = if done {
+        let done = phase_candidates.is_none() && !baseline.usable();
+        let pending = if done || phase_candidates.is_some() {
             vec![]
         } else {
             removable(&current, &original_pins)
@@ -159,12 +174,13 @@ impl Search {
             original_pins,
             limits,
             pending,
+            phase_candidates,
             best: None,
             done,
             round: 0,
             trials: vec![],
         };
-        if !result.done {
+        if !result.done && result.phase_candidates.is_none() {
             result.pending.extend(crate::shared_armour::candidates(
                 snapshot,
                 &result.current,
@@ -174,10 +190,29 @@ impl Search {
         }
         result
     }
-    /// Evaluate one removal, allowing the browser to yield between trials.
+    /// Evaluate one packed plan, allowing the browser to yield between trials.
     pub fn step(&mut self, snapshot: &Snapshot) -> bool {
         if self.done {
             return false;
+        }
+        if let Some(candidates) = &mut self.phase_candidates {
+            // A switch ceiling rebuilds both roles from owned gear. It can
+            // keep a shared amulet while changing the weapon and off-hand.
+            let cap = candidates.len();
+            if cap >= self.baseline.budget.cap
+                || (self.baseline.usable()
+                    && complete_phase_plan(&self.baseline)
+                    && cap > self.baseline.budget.max_pair)
+            {
+                self.done = true;
+                return false;
+            }
+            candidates.push(Candidate::new(tradeoffs::budget(
+                snapshot,
+                &self.baseline.budget.options,
+                cap,
+            )));
+            return true;
         }
         if self.pending.is_empty() {
             if let Some(best) = self.best.take() {
@@ -240,17 +275,23 @@ impl Search {
         true
     }
     pub fn finish(mut self) -> Suggestion {
+        if let Some(mut candidates) = self.phase_candidates.take() {
+            candidates.push(self.baseline);
+            // A Huey recommendation must cover the body, head, and tail.
+            candidates.retain(complete_phase_plan);
+            let mut result = crate::efficient::choose(candidates, self.limits);
+            if let Some((best, compact)) = result.best.zip(result.compact) {
+                (result.removed, result.added) = gear_changes(
+                    &result.candidates[best].budget.plan,
+                    &result.candidates[compact].budget.plan,
+                );
+            }
+            return result;
+        }
         if !self.baseline.usable() {
             return Suggestion{candidates:vec![self.baseline],best:None,compact:None,reason:Some("The full setup is not prepared or has no comparable attack windows. Review Preparation.".into()),removed:vec![],added:vec![],trials:self.trials};
         }
-        let removed: Vec<_> = pool(&self.baseline.budget.plan)
-            .difference(&pool(&self.current.budget.plan))
-            .copied()
-            .collect();
-        let added = pool(&self.current.budget.plan)
-            .difference(&pool(&self.baseline.budget.plan))
-            .copied()
-            .collect();
+        let (removed, added) = gear_changes(&self.baseline.budget.plan, &self.current.budget.plan);
         if removed.is_empty()
             && self.current.budget.carried_gear == self.baseline.budget.carried_gear
         {

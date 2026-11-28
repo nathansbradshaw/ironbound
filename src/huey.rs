@@ -124,8 +124,31 @@ pub fn active(options: &Options) -> bool {
     options.boss == Boss::Custom && matches_targets(&options.targets)
 }
 
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub(crate) enum GearRole {
+    BodyAndHead,
+    Tail,
+}
+
+impl GearRole {
+    pub(crate) fn for_target(id: i32) -> Option<Self> {
+        match id {
+            BODY | HEAD | LIT_HEAD => Some(Self::BodyAndHead),
+            TAIL | LIT_TAIL => Some(Self::Tail),
+            _ => None,
+        }
+    }
+}
+
 pub fn is_tail(id: i32) -> bool {
-    matches!(id, TAIL | LIT_TAIL)
+    GearRole::for_target(id) == Some(GearRole::Tail)
+}
+
+/// The reviewed phase gear search uses Crush for both roles.
+pub(crate) fn split_gear_supported(options: &Options) -> bool {
+    active(options)
+        && crate::recommendation::enabled(options)
+        && options.targets.iter().all(|target| target.style == "Crush")
 }
 
 fn summit_protection(options: &Options, target: i32) -> Option<&'static str> {

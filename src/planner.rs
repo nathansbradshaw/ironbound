@@ -1539,7 +1539,24 @@ pub fn plan(snapshot: &Snapshot, options: &Options) -> Plan {
     }) {
         return p;
     }
-    let result = plan_uncached(snapshot, &options);
+    let mut result = plan_uncached(snapshot, &options, None);
+    if crate::huey::active(&options)
+        && options.targets.iter().all(|target| target.style == "Crush")
+        && crate::recommendation::enabled(&options)
+        && options.max_switches != Some(0)
+        && let Some(tail) = result.phases.get(2)
+        && let Some(member) = snapshot.selected()
+        && let Some(shared_seconds) = crate::huey::attack_seconds(&options, member, &result)
+    {
+        let split = plan_uncached(snapshot, &options, Some(&tail.equipment));
+        if split.missing.iter().all(|issue| result.missing.contains(issue))
+            && split.inventory.len() <= 28
+            && crate::huey::attack_seconds(&options, member, &split)
+                .is_some_and(|seconds| seconds + 1e-9 < shared_seconds)
+        {
+            result = split;
+        }
+    }
     CACHE.with(|c| {
         let mut c = c.borrow_mut();
         if c.len() >= 8 {
@@ -1609,7 +1626,7 @@ fn pack_profile_supplies(
     }
     prayer_bottles
 }
-fn plan_uncached(snapshot: &Snapshot, options: &Options) -> Plan {
+fn plan_uncached(snapshot: &Snapshot, options: &Options, huey_tail_seed: Option<&[Option<i32>]>) -> Plan {
     let mut out = Plan {
         ammo_shots: options.combat.ammo_shots,
         loaded_ammo: None,
@@ -1710,7 +1727,19 @@ fn plan_uncached(snapshot: &Snapshot, options: &Options) -> Plan {
     } else {
         "Melee"
     };
-    out.equipment = style_set(primary, options.boss, m, &owned, catalog, options);
+    let opening_options = huey_tail_seed.map(|_| {
+        let mut opening = options.clone();
+        opening.targets.retain(|target| !crate::huey::is_tail(target.id));
+        opening
+    });
+    out.equipment = style_set(
+        primary,
+        options.boss,
+        m,
+        &owned,
+        catalog,
+        opening_options.as_ref().unwrap_or(options),
+    );
     let ranged = style_set("Ranged", options.boss, m, &owned, catalog, options);
     let magic = style_set("Magic", options.boss, m, &owned, catalog, options);
     if let Some(issue) = refinement_target(primary, options.boss, options)
@@ -1773,7 +1802,11 @@ fn plan_uncached(snapshot: &Snapshot, options: &Options) -> Plan {
             .map(|style| {
                 (
                     style,
-                    style_set(style, options.boss, m, &owned, catalog, options),
+                    if style == primary && opening_options.is_some() {
+                        out.equipment.clone()
+                    } else {
+                        style_set(style, options.boss, m, &owned, catalog, options)
+                    },
                 )
             })
             .collect::<Vec<_>>()
@@ -2289,7 +2322,7 @@ fn plan_uncached(snapshot: &Snapshot, options: &Options) -> Plan {
         }
     }
     if crate::huey::active(options) {
-        crate::huey::pack_tail_switch(options, m, &owned, &mut out, &mut essentials);
+        crate::huey::pack_tail_switch(options, m, &owned, &mut out, &mut essentials, huey_tail_seed);
     }
     for (index, id) in &options.inventory_overrides {
         if *index >= 28 || *id < 0 {

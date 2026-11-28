@@ -144,6 +144,46 @@ pub(crate) fn combat_settings(options: &Options, target: i32) -> Cow<'_, crate::
     }
 }
 
+/// Compare complete plans using identical personal workloads and pillar state.
+pub(crate) fn attack_seconds(options: &Options, member: &Member, plan: &Plan) -> Option<f64> {
+    if options.targets.len() != plan.phases.len() {
+        return None;
+    }
+    options
+        .targets
+        .iter()
+        .zip(&plan.phases)
+        .try_fold(0.0, |total, (target, phase)| {
+            let monster = planner::monster(target.id)?;
+            let settings = combat_settings(options, target.id);
+            let attack = combat::calculate_configured(
+                member,
+                &phase.equipment,
+                &phase.style,
+                monster,
+                "",
+                options.raid_level,
+                &settings,
+            )
+            .ok()?;
+            let time = if matches!(target.id, HEAD | LIT_HEAD) {
+                f64::from(combat::target_hitpoints(monster, options.raid_level)?) / attack.dps
+            } else {
+                attack_budget::for_window(monster, &attack, options, &phase.equipment)
+                    .ok()?
+                    .seconds
+            };
+            let priority = options
+                .phase_priorities
+                .get(&target.id)
+                .copied()
+                .unwrap_or(1)
+                .min(10);
+            time.is_finite()
+                .then_some(total + time * f64::from(priority))
+        })
+}
+
 /// Compare a weapon swap and any complete owned Blood Moon set against the real
 /// tail distribution, then pack a faster set if it fits the existing trip.
 pub(crate) fn pack_tail_switch(
@@ -152,6 +192,7 @@ pub(crate) fn pack_tail_switch(
     owned: &BTreeMap<i32, u32>,
     plan: &mut Plan,
     essentials: &mut BTreeMap<i32, u32>,
+    seed: Option<&[Option<i32>]>,
 ) {
     if !crate::recommendation::enabled(options) || options.max_switches == Some(0) {
         return;
@@ -182,6 +223,7 @@ pub(crate) fn pack_tail_switch(
         .map(|seed| seed.equipment)
         .filter(|set| rules::set_effect(set, "blood_moon"))
         .collect();
+    trials.extend(seed.map(<[Option<i32>]>::to_vec));
     if !options.gear_overrides.contains_key("Crush:3") {
         for (&id, &quantity) in owned {
             if quantity == 0
@@ -201,6 +243,13 @@ pub(crate) fn pack_tail_switch(
 
     let mut best = None;
     for set in trials {
+        if options.fewer_switches
+            && [0, 1, 2, 9, 10, 12]
+                .into_iter()
+                .any(|slot| set[slot] != plan.equipment[slot])
+        {
+            continue;
+        }
         if set.iter().enumerate().any(|(slot, id)| {
             options
                 .gear_overrides

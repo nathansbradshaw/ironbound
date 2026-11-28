@@ -708,6 +708,34 @@ fn huey_tail_uses_its_own_packed_set_and_respects_switch_limit() {
 }
 
 #[test]
+fn huey_compares_a_faster_head_set_even_when_the_shared_set_wins_on_tail() {
+    let (mut snapshot, mut options) = huey_trip();
+    snapshot.members[0].bank = Some(vec![
+        28810, 1, 12954, 1, 28997, 1, 11200, 1, 6585, 1, 1725, 1, 11840, 1, 7462, 1, 29043, 1,
+        8007, 2,
+    ]);
+    options.max_switches = Some(0);
+    let shared = planner::plan(&snapshot, &options);
+    assert_eq!(shared.equipment[3], Some(28997));
+    options.max_switches = Some(3);
+    for lit in [false, true] {
+        huey::Settings {
+            players: 3,
+            pillars_lit: lit,
+            ..Default::default()
+        }
+        .apply(&mut options);
+        let plan = planner::plan(&snapshot, &options);
+        assert!(plan.exportable(), "{:?}", plan.missing);
+        assert_eq!(plan.equipment[3], Some(28810));
+        assert_eq!(plan.equipment[5], Some(12954));
+        assert_eq!(plan.phases[1].equipment, plan.equipment);
+        assert_eq!(plan.phases[2].equipment[3], Some(28997));
+        assert!(plan.inventory.iter().any(|item| item.id == 28997));
+    }
+}
+
+#[test]
 fn huey_prayer_role_is_summit_only_and_shares_with_lit_targets() {
     let (snapshot, mut options) = huey_trip();
     let settings = huey::Settings {

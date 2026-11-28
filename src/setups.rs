@@ -156,6 +156,7 @@ impl Library {
 
 pub fn validate_options(o: &Options) -> Result<(), String> {
     if !o.sailing.valid()
+        || !o.huey.valid()
         || o.wilderness.as_ref().is_some_and(|kit| !kit.valid())
         || !o.combat.valid()
         || !o.simulation.valid()

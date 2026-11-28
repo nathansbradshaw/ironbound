@@ -1459,6 +1459,9 @@ pub fn start() -> Result<(), JsValue> {
             "potions",
             "raid-level",
             "titan-strategy",
+            "huey-players",
+            "huey-prayer",
+            "huey-pillars",
             "access",
             "started",
             "inventory-filter",
@@ -1482,6 +1485,29 @@ pub fn start() -> Result<(), JsValue> {
                 return;
             }
             match id.as_str() {
+                "huey-players" | "huey-prayer" | "huey-pillars" => {
+                    if !crate::huey::active(&s.saved.options) {
+                        return;
+                    }
+                    let mut settings = s.saved.options.huey;
+                    let value = el.dyn_ref::<HtmlSelectElement>().map(HtmlSelectElement::value).unwrap_or_default();
+                    match id.as_str() {
+                        "huey-players" => {
+                            let Ok(players) = value.parse() else { return };
+                            settings = settings.with_players(players);
+                        }
+                        "huey-prayer" => {
+                            let Some(&(role, _, _)) = crate::huey::Role::CHOICES.iter().find(|choice| choice.1 == value) else { return };
+                            settings.role = role;
+                        }
+                        _ => settings.pillars_lit = value == "lit",
+                    }
+                    if settings.valid() {
+                        settings.apply(&mut s.saved.options);
+                        s.compare_target = None;
+                        s.phase = None;
+                    }
+                }
                 "titan-strategy" => {
                     if crate::royal_titans::active(&s.saved.options)
                         && let Some(select) = el.dyn_ref::<HtmlSelectElement>()
@@ -2504,6 +2530,9 @@ fn act(action: &str) {
                     if entry.name == crate::royal_titans::NAME {
                         s.saved.options.royal_titans.apply(&mut s.saved.options);
                     }
+                    if entry.name == crate::huey::NAME {
+                        s.saved.options.huey.apply(&mut s.saved.options);
+                    }
                     if crate::guidance::profile(&s.saved.options)
                         .is_some_and(|profile| profile.recommended_mark_darkness)
                     {
@@ -3269,7 +3298,7 @@ fn encounter_detail(s: &State, p: &Plan) -> String {
     html.push_str("</div>");
     if crate::royal_titans::active(&s.saved.options) {
         let strategy = s.saved.options.royal_titans;
-        html.push_str("<div class=\"titan-strategy\">");
+        html.push_str("<div class=\"encounter-strategy\">");
         if s.shared_setup.is_some() {
             html.push_str(&format!("<p class=\"plan-coverage\">{}</p>", esc(strategy.label())));
         } else {
@@ -3282,6 +3311,9 @@ fn encounter_detail(s: &State, p: &Plan) -> String {
         }
         html.push_str(&format!("<p class=\"plan-coverage\">{}</p>", esc(strategy.advice())));
         html.push_str("<details><summary>Fight tips</summary><ul><li>Melee up close and switch to ranged when the titans withdraw. Bring both low before finishing either one to limit prayer-piercing stomps.</li><li>Water clears fire elementals and Fire clears ice elementals. Matching casts deal max damage when they hit. Aim for +70 Magic attack bonus, or +39 with full Magic Void, for reliable hits.</li><li>Fire Wave and Water Wave can one-shot their matching elementals at 75 Magic. Bring Blast or stronger for walls. The Twinflame staff supplies Fire and Water runes.</li></ul></details></div>");
+    }
+    if crate::huey::active(&s.saved.options) {
+        html.push_str(&huey_controls(s.saved.options.huey, s.shared_setup.is_some()));
     }
     if s.shared_setup.is_some() {
         html.push_str(
@@ -3301,6 +3333,47 @@ fn encounter_detail(s: &State, p: &Plan) -> String {
         html.push_str(&slayer_tasks(s));
     }
     html.push_str("</section>");
+    html
+}
+
+fn huey_controls(settings: crate::huey::Settings, shared: bool) -> String {
+    let mut html = String::from("<div class=\"encounter-strategy huey-settings\">");
+    if shared {
+        html.push_str(&format!("<p>{} in arena · {}</p>", settings.players, if settings.pillars_lit { "Lit summit window" } else { "Unlit pillars" }));
+        if let Some((_, _, label)) = crate::huey::Role::CHOICES.iter().find(|choice| settings.role != crate::huey::Role::Unassigned && choice.0 == settings.role) {
+            html.push_str(&format!("<p>Summit prayer · {label}</p>"));
+        }
+    } else {
+        html.push_str("<label>Players in arena <select id=\"huey-players\">");
+        for players in 1..=20 {
+            let label = match players {
+                1 => "Solo · 1".into(),
+                2 => "Duo · 2".into(),
+                3 => "Trio · 3".into(),
+                4 | 5 => format!("Small team · {players}"),
+                _ => format!("Mass · {players}"),
+            };
+            let selected = if players == settings.players { " selected" } else { "" };
+            html.push_str(&format!("<option value=\"{players}\"{selected}>{label}</option>"));
+        }
+        html.push_str("</select></label>");
+        if settings.per_pillar().is_some() {
+            html.push_str("<label>Your summit prayer <select id=\"huey-prayer\">");
+            for &(role, key, label) in crate::huey::Role::CHOICES {
+                let selected = if role == settings.role { " selected" } else { "" };
+                html.push_str(&format!("<option value=\"{key}\"{selected}>{label}</option>"));
+            }
+            let (unlit, lit) = if settings.pillars_lit { ("", " selected") } else { (" selected", "") };
+            html.push_str(&format!("<label>Pillar state <select id=\"huey-pillars\"><option value=\"unlit\"{unlit}>Unlit</option><option value=\"lit\"{lit}>Lit · +30% summit damage</option></select></label>"));
+        }
+    }
+    if let Some(count) = settings.per_pillar() {
+        html.push_str(&format!("<p class=\"plan-coverage\">At the summit, assign at least {count} to each overhead prayer. Keep the split when the seer’s charge bar is about to fill. Every player in the arena counts.</p>"));
+    } else {
+        html.push_str("<p class=\"plan-coverage\">Pillars need at least three players in the arena. Match your overhead to the incoming feathers.</p>");
+    }
+    html.push_str(&format!("<p class=\"plan-coverage\">{}</p>", settings.loot_rule()));
+    html.push_str("<details><summary>Fight tips</summary><ul><li>Start at the climb to get body credit. The fight has five 250 HP body segments, a 2,500 HP head and a 300 HP tail at every team size.</li><li>Use crush on the body and head. Bring a multi-hit crush switch for the tail if it helps your setup. After breaking the tail, return to the head.</li><li>Red feathers are melee, green are ranged and blue are magic. The pillar boost applies only while lit, including during the tail. Dodge lightning and tail waves.</li></ul></details></div>");
     html
 }
 
@@ -4359,7 +4432,7 @@ fn sustain_panel(
     member: &account::Member,
     target: &planner::Monster,
 ) -> String {
-    let settings = &s.saved.options.combat;
+    let settings = crate::huey::combat_settings(&s.saved.options, target.id);
     let mut html = String::from("<section class=\"sustain-panel\"><h3>Damage taken & prayer</h3>");
     if crate::sailing::is_sea(target.id) {
         html.push_str(&prayer_book(s, member));
@@ -4367,6 +4440,9 @@ fn sustain_panel(
         return html;
     }
     html.push_str(&prayer_book(s, member));
+    if matches!(&settings, std::borrow::Cow::Owned(_)) {
+        html.push_str(&format!("<p class=\"small-note\">Prayer estimates use your assigned {} overhead in this summit window.</p>", settings.protection));
+    }
     let choices = crate::defence::attacks(target);
     if !choices.is_empty() {
         html.push_str("<div class=\"incoming-choices\" role=\"group\" aria-label=\"Incoming attack scenario\"><h4>Incoming attack scenario</h4><div class=\"combat-subtype-options\">");
@@ -4378,7 +4454,7 @@ fn sustain_panel(
     }
     match incoming_choice(s, target)
         .ok_or("Incoming attack data unavailable.".to_string())
-        .and_then(|attack| crate::defence::estimate(member, set, target, &attack, settings))
+        .and_then(|attack| crate::defence::estimate(member, set, target, &attack, &settings))
     {
         Ok(r) => {
             let healing = if r.healing_modelled {
@@ -4395,7 +4471,7 @@ fn sustain_panel(
                     target,
                     comparison_spell(s, member, set, target),
                     s.saved.options.raid_level,
-                    settings,
+                    &settings,
                 ) {
                     if outgoing.dps <= r.healing_per_second {
                         html.push_str("<p class=\"combat-unavailable\">Boss healing cancels your damage in this scenario. Adjust your gear.</p>");
@@ -4409,8 +4485,8 @@ fn sustain_panel(
         )),
     }
     let bonus = crate::prayer::bonus(set);
-    let drain = crate::prayer::drain_per_minute(bonus, settings);
-    let duration = crate::prayer::minutes(member, set, &p.inventory, settings)
+    let drain = crate::prayer::drain_per_minute(bonus, &settings);
+    let duration = crate::prayer::minutes(member, set, &p.inventory, &settings)
         .map(|v| format!("{v:.1} minutes"))
         .unwrap_or_else(|| {
             if drain == 0.0 {
@@ -6018,6 +6094,15 @@ fn tier_table(s: &State) -> String {
 }
 
 fn planned_style(s: &State, p: &Plan, style: &str) -> Vec<Option<i32>> {
+    if crate::huey::active(&s.saved.options)
+        && let Some(target) = comparison_monster(s)
+        && let Some((index, _)) = s.saved.options.targets.iter().enumerate().find(|(_, t)| {
+            t.style == style && crate::encounters::source_npc_id(t.id) == crate::encounters::source_npc_id(target.id)
+        })
+        && let Some(phase) = p.phases.get(index)
+    {
+        return phase.equipment.clone();
+    }
     if style == planner::primary_style(&s.saved.options) {
         return p.equipment.clone();
     }

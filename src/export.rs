@@ -119,6 +119,15 @@ pub fn inventory_setup(plan: &Plan, options: &Options, _account: &str) -> Result
     if crate::royal_titans::active(options) {
         notes.push_str(&format!(" Royal Titans strategy: {}.", options.royal_titans.label()));
     }
+    if crate::huey::active(options) {
+        notes.push_str(&format!(
+            " Hueycoatl: {} in arena. Summit prayer: {}. Pillars: {}. {}",
+            options.huey.players,
+            options.huey.role.protection().unwrap_or("Unassigned"),
+            if options.huey.pillars_lit { "lit window" } else { "unlit" },
+            options.huey.loot_rule()
+        ));
+    }
     if let Some(kit) = &options.wilderness {
         notes.push_str(&format!(" Scaredy cat kit: up to 3 valuable gear pieces; disposable fillers <= {} GP per piece/stack (public snapshot {}). {}",kit.filler_cap,crate::wilderness::prices().captured_at,crate::wilderness::CAUTION));
     }

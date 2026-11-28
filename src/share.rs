@@ -18,6 +18,8 @@ pub struct Switch {
 pub struct Setup {
     #[serde(default, skip_serializing_if = "crate::sailing::is_default")]
     pub sailing: crate::sailing::Settings,
+    #[serde(default, skip_serializing_if = "crate::huey::Settings::is_default")]
+    pub huey: crate::huey::Settings,
     #[serde(default, skip_serializing_if = "crate::royal_titans::Strategy::is_default")]
     pub royal_titans: crate::royal_titans::Strategy,
     #[serde(default)]
@@ -68,6 +70,7 @@ impl Setup {
             } else {
                 Default::default()
             },
+            huey: if crate::huey::active(o) { o.huey } else { Default::default() },
             royal_titans: if crate::royal_titans::active(o) {
                 o.royal_titans
             } else {
@@ -123,7 +126,7 @@ impl Setup {
     }
     pub fn validate(&self) -> Result<(), String> {
         let fail = || "This shared setup is invalid or unsupported.".to_string();
-        if !self.sailing.valid() {
+        if !self.sailing.valid() || !self.huey.valid() {
             return Err(fail());
         }
         if self.constraints.as_ref().is_some_and(|c| {
@@ -336,6 +339,7 @@ impl Setup {
     pub fn options(&self) -> Options {
         Options {
             sailing: self.sailing.clone(),
+            huey: self.huey,
             royal_titans: self.royal_titans,
             exclude_void: self.exclude_void,
             wilderness: self.wilderness.clone(),

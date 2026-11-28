@@ -428,6 +428,7 @@ impl Entry {
     /// Equipment style changes do not change which boss is being fought.
     pub fn matches(&self, targets: &[Target]) -> bool {
         (self.name == crate::royal_titans::NAME && crate::royal_titans::matches_targets(targets))
+            || (self.name == crate::huey::NAME && crate::huey::matches_targets(targets))
             || !self.targets.is_empty()
             && self.targets.len() == targets.len()
             && targets.iter().all(Target::valid)

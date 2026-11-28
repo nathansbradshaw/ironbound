@@ -3,7 +3,7 @@ use ironbound::{
     account::{self, Member},
     attack_budget, combat, coverage,
     defence::{self, Settings},
-    encounters,
+    encounters, huey,
     modifiers::{self, Reductions},
     planner::{self, Boss, Options, Target},
     royal_titans::{self, Strategy},
@@ -573,6 +573,187 @@ fn new_windows_preserve_shared_pools_bounds_and_unsupported_burn_gates() {
                 .contains("Eclipse burn")
         );
     }
+}
+
+fn huey_trip() -> (account::Snapshot, Options) {
+    let mut snapshot = account::demo();
+    snapshot.members[0].level_overrides = member().level_overrides;
+    snapshot.members[0].bank = Some(vec![22978, 1, 29889, 1, 8007, 2]);
+    let options = Options {
+        boss: Boss::Custom,
+        targets: encounters::catalog()
+            .iter()
+            .find(|entry| entry.name == huey::NAME)
+            .unwrap()
+            .targets
+            .clone(),
+        food: 0,
+        prayer_potions: 0,
+        ..Default::default()
+    };
+    (snapshot, options)
+}
+
+#[test]
+fn huey_team_sizes_gate_pillars_and_loot_without_scaling_hp() {
+    let (_, mut options) = huey_trip();
+    let sizes = [
+        (1, None),
+        (2, None),
+        (3, Some(1)),
+        (5, Some(1)),
+        (6, Some(2)),
+        (8, Some(2)),
+        (9, Some(3)),
+        (11, Some(3)),
+        (12, Some(4)),
+        (14, Some(4)),
+        (15, Some(5)),
+        (17, Some(5)),
+        (18, Some(6)),
+        (20, Some(6)),
+    ];
+    for (players, per_pillar) in sizes {
+        let mut settings = huey::Settings::default().with_players(players);
+        assert_eq!(settings.per_pillar(), per_pillar);
+        assert_eq!(settings.loot_rule().contains("95%"), players >= 6);
+        settings.pillars_lit = per_pillar.is_some();
+        assert!(settings.valid());
+        settings.apply(&mut options);
+        assert_eq!(
+            options.targets.iter().map(|t| t.id).collect::<Vec<_>>(),
+            if players < 3 {
+                vec![huey::BODY, huey::HEAD, huey::TAIL]
+            } else {
+                vec![huey::BODY, huey::LIT_HEAD, huey::LIT_TAIL]
+            }
+        );
+        let hp: f64 = options
+            .targets
+            .iter()
+            .map(|t| {
+                encounters::progress_hp(t.id, &t.style).unwrap_or_else(|| {
+                    f64::from(combat::target_hitpoints(planner::monster(t.id).unwrap(), 0).unwrap())
+                })
+            })
+            .sum();
+        close(hp, 4050.0);
+    }
+    assert!(!huey::Settings::default().with_players(21).valid());
+    assert!(
+        !huey::Settings {
+            players: 2,
+            pillars_lit: true,
+            ..Default::default()
+        }
+        .valid()
+    );
+    assert!(
+        !huey::Settings {
+            players: 3,
+            pillars_lit: true,
+            ..Default::default()
+        }
+        .with_players(6)
+        .pillars_lit
+    );
+}
+
+#[test]
+fn huey_tail_uses_its_own_packed_set_and_respects_switch_limit() {
+    let (snapshot, mut options) = huey_trip();
+    for lit in [false, true] {
+        huey::Settings {
+            players: 3,
+            pillars_lit: lit,
+            ..Default::default()
+        }
+        .apply(&mut options);
+        options.max_switches = Some(1);
+        let plan = planner::plan(&snapshot, &options);
+        assert!(plan.exportable(), "{:?}", plan.missing);
+        assert_eq!(plan.equipment[3], Some(22978));
+        assert_eq!(plan.phases[2].equipment[3], Some(29889));
+        assert_eq!(plan.optimization.as_ref().unwrap().max_changes, 1);
+        assert_eq!(plan.optimization.as_ref().unwrap().gear_slots, 1);
+        assert!(
+            plan.inventory
+                .iter()
+                .any(|item| item.id == 29889 && item.purpose == "Tail switch")
+        );
+        assert_eq!(
+            plan.preview_inventory(Some(2))
+                .iter()
+                .filter(|item| item.id == 22978)
+                .count(),
+            1
+        );
+        options.max_switches = Some(0);
+        let capped = planner::plan(&snapshot, &options);
+        assert!(capped.exportable(), "{:?}", capped.missing);
+        assert_eq!(capped.equipment, capped.phases[2].equipment);
+
+        let comparison = ironbound::tradeoffs::compare(&snapshot, &options, 0, 1);
+        let overview = ironbound::encounter_summary::compare(&comparison);
+        assert_eq!(
+            comparison.right.windows.last().unwrap().equipment[3],
+            Some(29889)
+        );
+        assert!(overview.complete(), "{:?}", overview.omissions);
+        close(
+            overview.workloads.iter().map(|window| window.hp).sum(),
+            4050.0,
+        );
+    }
+}
+
+#[test]
+fn huey_prayer_role_is_summit_only_and_shares_with_lit_targets() {
+    let (snapshot, mut options) = huey_trip();
+    let settings = huey::Settings {
+        players: 3,
+        role: huey::Role::Melee,
+        pillars_lit: true,
+    };
+    settings.apply(&mut options);
+    let plan = planner::plan(&snapshot, &options);
+    let setup = ironbound::share::Setup::from_plan(&plan, &options);
+    let restored = ironbound::share::Setup::parse(&setup.fragment().unwrap())
+        .unwrap()
+        .options();
+    assert_eq!(restored.huey, settings);
+    assert_eq!(restored.targets, options.targets);
+    let body =
+        ironbound::tradeoffs::measure(&snapshot, &restored, &plan.equipment, "Crush", huey::BODY);
+    let head = ironbound::tradeoffs::measure(
+        &snapshot,
+        &restored,
+        &plan.equipment,
+        "Crush",
+        huey::LIT_HEAD,
+    );
+    close(body.prayer_per_minute, 0.0);
+    close(head.prayer_per_minute, 20.0);
+    let segment = combat::calculate(
+        &member(),
+        &plan.equipment,
+        "Crush",
+        planner::monster(huey::BODY).unwrap(),
+        "",
+    )
+    .unwrap();
+    let budget = attack_budget::for_window(
+        planner::monster(huey::BODY).unwrap(),
+        &segment,
+        &restored,
+        &plan.equipment,
+    )
+    .unwrap();
+    assert_eq!(budget.entities, 5);
+    close(
+        budget.attacks,
+        5.0 * attack_budget::for_hp(&segment, 250, 0).unwrap().attacks,
+    );
 }
 
 #[test]
